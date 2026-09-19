@@ -1,0 +1,63 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+*.egg-info/
+dist/
+build/
+*.whl
+
+# Node / Next.js
+node_modules/
+.pnpm-store/
+.next/
+out/
+*.tsbuildinfo
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Docker
+.docker/
+
+# Secrets — be paranoid
+.env
+.env.*
+!.env.example
+
+# OS
+Thumbs.db
+
+# Stitch design artifacts (tracked separately if needed)
+# /Users/zjp/Projects/stitch_argus_ai_research_session/
+
+# IDE workspace
+*.code-workspace
