@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --muted: #97a0af;
+  --border: rgba(255, 255, 255, 0.08);
+  --card: #111111;
+}
+
+html, body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow-x: hidden;
+}
+
+.quiet-border {
+  border: 1px solid var(--border);
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.quiet-border:hover {
+  border-color: rgba(79, 124, 255, 0.4);
+}
