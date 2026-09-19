@@ -144,4 +144,4 @@ Argus 是一个**个人 / 小团队用**的多 agent 研究助手：用户上传
 - **部署**：Vercel + Docker Compose
 - **评测**：Phoenix + 自研指标
 - **CI**：lint + test + Playwright e2e
-- **开源**：完整开源
+- **开源**：完整开源（W0 设计意图；**2026-09-19 用户决策变更为 Private 仓库**，本字段保留作决策日志）

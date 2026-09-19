@@ -140,3 +140,15 @@
 - LICENSE / CONTRIBUTING.md / Issue Templates（仓库根目录）
 - seed_demo_data.py（scripts/）
 - .env.example（部署时直接写）
+---
+
+## [Unreleased] · 2026-09-19 · 仓库私有化
+
+### Changed
+- **GitHub 仓库设为 Private**：`https://github.com/zzc-z/argus`（用户决策 2026-09-19 暂不开源）
+- README.md 顶部添加 `Visibility PRIVATE` 徽章 + 警告段
+- 推迟原 W4「开源包装」段（LICENSE / CONTRIBUTING.md / Issue Templates）—— 暂不创建
+
+### 不变
+- prd/ 内 13 份设计文档保留原 W0 设计意图（含「开源：完整开源」决策记录）
+- 设计意图 vs 当前策略解耦：文档记录的是 W0 阶段决策，用户后续可再次调整为开源

@@ -9,8 +9,10 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2.x-blue)]()
 [![Phoenix](https://img.shields.io/badge/Phoenix-13.x-purple)]()
 [![Claude](https://img.shields.io/badge/Claude-Sonnet%205-orange)]()
-[![License](https://img.shields.io/badge/license-MIT-green)]()
+[![Visibility](https://img.shields.io/badge/visibility-PRIVATE-red)]()
 [![Status](https://img.shields.io/badge/status-MVP-yellow)]()
+
+> ⚠️ **此仓库为 Private**（2026-09-19 用户决策暂不开源）。仅设计文档 W0 阶段提交，代码与数据均不公开。
 
 ---
 

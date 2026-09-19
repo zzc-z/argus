@@ -145,9 +145,10 @@
 
 | 字段 | 内容 |
 |---|---|
-| 选定 | **GitHub 公开 + 完整开源** |
+| W0 选定 | **GitHub 公开 + 完整开源** |
 | 排除 | 仅公开 README / 不公开 |
 | 再评估 | 不开源时移除 LICENSE / CONTRIBUTING / Issue Templates |
+| **2026-09-19 变更** | **⚠️ 用户决策变更为 Private 仓库**（`https://github.com/zzc-z/argus` 设为 Private）。W0 文档原「开源」字段保留作决策日志；推迟 LICENSE / CONTRIBUTING.md / Issue Templates 创建；sprint-plan W4 Day 25 跳过。 |
 
 ## 18. 语言 / 技术栈背景
 

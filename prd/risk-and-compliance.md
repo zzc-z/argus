@@ -74,7 +74,7 @@
 | FastAPI | MIT | ✅ | |
 | Next.js | MIT | ✅ | |
 
-**Argus 自身**：MIT License（待 W4 写入）
+**Argus 自身**：**未发布 / 私有项目**（2026-09-19 用户决策：仓库 Private，暂不发布 LICENSE / 不开源）
 
 ---
 

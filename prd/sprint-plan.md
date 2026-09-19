@@ -109,10 +109,10 @@
 | Day 22 (Mon) | GitHub Actions：lint + test + e2e Playwright / 覆盖率 ≥ 70% |
 | Day 23 (Tue) | Docker Compose 一键启动脚本 / seed_demo_data.py（200 篇预置）/ 验证 5 分钟跑通 |
 | Day 24 (Wed) | 部署文档（本地 / VPS / Vercel）/ 监控（Prometheus + Grafana）/ 备份脚本 |
-| Day 25 (Thu) | 开源包装：LICENSE / CONTRIBUTING / Issue Templates / CHANGELOG / PR 模板 |
-| Day 26 (Fri) | README 中英双语最终版 / 架构图 / Demo 视频 / Badges |
+| Day 25 (Thu) | **⏸️ 跳过**（仓库 Private，2026-09-19 决策：不开源包装） |
+| Day 26 (Fri) | README 中英双语最终版 / 架构图 / Demo 视频 / Badges（保留，仅不发外部 Release） |
 | Day 27 (Sat) | 全量回归测试 / 性能基线（token / 延迟）/ 修复发现的问题 / **检查 Anthropic Haiku 4.5 退役状态（如未退役，MVP 完成后再升级）** |
-| Day 28 (Sun) | **W4 Demo & 发布**：发布 v0.1.0 GitHub Release / 公开 repo / 简历写入项目链接 / 复盘 |
+| Day 28 (Sun) | **W4 Demo & 内部验收**：本地跑通全链路 / 简历写入项目链接（Private repo 需附访问申请说明）/ 复盘 / **不发布 GitHub Release** |
 
 ### 验收
 - [ ] `docker compose up` → 5 分钟内所有服务 healthy
