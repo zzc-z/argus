@@ -1,29 +1,87 @@
-import type { Config } from 'tailwindcss';
+import type { Config } from "tailwindcss";
 
 const config: Config = {
   content: [
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './lib/**/*.{js,ts,jsx,tsx,mdx}'
+    "./app/**/*.{js,ts,jsx,tsx,mdx}",
+    "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
-  darkMode: 'class',
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
+        // ── Material 3 palette (from design argus_3/code.html) ──
+        "inverse-primary": "#cdbdff",
+        "error-container": "#ffdad6",
+        "secondary-container": "#d9dff5",
+        "on-tertiary-fixed": "#191c1e",
+        "on-secondary-fixed": "#141b2b",
+        "primary-fixed-dim": "#cdbdff",
+        outline: "#7a7488",
+        "on-secondary-fixed-variant": "#404758",
+        "surface-container-low": "#f3f4f5",
+        "inverse-surface": "#2e3132",
+        "tertiary-fixed": "#e1e2e4",
+        "surface-container-highest": "#e1e3e4",
+        background: "#f8f9fa",
+        error: "#ba1a1a",
+        "outline-variant": "#cac3d9",
+        "secondary-fixed-dim": "#c0c6db",
+        "on-secondary-container": "#5c6274",
+        "on-primary-fixed": "#20005f",
+        "inverse-on-surface": "#f0f1f2",
+        "primary-container": "#7039f9",
+        "on-background": "#191c1d",
+        "secondary-fixed": "#dce2f7",
+        "on-secondary": "#ffffff",
+        "on-tertiary": "#ffffff",
+        primary: "#5704e1",
+        "on-error-container": "#93000a",
+        "on-tertiary-fixed-variant": "#444749",
+        "tertiary-container": "#646668",
+        "tertiary-fixed-dim": "#c5c6c8",
+        "surface-container-lowest": "#ffffff",
+        "on-error": "#ffffff",
+        "surface-container": "#edeeef",
+        "on-primary": "#ffffff",
+        secondary: "#575e70",
+        "surface-variant": "#e1e3e4",
+        "tertiary": "#4c4e50",
+        "surface-bright": "#f8f9fa",
+        "surface-tint": "#682ef1",
+        "on-primary-fixed-variant": "#4f00d0",
+        "primary-fixed": "#e8deff",
+        "surface-dim": "#d9dadb",
+        surface: "#f8f9fa",
+        "on-primary-container": "#e9e0ff",
+        "surface-container-high": "#e7e8e9",
+        "on-surface": "#191c1d",
+        "on-surface-variant": "#494456",
+        "on-tertiary-container": "#e3e4e6",
+        // ── legacy brand (kept for backwards compat) ──
         brand: {
-          DEFAULT: '#4f7cff',
-          hover: '#3b67eb',
-          ring: 'rgba(79, 124, 255, 0.4)',
-          subtle: 'rgba(79, 124, 255, 0.12)'
-        }
+          DEFAULT: "#4f7cff",
+          hover: "#3b67eb",
+          ring: "rgba(79, 124, 255, 0.4)",
+          subtle: "rgba(79, 124, 255, 0.12)",
+        },
       },
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace']
-      }
-    }
+        sans: ["Geist", "Inter", "-apple-system", "BlinkMacSystemFont", "sans-serif"],
+        mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+        "headline-lg": ["Geist", "sans-serif"],
+        "headline-md": ["Geist", "sans-serif"],
+        "headline-sm": ["Geist", "sans-serif"],
+        "body-lg": ["Geist", "sans-serif"],
+        "body-md": ["Geist", "sans-serif"],
+        "body-sm": ["Geist", "sans-serif"],
+        code: ["JetBrains Mono", "monospace"],
+        "label-md": ["JetBrains Mono", "monospace"],
+        "label-sm": ["JetBrains Mono", "monospace"],
+      },
+    },
   },
-  plugins: []
+  plugins: [],
 };
 
 export default config;

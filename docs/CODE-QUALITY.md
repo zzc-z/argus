@@ -1,0 +1,231 @@
+# CODE-QUALITY.md — Argus 前后端代码质量控制规范
+
+> 本文档独立于 [CONVENTIONS.md](./CONVENTIONS.md)——只谈**工具链 + 自动化拦截**，
+> 不谈命名 / 嵌套 / 状态等代码风格（那些在 CONVENTIONS.md）。
+>
+> 维护者参考 ECC plugin 的 `coding-standards` / `react-review` / `frontend-patterns` / `security-review` skill。
+
+## 1. 设计目标
+
+1. **所有提交必须通过本地自动化检查**（pre-commit）—— 不通过则 commit 被拒
+2. **所有 commit message 必须遵守 Conventional Commits** —— commitlint 校验
+3. **CI 跑完整 lint + typecheck + test** —— 三个工作流并行
+4. **前后端规则对仗** —— 前端 ESLint，后端 ruff；前端 TypeScript strict，后端 mypy strict
+
+## 2. 前端（apps/web/）
+
+### 2.1 工具链一览
+
+| 工具 | 版本 | 配置 | 作用 |
+|---|---|---|---|
+| ESLint | 9.x（flat config） | `eslint.config.mjs` | 代码静态检查 |
+| @typescript-eslint | 8.x | 同上 | TypeScript 类型感知规则 |
+| eslint-plugin-react-hooks | 5.x | 同上 | hooks 守则 |
+| eslint-plugin-jsx-a11y | 6.x | 同上 | a11y 校验 |
+| eslint-plugin-import | 2.x | 同上 | import 排序/循环 |
+| eslint-plugin-tailwindcss | 3.x | 同上 | Tailwind class 校验 |
+| eslint-config-prettier | 9.x | extends 末尾 | 与 Prettier 桥接 |
+| Prettier | 3.x | `.prettierrc.json` | 格式化 |
+| Husky | 9.x | `.husky/` | git hook |
+| lint-staged | 15.x | `.lintstagedrc.json` | 暂存文件过滤 |
+| commitlint | 19.x | `commitlint.config.js` | commit message 校验 |
+
+### 2.2 提交前拦截链路
+
+```
+$ git commit
+→ .husky/pre-commit 跑 lint-staged（仅 staged 文件 <5s）
+   ├─ *.{ts,tsx} → eslint --fix --max-warnings=0 + prettier --write
+   └─ *.{json,md,yml,yaml} → prettier --write
+→ .husky/pre-commit 跑 tsc --noEmit（类型检查全工程）
+→ .husky/commit-msg 跑 commitlint --edit "$1"
+   不通过 → commit 拒绝
+```
+
+### 2.3 npm scripts（package.json）
+
+| 命令 | 作用 |
+|---|---|
+| `pnpm dev` | 起 Next.js dev server |
+| `pnpm build` | production 构建 |
+| `pnpm start` | 跑 production 服务 |
+| `pnpm lint` | next lint（ESLint wrapper） |
+| `pnpm lint:fix` | eslint . --fix --max-warnings=0 |
+| `pnpm format` | prettier --write |
+| `pnpm format:check` | prettier --check（CI 用） |
+| `pnpm typecheck` | tsc --noEmit |
+| `pnpm prepare` | husky install（自动） |
+
+### 2.4 本机安装
+
+```bash
+cd /Users/ext.zhangjianpeng11/Desktop/argus
+pnpm install                    # 装 12 个 devDeps
+pnpm dlx shadcn@latest init     # 建 components.json + lib/utils.ts
+pnpm dlx shadcn@latest add button card input label  # 装首批 19 组件
+pnpm tsc --noEmit               # 验类型
+pnpm lint                       # 验 ESLint
+```
+
+## 3. 后端（apps/api/）
+
+### 3.1 工具链一览
+
+| 工具 | 版本 | 配置 | 作用 |
+|---|---|---|---|
+| Python | 3.12+ | `.python-version` | 运行时 |
+| uv | 0.4+ | — | 包管理（替代 pip + poetry） |
+| FastAPI | 0.141+ | `app/main.py` | web framework |
+| Pydantic | 2.10+ | 散落在 model 文件 | 数据验证 |
+| SQLAlchemy | 2.0.36+ | `app/db/` | ORM（async） |
+| asyncpg | 0.30+ | — | Postgres async driver |
+| Alembic | 1.13+ | `alembic/` | 数据库 migration |
+| Redis | 5.2+ | — | LangGraph checkpointer |
+| LangGraph | 1.2.11+ | `app/agents/` | 多智能体状态机 |
+| ruff | 0.7+ | `pyproject.toml` [tool.ruff] | linter + formatter（替代 flake8+isort+black） |
+| mypy | 1.13+ | `pyproject.toml` [tool.mypy] | 静态类型检查（strict 模式） |
+| pytest | 8.3+ | `pyproject.toml` [tool.pytest.ini_options] | 测试 |
+| pytest-asyncio | 0.24+ | 同上 | 异步测试 |
+| pytest-cov | 5.0+ | 同上 | 覆盖率（fail_under = 80%） |
+| pre-commit | 4.0+ | `.pre-commit-config.yaml` | git hook |
+
+### 3.2 ruff 规则集（pyproject.toml）
+
+`select = ["E", "F", "W", "I", "B", "UP", "SIM", "PT", "C4", "RUF", "ASYNC"]`
+
+| 规则 | 来源 | 作用 |
+|---|---|---|
+| E / W | pycodestyle | PEP 8 风格 |
+| F | pyflakes | 未使用 import / 变量 |
+| I | isort | import 排序 |
+| B | bugbear | 常见 bug |
+| UP | pyupgrade | Python 3.12+ 语法升级 |
+| SIM | simplify | 代码简化 |
+| PT | pytest | pytest 风格 |
+| C4 | comprehensions | 列表推导式 |
+| RUF | ruff-specific | ruff 特定规则 |
+| ASYNC | flake8-async | async/await 检查 |
+
+`ignore = ["E501", "B008"]` —— E501 行长交给 ruff format 处理；B008 函数默认参数调用（FastAPI Depends 模式需要）
+
+### 3.3 mypy strict 模式（pyproject.toml）
+
+```toml
+strict = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
+strict_concatenate = true
+```
+
+`tests/*` 排除 `disallow_untyped_defs` —— 测试 fixture 灵活。
+
+### 3.4 提交前拦截链路
+
+```
+$ git commit
+→ pre-commit hooks:
+   ├─ trailing-whitespace / end-of-file-fixer
+   ├─ check-yaml / check-toml
+   ├─ check-added-large-files (max 512KB)
+   ├─ detect-private-key
+   ├─ no-commit-to-branch (main / master)
+   ├─ ruff --fix
+   ├─ ruff-format
+   ├─ mypy --config-file=pyproject.toml
+   └─ pytest smoke tests
+→ commitlint 校验 commit message
+   不通过 → commit 拒绝
+```
+
+### 3.5 npm scripts 没有，pyproject.toml 提供
+
+| 命令 | 作用 |
+|---|---|
+| `uv sync` | 装所有 deps（含 dev） |
+| `uv run pytest` | 跑测试 |
+| `uv run pytest --cov` | 跑覆盖率 |
+| `uv run mypy app/` | 类型检查 |
+| `uv run ruff check .` | lint |
+| `uv run ruff format .` | 格式化 |
+| `uv run pre-commit run --all-files` | 跑全部 hook |
+
+### 3.6 本机安装
+
+```bash
+cd /Users/ext.zhangjianpeng11/Desktop/argus/apps/api
+uv sync                # 装所有 deps（含 dev）
+uv run pre-commit install   # 装 pre-commit
+uv run pytest         # 跑烟测
+uv run mypy app/      # 类型检查
+uv run ruff check .   # lint
+```
+
+## 4. commit message 规范（前后端共用）
+
+### 4.1 Conventional Commits 格式
+
+```
+<type>(<scope>): <subject>
+
+<body>
+
+<footer>
+```
+
+### 4.2 type-enum（11 个）
+
+| type | 用途 |
+|---|---|
+| feat | 新功能 |
+| fix | bug 修复 |
+| docs | 文档变更 |
+| style | 格式（不改代码逻辑） |
+| refactor | 重构（既不是 feat 也不是 fix） |
+| perf | 性能优化 |
+| test | 测试 |
+| build | 构建系统 |
+| ci | CI 配置 |
+| chore | 其他 |
+| revert | 回滚 |
+
+### 4.3 scope-enum（commitlint-plugin-workspace-scopes 自动从 monorepo 检测）
+
+`apps/web` / `apps/api` / `packages/shared` / `docs` / `prd` / `agent` / `worktree`
+
+### 4.4 header-max-length
+
+72 字符。body / footer 100 字符/行。
+
+### 4.5 breaking change 标记
+
+`feat!:` 或 footer `BREAKING CHANGE:` —— 强制升级 major version。
+
+## 5. CI（GitHub Actions）
+
+待 W2 启用 .github/workflows/ 时配：
+
+| workflow | 触发 | 跑啥 |
+|---|---|---|
+| `web-lint.yml` | PR to main | pnpm install + lint + format:check + typecheck |
+| `web-test.yml` | PR to main | pnpm install + vitest run |
+| `api-lint.yml` | PR to main | uv sync + ruff + mypy |
+| `api-test.yml` | PR to main | uv sync + pytest --cov |
+| `e2e.yml` | PR to main（label: e2e） | playwright install + playwright test |
+
+## 6. 异常处理
+
+- **临时跳过 hook**：`git commit --no-verify`（仅紧急 hotfix 用，PR review 必须看 why）
+- **单个文件 ruff 跳过**：`# noqa: E501`（带具体规则名）
+- **mypy 跳过**：`# type: ignore[import-untyped]`（带具体 error code）
+
+## 7. 与本项目其他文档的关系
+
+- [CONVENTIONS.md](./CONVENTIONS.md) — 代码风格与设计约定
+- [apps/web/CONTRIBUTING.md](../apps/web/CONTRIBUTING.md) — 前端开发流程
+- [apps/api/CONTRIBUTING.md](../apps/api/CONTRIBUTING.md) — 后端开发流程
+- [prd/tech-stack.md](../prd/tech-stack.md) — 技术栈锁定版本
+- [AGENTS.md](../AGENTS.md) — 项目 AI agent 协作指南

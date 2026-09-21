@@ -11,17 +11,55 @@
   --card: #111111;
 }
 
-html, body {
+html,
+body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: "Geist", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
   overflow-x: hidden;
 }
 
 .quiet-border {
   border: 1px solid var(--border);
-  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+  transition:
+    border-color 150ms ease-out,
+    box-shadow 150ms ease-out;
 }
 .quiet-border:hover {
   border-color: rgba(79, 124, 255, 0.4);
+}
+
+/* ── design-argus_3 patterns (kept verbatim) ── */
+.tech-grid-pattern {
+  background-size: 32px 32px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+
+.tech-dot-pattern {
+  background-image: radial-gradient(rgba(112, 57, 249, 0.18) 1.2px, transparent 1.2px);
+  background-size: 24px 24px;
+}
+
+/* design-argus_3 selection tokens (verbatim from source <style>) */
+html, body { height: 100%; }
+body { font-family: "Geist", -apple-system, BlinkMacSystemFont, sans-serif; }
+
+/* ── Material Symbols Outlined icon font ── */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  /* font-size & line-height: inherit so Tailwind text-[Npx] actually wins */
+  font-size: inherit;
+  line-height: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
 }
