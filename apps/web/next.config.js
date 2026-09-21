@@ -2,8 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@argus/shared'],
+  // Enable built-in Less support for *.module.less files
   experimental: {
-    typedRoutes: true
-  }
+    typedRoutes: true,
+  },
 };
 module.exports = nextConfig;

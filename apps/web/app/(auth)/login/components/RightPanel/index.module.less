@@ -1,0 +1,52 @@
+.root {
+  position: relative;
+  width: 100%;
+  background-color: #0e1017;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2rem;
+  overflow: hidden;
+
+  @media (min-width: 640px) { padding: 3rem; }
+  @media (min-width: 1024px) { padding: 4rem; }
+  @media (min-width: 1280px) { width: 56%; }
+
+  @media (min-width: 1024px) and (max-width: 1279.98px) { width: 54%; }
+}
+
+.gridPattern {
+  position: absolute;
+  inset: 0;
+  background-size: 32px 32px;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.glow {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(120px);
+  pointer-events: none;
+}
+
+.glowTop {
+  top: 25%;
+  right: 2.5rem;
+  width: 480px;
+  height: 480px;
+  background-color: rgba(112, 57, 249, 0.2);
+}
+
+.glowBottom {
+  bottom: 2.5rem;
+  left: 2.5rem;
+  width: 380px;
+  height: 380px;
+  background-color: rgba(59, 25, 143, 0.25);
+  filter: blur(100px);
+}

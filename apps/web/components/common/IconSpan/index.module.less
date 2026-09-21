@@ -1,0 +1,20 @@
+/* IconSpan inherits all visual styling from the base `.material-symbols-outlined`
+   rule in `app/globals.css` (font-family, ligatures, antialias). The inline
+   `style.fontSize` set by IconSpan enforces icon size without relying on
+   Tailwind arbitrary value compilation. */
+
+:global(.material-symbols-outlined) {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  font-size: inherit;
+  line-height: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+}

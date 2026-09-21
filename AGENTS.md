@@ -233,6 +233,77 @@ uv run pre-commit install                 # 装 pre-commit hooks
 
 ---
 
+## 16. 组件开发规范与设计还原
+
+### 16.1 文件夹形式封装组件（强制）
+
+每个组件一个文件夹，**PascalCase**（B 必须大写：`Button.tsx` 不是 `button.tsx`），文件夹内固定两文件：
+
+- `index.tsx`（组件实现）
+- `index.module.less`（Less 模块样式并且样式代码嵌套编写方式）
+
+按用途分三类落位：
+
+| 类型                   | 路径                                                       | 示例                                 |
+| ---------------------- | ---------------------------------------------------------- | ------------------------------------ |
+| 公共组件（跨页复用）   | `apps/web/components/common/<Name>/`                       | `common/ArgusMark/`                  |
+| 页面组件（仅本页面用） | `apps/web/app/(auth)/<page>/components/<Name>/`            | `(auth)/login/components/LoginForm/` |
+| shadcn UI              | `apps/web/components/ui/<Name>.tsx`（**单文件，无 less**） | `ui/Button.tsx`                      |
+
+### 16.2 Less 样式策略
+
+- Next.js 15 内置 `.module.less` 支持，**无需新增 less-loader 依赖**
+- 样式用 Less 原生 `&` 嵌套，写在 `index.module.less`
+- 颜色统一用 CSS 变量 `var(--token-xxx, #fallback)`，fallback 取 `tailwind.config.ts` 的 47 token 原色
+- `globals.css` 只放全局 token（@font-face / Material Symbols base / .tech-grid-pattern / .tech-dot-pattern），**不放任何组件样式**
+
+### 16.3 shadcn 优先（§10 固化）
+
+- 新功能优先用 `apps/web/components/ui/{Button, Card, Input, Label, Badge, Separator}`
+- 不要重新发明已有 shadcn 组件
+- shadcn 默认 OKLCH 配色 → 必须在 `components.json` 设 `baseColor: "custom"` + `cssVariables: true`，替换为项目 47 token
+
+### 16.4 图标规则（§13 固化）
+
+- 唯一来源：Google `Material Symbols Outlined`，走 CDN `<link>`（在 `app/layout.tsx` 合并引入）
+- 唯一封装组件：`components/common/IconSpan`
+- **强制 inline `style={{ fontSize }}`** —— Tailwind v3 的 `text-[Npx]` arbitrary value 在 route group 路径下不可靠
+- size 档位：`13 / 14 / 15 / 16 / 18 / 20 / 22 / 24` 像素
+- 禁止：自定义 SVG / emoji / lucide-react / react-icons
+
+### 16.5 设计稿还原流程（§15 固化）
+
+触发：还原 `~/Desktop/argus设计稿/argus_*/code.html` 到 React 组件。
+
+四步走：定位 → 读 → 写 → 人工验证
+
+1. 定位 design 文件夹下对应的 `argus_*` 子目录
+2. 读 `code.html` 提取结构与样式意图（**不复制 CDN 链接与 inline tailwind.config**）
+3. 写 Next.js 组件 + `.module.less`，用项目 47 token 替换颜色，shadcn 替换交互元素
+4. **人工浏览器目测** —— 不起 playwright / curl / screenshot / console 检查 / lint / tsc
+
+设计稿源文件 **不保存在仓内**（`design-argus-3.html` / `design_argus_3_code.html` 已删）。
+
+### 16.6 主题色（dual theme）
+
+- 项目支持亮色 + 深色两主题
+- `argus_2` 是深色（`<html class="dark">`），`argus_1` / `argus_3` / `argus_dashboard` 等为亮色
+- 缺失的对应主题可在 design 模式二次设计补全
+- 当前登录页（`argus_3`）只实现亮色 Material 3 风
+
+### 16.7 反模式（追加）
+
+- ❌ 复制 design 的 `<script src="cdn.tailwindcss.com">`
+- ❌ 复制 design 的 inline `tailwind.config = {...}`
+- ❌ 改用 `bg-oklch(...)` → 与 47 token 不兼容
+- ❌ `material-symbols-outlined` 只用 `text-[Npx]` className，没有 inline `style={{ fontSize }}` → 落回 24px
+- ❌ 改多处重复 className 时不先 grep 计数 → 用 `replace_all: true` 或更具体上下文
+- ❌ 压扁 template-string `<span className={\`...\`}>` 成单行 → JSX 闭合错乱，build error
+- ❌ 自己起 playwright / curl / screenshot 验证 → 项目统一人工验证
+- ❌ 把 shadcn 组件文件名改成小写（`button.tsx`）→ PascalCase 强制
+
+---
+
 - [apps/web/CONTRIBUTING.md](./apps/web/CONTRIBUTING.md)
 - [apps/api/CONTRIBUTING.md](./apps/api/CONTRIBUTING.md)
 - [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)

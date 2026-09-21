@@ -1,0 +1,61 @@
+.root {
+  position: relative;
+  z-index: 10;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.quote {
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.625;
+  font-style: italic;
+  color: rgb(212 212 212);
+
+  @media (min-width: 640px) { font-size: 1rem; }
+}
+
+.meta {
+  margin-top: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.author {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background: linear-gradient(to top right, rgb(168 85 247), rgb(129 140 248));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: #ffffff;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.authorName {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.authorRole {
+  font-size: 11px;
+  color: rgb(163 163 163);
+}
+
+.copyright {
+  font-size: 11px;
+  color: rgb(115 115 115);
+}

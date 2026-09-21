@@ -1,0 +1,73 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.brandText {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.brandName {
+  font-weight: 600;
+}
+
+.versionChip {
+  font-size: 11px;
+  color: var(--token-primary-container, #7039f9);
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 70%, transparent);
+  border: 1px solid var(--token-primary-fixed-dim, #cdbdff);
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+}
+
+.utility {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--token-secondary, #575e70);
+}
+
+.utilityLink {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--token-secondary, #575e70);
+  text-decoration: none;
+  transition: color 150ms ease-out;
+
+  &:hover {
+    color: var(--token-on-surface, #191c1d);
+  }
+}
+
+.utilitySep {
+  color: var(--token-outline-variant, #cac3d9);
+}
+
+.langBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  color: var(--token-on-surface-variant, #494456);
+  background-color: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 150ms ease-out;
+
+  &:hover {
+    background-color: var(--token-surface-container-low, #f3f4f5);
+    border-color: var(--token-surface-container, #edeeef);
+  }
+}
