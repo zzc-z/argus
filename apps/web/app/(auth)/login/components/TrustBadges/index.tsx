@@ -1,6 +1,6 @@
 import * as React from "react";
 import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 const BADGES = [
   { icon: "verified_user", label: "端到端隔离环境" },

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 /**
  * Streaming synthesis terminal view inside the DAG card.

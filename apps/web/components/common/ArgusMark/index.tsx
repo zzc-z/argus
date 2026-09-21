@@ -1,5 +1,5 @@
 import * as React from "react";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 /**
  * Argus precise vector mark — 1:1 extracted from argus_3/code.html.

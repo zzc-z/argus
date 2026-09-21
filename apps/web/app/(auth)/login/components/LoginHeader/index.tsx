@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ArgusMark } from "@/components/common/ArgusMark";
 import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 /**
  * Login page top header — left: brand + version chip; right: docs + language.

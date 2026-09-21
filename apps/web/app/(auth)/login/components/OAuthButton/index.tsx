@@ -3,7 +3,7 @@
 import * as React from "react";
 import { IconSpan } from "@/components/common/IconSpan";
 import { KbdHint } from "@/components/common/KbdHint";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 export type OAuthProvider = "github" | "google";
 export type OAuthTone = "dark" | "light";

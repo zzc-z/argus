@@ -1,7 +1,7 @@
 import * as React from "react";
 import { LiveTerminal } from "../LiveTerminal";
 import { StatusDot } from "@/components/common/StatusDot";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 type AgentCard = {
   index: string;

@@ -36,6 +36,9 @@ build/
 node_modules/
 .pnpm-store/
 .next/
+.next.bak.*/
+.next.trash.*/
+webpack-loaders.trash.*/
 out/
 *.tsbuildinfo
 .env.local

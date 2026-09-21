@@ -250,12 +250,18 @@ uv run pre-commit install                 # 装 pre-commit hooks
 | 页面组件（仅本页面用） | `apps/web/app/(auth)/<page>/components/<Name>/`            | `(auth)/login/components/LoginForm/` |
 | shadcn UI              | `apps/web/components/ui/<Name>.tsx`（**单文件，无 less**） | `ui/Button.tsx`                      |
 
-### 16.2 Less 样式策略
+### 16.2 CSS Modules 样式策略
 
-- Next.js 15 内置 `.module.less` 支持，**无需新增 less-loader 依赖**
-- 样式用 Less 原生 `&` 嵌套，写在 `index.module.less`
+- **项目用 `.module.css` 而非 `.module.less`**（Next.js 15 改用方案，2026-09-22 落地）
+- 原因：Next.js 15 不内置 .module.less（Vercel 官方支持矩阵：Less 标 "Planned via plugins / Not yet supported by default"），手动配 `less-loader` + `css-loader` + fix-loader 仍存在 css 文本丢失、className 注入等问题；改用 `.module.css` 是 next 内置方案，零配置
+- 文件命名：`index.module.css`（与原 `.module.less` 同位置，命名仅改扩展名）
+- 写法：纯 CSS 标准语法（**不支持** Less 的 `&` 父选择器嵌套；嵌套规则必须展开为完整 css selector）
 - 颜色统一用 CSS 变量 `var(--token-xxx, #fallback)`，fallback 取 `tailwind.config.ts` 的 47 token 原色
 - `globals.css` 只放全局 token（@font-face / Material Symbols base / .tech-grid-pattern / .tech-dot-pattern），**不放任何组件样式**
+- 全局类型声明见 `apps/web/globals.d.ts`：`declare module "*.module.css"` 用 `export default classes`
+- 组件 import：`import styles from "./X.module.css"`（默认导入，next 内置 css-loader 自动支持）
+- `apps/web/next.config.js` 无需任何 webpack rule，base 版本即可
+- 历史背景：2026-09-21/22 一天内从 `.module.less` 路径迁到 `.module.css`，迁移期间删除 less-loader / css-loader / fix-loader 等附加依赖
 
 ### 16.3 shadcn 优先（§10 固化）
 
@@ -299,7 +305,8 @@ uv run pre-commit install                 # 装 pre-commit hooks
 - ❌ `material-symbols-outlined` 只用 `text-[Npx]` className，没有 inline `style={{ fontSize }}` → 落回 24px
 - ❌ 改多处重复 className 时不先 grep 计数 → 用 `replace_all: true` 或更具体上下文
 - ❌ 压扁 template-string `<span className={\`...\`}>` 成单行 → JSX 闭合错乱，build error
-- ❌ 自己起 playwright / curl / screenshot 验证 → 项目统一人工验证
+- ❌ 自己起 playwright / curl / screenshot **验证设计稿还原程度** → 那是人类美学判断
+- 🔧 修复运行 bug 时 agent 可以用浏览器 MCP（chrome-devtools / playwright）介入——抓 console error、看页面渲染异常、对照 network panel 排查请求失败
 - ❌ 把 shadcn 组件文件名改成小写（`button.tsx`）→ PascalCase 强制
 
 ---

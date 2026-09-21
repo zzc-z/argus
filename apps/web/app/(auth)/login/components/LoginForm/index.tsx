@@ -5,7 +5,7 @@ import { OAuthButton } from "../OAuthButton";
 import { EmailInput } from "../EmailInput";
 import { SsoPanel } from "../SsoPanel";
 import { Separator } from "@/components/ui";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 /**
  * Center vertical column — welcome typography, OAuth row, divider, email form.

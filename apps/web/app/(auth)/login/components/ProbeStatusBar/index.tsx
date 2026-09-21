@@ -1,6 +1,6 @@
 import * as React from "react";
 import { StatusDot } from "@/components/common/StatusDot";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 /**
  * Top live-system telemetry bar — 14 probes + uptime + cluster id.

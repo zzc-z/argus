@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 /**
  * SAML 2.0 / Okta / Azure AD collapsible portal entry.

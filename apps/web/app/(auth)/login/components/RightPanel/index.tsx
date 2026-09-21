@@ -2,7 +2,7 @@ import * as React from "react";
 import { ProbeStatusBar } from "../ProbeStatusBar";
 import { DagCardGrid } from "../DagCardGrid";
 import { Testimonial } from "../Testimonial";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 /**
  * Right column of the login page — ambient tech visualization showcase.

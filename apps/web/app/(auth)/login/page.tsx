@@ -23,7 +23,7 @@ import { LoginForm } from "./components/LoginForm";
 import { TrustBadges } from "./components/TrustBadges";
 import { RightPanel } from "./components/RightPanel";
 
-import styles from "./page.module.less";
+import styles from "./page.module.css";
 
 export default function LoginPage() {
   // Keyboard shortcuts: ⌘G / ⌘W (or G/W) → flash OAuth button.

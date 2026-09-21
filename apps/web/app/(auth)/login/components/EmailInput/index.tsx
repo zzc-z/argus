@@ -3,7 +3,7 @@
 import * as React from "react";
 import { IconSpan } from "@/components/common/IconSpan";
 import { Label } from "@/components/ui";
-import styles from "./index.module.less";
+import styles from "./index.module.css";
 
 export interface EmailInputProps {
   id: string;
