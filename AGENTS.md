@@ -9,6 +9,7 @@
 - **栈**：pnpm + Turborepo（monorepo）+ Next.js 14.2.18 + React 19 + Tailwind v3.4.19 + shadcn/ui（new-york 风格）+ Geist / GeistSans 字体 + Material Symbols Outlined
 - **后端（W2 启动）**：Python 3.12 + uv + FastAPI + LangGraph + Supabase + pgvector
 - **设计 token**：47 个 color + 11 个 fontFamily + 11 个 fontSize（precision_technical_light 集）
+- **代码图谱**：CodeGraph（`@colbymchenry/codegraph`，项目级 MCP server；索引 140 文件 / 1153 节点 / 2296 边；agent 优先用 `mcp__codegraph__codegraph_explore` 而不是 grep/find）
 
 ## 2. 项目结构
 

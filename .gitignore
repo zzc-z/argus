@@ -41,6 +41,9 @@ node_modules/
 webpack-loaders.trash.*/
 out/
 *.tsbuildinfo
+
+# CodeGraph（代码图谱 MCP server 数据库，db 已 2.8MB 不入仓；其他全部配置入仓）
+.codegraph/
 .env.local
 .env.*.local
 
