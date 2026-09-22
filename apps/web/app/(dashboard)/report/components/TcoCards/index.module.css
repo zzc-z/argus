@@ -1,0 +1,97 @@
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.card {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  display: flex;
+  flex-direction: column;
+}
+
+.label {
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 0.25rem;
+}
+
+.valueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+  margin-block: 0.25rem;
+}
+
+.value {
+  color: var(--token-on-surface, #191c1d);
+  font-size: 28px;
+  line-height: 1.22;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+@media (min-width: 1024px) {
+  .value {
+    font-size: 36px;
+  }
+}
+
+.badge {
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.badgeSuccess {
+  color: #047857;
+}
+
+.badgePrimary {
+  color: var(--token-primary, #5704e1);
+}
+
+.badgeMuted {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.caption {
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 13px;
+  line-height: 1.54;
+}
+
+.callout {
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+}
+
+.calloutHead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--token-on-surface, #191c1d);
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.calloutBody {
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 14px;
+  line-height: 1.57;
+  margin: 0;
+}

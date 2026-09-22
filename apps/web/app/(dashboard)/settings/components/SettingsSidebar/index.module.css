@@ -1,0 +1,153 @@
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  border-radius: 0.75rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  padding: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.heading {
+  padding: 0.5rem 0.75rem;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--token-secondary, #575e70);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--token-on-surface-variant, #494456);
+  text-align: left;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.item:hover {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-on-surface, #191c1d);
+}
+
+.itemActive {
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.itemActive:hover {
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+}
+
+.itemDanger {
+  color: var(--token-error, #ba1a1a);
+}
+
+.itemDanger:hover {
+  background-color: color-mix(in srgb, var(--token-error-container, #ffdad6) 40%, transparent);
+  color: var(--token-error, #ba1a1a);
+}
+
+.itemDangerActive {
+  background-color: color-mix(in srgb, var(--token-error-container, #ffdad6) 60%, transparent);
+  color: var(--token-error, #ba1a1a);
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.itemDangerActive:hover {
+  background-color: color-mix(in srgb, var(--token-error-container, #ffdad6) 60%, transparent);
+  color: var(--token-error, #ba1a1a);
+}
+
+.label {
+  font-size: 13px;
+  line-height: 20px;
+  flex: 1;
+}
+
+.hint {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--token-secondary, #575e70);
+}
+
+.hintActive {
+  color: color-mix(in srgb, var(--token-on-primary, #ffffff) 80%, transparent);
+}
+
+.hintDanger {
+  color: var(--token-error, #ba1a1a);
+}
+
+.hintDangerActive {
+  color: var(--token-error, #ba1a1a);
+}
+
+.divider {
+  height: 1px;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  margin: 0.375rem 0.25rem;
+}
+
+.diag {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.diagHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--token-secondary, #575e70);
+}
+
+.diagLabel {
+  font-size: 11px;
+}
+
+.diagStatus {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.barTrack {
+  width: 100%;
+  height: 0.25rem;
+  background-color: var(--token-surface-container, #edeeef);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  background-color: var(--token-primary-container, #7039f9);
+  border-radius: 9999px;
+}
+
+.diagFoot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}

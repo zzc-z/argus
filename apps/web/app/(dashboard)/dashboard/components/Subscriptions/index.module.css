@@ -1,0 +1,163 @@
+/* Subscriptions — list card. Right column = badge top + toggle button bottom. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-radius: 0.75rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.headTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.addBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  color: var(--token-on-surface, #191c1d);
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.addBtn:hover {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: 2.25rem 1fr auto;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.875rem 0.5rem;
+  border-bottom: 1px solid var(--token-surface-container-low, #f3f4f5);
+}
+
+.item:last-child {
+  border-bottom: 0;
+}
+
+.itemPaused {
+  opacity: 0.7;
+}
+
+.iconBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container, #edeeef);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+}
+
+.iconBoxActive {
+  background-color: color-mix(in srgb, var(--token-primary-container, #7039f9) 12%, transparent);
+  border-color: var(--token-primary-fixed-dim, #cdbdff);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.itemTitle {
+  color: var(--token-on-surface, #191c1d);
+  line-height: 1.35;
+}
+
+.itemUpdated {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.itemSource {
+  color: var(--token-on-surface-variant, #494456);
+  opacity: 0.7;
+  font-size: 10px;
+}
+
+.right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+  min-width: 6rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 600;
+  border-width: 1px;
+  border-style: solid;
+}
+
+.badgeUnread {
+  color: var(--token-primary-container, #7039f9);
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 70%, transparent);
+  border-color: var(--token-primary-fixed-dim, #cdbdff);
+}
+
+.badgeNone {
+  color: var(--token-on-surface-variant, #494456);
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border-color: var(--token-surface-container-high, #e7e8e9);
+}
+
+.badgePaused {
+  color: rgb(146 64 14);
+  background-color: rgb(254 243 199);
+  border-color: rgb(253 224 71);
+}
+
+.toggleBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  background-color: transparent;
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  color: var(--token-on-surface-variant, #494456);
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.toggleBtn:hover {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-on-surface, #191c1d);
+}

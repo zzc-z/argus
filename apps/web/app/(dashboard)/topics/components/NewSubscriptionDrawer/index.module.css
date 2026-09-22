@@ -1,0 +1,388 @@
+.shell {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 300ms ease;
+  opacity: 0;
+}
+
+.shellOpen {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: color-mix(in srgb, var(--token-on-surface, #191c1d) 20%, transparent);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.backdropOpen {
+  opacity: 1;
+}
+
+.anchor {
+  position: fixed;
+  inset-block: 0;
+  right: 0;
+  max-width: 100%;
+  display: flex;
+  padding-left: 2.5rem;
+}
+
+.panel {
+  width: 100vw;
+  max-width: 36rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transform: translateX(100%);
+  transition: transform 300ms ease-in-out;
+}
+
+.panelOpen {
+  transform: translateX(0);
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.header {
+  padding: 1.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--token-surface-container, #edeeef);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.headerIcon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.headerTitle {
+  margin: 0;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.headerSubtitle {
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.closeBtn {
+  padding: 0.375rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--token-secondary, #575e70);
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.closeBtn:hover {
+  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-on-surface, #191c1d);
+}
+
+/* ── Body ──────────────────────────────────────────────────── */
+.body {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fieldLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.fieldRequired {
+  color: var(--token-primary, #5704e1);
+  font-weight: 500;
+}
+
+.sectionMeta {
+  font-size: 11px;
+}
+
+.fieldInput {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-on-surface, #191c1d);
+  border: 1px solid transparent;
+  outline: none;
+  transition: background-color 150ms, box-shadow 150ms;
+}
+
+.fieldInput:focus {
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  box-shadow: 0 0 0 1px var(--token-primary-container, #7039f9);
+}
+
+.fieldInput::placeholder {
+  color: var(--token-secondary, #575e70);
+}
+
+.fieldTextarea {
+  width: 100%;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-on-surface, #191c1d);
+  border: 1px solid transparent;
+  outline: none;
+  resize: none;
+  transition: background-color 150ms, box-shadow 150ms;
+}
+
+.fieldTextarea:focus {
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  box-shadow: 0 0 0 1px var(--token-primary-container, #7039f9);
+}
+
+.fieldTextarea::placeholder {
+  color: var(--token-secondary, #575e70);
+}
+
+/* ── Sources ────────────────────────────────────────────────── */
+.sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.sourceCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background-color 150ms, border-color 150ms;
+}
+
+.sourceCard:hover {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.sourceCardChecked {
+  border-color: var(--token-primary-container, #7039f9);
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 30%, transparent);
+}
+
+.sourceCheckbox {
+  margin-top: 0.25rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  accent-color: var(--token-primary, #5704e1);
+}
+
+.sourceText {
+  display: flex;
+  flex-direction: column;
+}
+
+.sourceLabel {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.sourceDetail {
+  font-size: 11px;
+}
+
+/* ── Frequency grid ─────────────────────────────────────────── */
+.freqGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.freqCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.625rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background-color 150ms, border-color 150ms;
+}
+
+.freqCard:hover {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.freqCardChecked {
+  border-color: var(--token-primary-container, #7039f9);
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 40%, transparent);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.freqIcon {
+  margin-bottom: 0.25rem;
+}
+
+.freqLabel {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.freqDetail {
+  font-size: 11px;
+}
+
+/* ── Policy section ─────────────────────────────────────────── */
+.policySection {
+  padding: 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+}
+
+.policyTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.policyList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.policyItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.policyRadio {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--token-primary, #5704e1);
+}
+
+.policyLabel {
+  color: var(--token-on-surface, #191c1d);
+}
+
+/* ── Footer ─────────────────────────────────────────────────── */
+.footer {
+  padding: 1.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--token-surface-container, #edeeef);
+}
+
+.cancelBtn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: transparent;
+  color: var(--token-secondary, #575e70);
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.cancelBtn:hover {
+  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-on-surface, #191c1d);
+}
+
+.footerRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.secondaryBtn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-on-surface, #191c1d);
+  cursor: pointer;
+  transition: background-color 150ms;
+}
+
+.secondaryBtn:hover {
+  background-color: var(--token-surface-container-high, #e7e8e9);
+}
+
+.primaryBtn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  border: none;
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  cursor: pointer;
+  box-shadow: 0 4px 12px -4px rgba(112, 57, 249, 0.4);
+  transition: opacity 150ms, transform 80ms;
+}
+
+.primaryBtn:hover {
+  opacity: 0.95;
+}
+
+.primaryBtn:active {
+  transform: scale(0.99);
+}

@@ -1,0 +1,80 @@
+.tableWrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  padding: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.table {
+  width: 100%;
+  text-align: left;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.thead {
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 13px;
+  text-transform: uppercase;
+}
+
+.th {
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+}
+
+.thTinted {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.thPrimary {
+  color: var(--token-primary, #5704e1);
+  font-weight: 700;
+}
+
+.tbody {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.row {
+  transition: background-color 150ms ease-out;
+}
+
+.row:hover {
+  background-color: color-mix(in srgb, var(--token-surface-container-lowest, #ffffff) 60%, transparent);
+}
+
+.td {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--token-surface-container, #edeeef);
+}
+
+.metricCell {
+  font-weight: 500;
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.tdTinted {
+  background-color: color-mix(in srgb, var(--token-surface-container, #edeeef) 40%, transparent);
+}
+
+.tdPrimary {
+  color: var(--token-primary, #5704e1);
+}
+
+.tdPrimaryStrong {
+  font-weight: 700;
+}
+
+.note {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border-radius: 0.5rem;
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 11px;
+}

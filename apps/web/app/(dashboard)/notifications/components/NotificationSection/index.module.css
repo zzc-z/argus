@@ -1,0 +1,77 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.section + .section {
+  margin-top: 0.5rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: 0.25rem;
+}
+
+.titleWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.liveDot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary-container, #7039f9);
+}
+
+.title {
+  color: var(--token-on-surface, #191c1d);
+  margin: 0;
+}
+
+.count {
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary-fixed, #e8deff);
+  color: var(--token-on-primary-fixed, #20005f);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tail {
+  font-size: 11px;
+  color: var(--token-secondary, #575e70);
+}
+
+.expand {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--token-primary-container, #7039f9);
+  font-family: "Geist", sans-serif;
+  font-size: 12px;
+}
+
+.expand:hover {
+  text-decoration: underline;
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

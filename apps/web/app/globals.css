@@ -47,3 +47,12 @@ body {
   background-image: radial-gradient(rgba(112, 57, 249, 0.18) 1.2px, transparent 1.2px);
   background-size: 24px 24px;
 }
+
+/* ── Status / badge / pill — 强制一行展示，禁止换行 ── */
+.status-badge,
+[class*="_status_"],
+[class*="_badge_"],
+[class*="_pill_"],
+[class*="_chip_"] {
+  white-space: nowrap;
+}

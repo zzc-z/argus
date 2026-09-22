@@ -1,0 +1,97 @@
+/* Dashboard page header — title + meta (left); status + notifications (right). */
+
+.root {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  color: var(--token-on-surface, #191c1d);
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+@media (min-width: 768px) {
+  .title {
+    font-size: 24px;
+  }
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  color: var(--token-primary-container, #7039f9);
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 70%, transparent);
+  border: 1px solid var(--token-primary-fixed-dim, #cdbdff);
+  font-size: 11px;
+}
+
+.meta {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.dot {
+  margin-inline: 0.5rem;
+  color: var(--token-outline-variant, #cac3d9);
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+}
+
+.statusText {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.notifyBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid var(--token-primary-fixed-dim, #cdbdff);
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 50%, transparent);
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.notifyBtn:hover {
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 80%, transparent);
+}
+
+.notifyCount {
+  color: var(--token-primary-container, #7039f9);
+  font-size: 11px;
+}

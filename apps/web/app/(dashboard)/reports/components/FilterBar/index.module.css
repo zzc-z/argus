@@ -1,0 +1,202 @@
+.root {
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  padding: 0.25rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  margin-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+@media (min-width: 1024px) {
+  .root {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding: 0.25rem;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: transparent;
+  border: 1px solid transparent;
+  color: var(--token-secondary, #575e70);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.tab:hover {
+  color: var(--token-on-surface, #191c1d);
+  background-color: var(--token-surface-container-low, #f3f4f5);
+}
+
+.tabActive {
+  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-on-surface, #191c1d);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.tabActive:hover {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.tabCount {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  padding: 0.1rem 0.375rem;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  color: var(--token-secondary, #575e70);
+}
+
+.tabCountActive {
+  background-color: var(--token-surface-container-high, #e7e8e9);
+}
+
+/* ── Tools (right side) ──────────────────────────────────────────── */
+
+.tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem;
+  flex-wrap: wrap;
+}
+
+@media (min-width: 640px) {
+  .tools {
+    flex-wrap: nowrap;
+  }
+}
+
+.search {
+  position: relative;
+  flex: 1 1 0%;
+  display: flex;
+  align-items: center;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.625rem;
+}
+
+@media (min-width: 640px) {
+  .search {
+    flex: 0 1 20rem;
+  }
+}
+
+.searchIcon {
+  margin-right: 0.5rem;
+  color: var(--token-secondary, #575e70);
+}
+
+.searchInput {
+  flex: 1;
+  width: 100%;
+  background-color: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.8125rem;
+  color: var(--token-on-surface, #191c1d);
+  letter-spacing: -0.005em;
+}
+
+.searchInput::placeholder {
+  color: var(--token-secondary, #575e70);
+}
+
+.kbd {
+  margin-left: 0.375rem;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-secondary, #575e70);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  user-select: none;
+}
+
+/* ── Sort dropdown ───────────────────────────────────────────────── */
+
+.sort {
+  display: flex;
+  align-items: center;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  color: var(--token-secondary, #575e70);
+  cursor: pointer;
+  transition: color 150ms ease-out;
+}
+
+.sort:hover {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.sortIcon {
+  margin-right: 0.25rem;
+}
+
+.sortSelect {
+  background-color: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--token-on-surface, #191c1d);
+  cursor: pointer;
+  padding-right: 0.25rem;
+}
+
+/* ── View switcher ───────────────────────────────────────────────── */
+
+.viewSwitcher {
+  display: flex;
+  align-items: center;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  padding: 0.125rem;
+  border-radius: 0.5rem;
+}
+
+.viewBtn {
+  padding: 0.375rem;
+  border-radius: 0.375rem;
+  background-color: transparent;
+  border: none;
+  color: var(--token-secondary, #575e70);
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.viewBtn:hover {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.viewBtnActive {
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  color: var(--token-on-surface, #191c1d);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.viewBtnActive:hover {
+  color: var(--token-on-surface, #191c1d);
+}

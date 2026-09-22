@@ -1,0 +1,58 @@
+/* Dashboard outer shell — sidebar + topbar offsets + responsive KPI/breakdown grids. */
+
+.shell {
+  min-height: 100vh;
+  background-color: var(--token-surface, #f8f9fa);
+}
+
+.column {
+  /* matches the Sidebar's fixed w-64 (16rem). */
+  padding-left: 16rem;
+  min-height: 100vh;
+}
+
+.main {
+  /* matches the TopBar's fixed h-14 (3.5rem). */
+  padding-top: 3.5rem;
+  min-height: 100vh;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem; /* space-lg */
+  padding: 1.5rem;
+  max-width: 100%;
+}
+
+.kpiRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .kpiRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .kpiRow {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.dualRow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  /* 7:5 split (matches design's lg:col-span-7 / lg:col-span-5). */
+  .dualRow {
+    grid-template-columns: 7fr 5fr;
+  }
+}

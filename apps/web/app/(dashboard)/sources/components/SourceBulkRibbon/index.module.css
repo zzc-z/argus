@@ -1,0 +1,87 @@
+.ribbon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.selectAll {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.label {
+  color: var(--token-secondary, #575e70);
+  cursor: pointer;
+  user-select: none;
+}
+
+.count {
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 500;
+}
+
+.sep {
+  height: 12px;
+  width: 1px;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--token-secondary, #575e70);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container, #edeeef);
+  border: none;
+  color: var(--token-secondary, #575e70);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 150ms ease-out;
+}
+
+.actionBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.actionBtnDanger {
+  color: var(--token-error, #ba1a1a);
+}
+
+.actionBtn:not(:disabled):hover {
+  background-color: var(--token-surface-container-high, #e7e8e9);
+}

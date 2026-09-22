@@ -1,0 +1,156 @@
+"use client";
+
+import * as React from "react";
+import { IconSpan } from "@/components/common/IconSpan";
+import {
+  AGENT_NODES,
+  DAG_STATS,
+  type AgentNode,
+} from "../../mock";
+import styles from "./index.module.css";
+
+export interface AgentDAGProps {
+  onSelectNode: (node: AgentNode) => void;
+}
+
+/**
+ * Compact vertical DAG timeline (5 nodes max). Background rail spans full
+ * height; an active highlight rail stops at the active node. Active node
+ * pulses with `cobaltPulse`. Pending nodes show hollow circles.
+ */
+export function AgentDAG({ onSelectNode }: AgentDAGProps) {
+  // Highlight rail stops at the position of the active node (88px hardcoded
+  // mirrors the design: rail covers nodes 1..active).
+  const activeIndex = AGENT_NODES.findIndex((n) => n.lifecycle === "active");
+  const highlightHeight =
+    activeIndex >= 0
+      ? `${activeIndex * 44 + 24}px`
+      : "0px";
+
+  return (
+    <section className={styles.section}>
+      {/* Header */}
+      <div className={styles.head}>
+        <div className={styles.headLeft}>
+          <span className={styles.headDot} />
+          <h2 className={styles.headTitle}>
+            {DAG_STATS.title}
+          </h2>
+          <span className={styles.headSep}>|</span>
+          <span className={styles.headPipeline}>{DAG_STATS.pipeline}</span>
+        </div>
+        <div className={styles.headStats}>
+          <span className={styles.headStatEmphasis}>
+            {DAG_STATS.totalSteps} 步中的第 {DAG_STATS.currentStep} 步
+          </span>
+          <span className={styles.headStatSep}>·</span>
+          <span>{DAG_STATS.elapsed}</span>
+          <span className={styles.headStatSep}>·</span>
+          <span>{DAG_STATS.tokens}</span>
+        </div>
+      </div>
+
+      {/* Timeline */}
+      <div className={styles.timeline}>
+        {/* Background rail */}
+        <div className={styles.rail} aria-hidden="true" />
+        {/* Active highlight rail (covers nodes 1..active) */}
+        <div
+          className={styles.railActive}
+          aria-hidden="true"
+          style={{ height: highlightHeight }}
+        />
+
+        {AGENT_NODES.map((node) => (
+          <NodeRow
+            key={node.id}
+            node={node}
+            onClick={() => onSelectNode(node)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface NodeRowProps {
+  node: AgentNode;
+  onClick: () => void;
+}
+
+function NodeRow({ node, onClick }: NodeRowProps) {
+  const isCompleted = node.lifecycle === "completed";
+  const isActive = node.lifecycle === "active";
+  const isPending = node.lifecycle === "pending";
+
+  const rowClass = [
+    styles.row,
+    isActive ? styles.rowActive : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    <div className={rowClass} onClick={onClick} role="button" tabIndex={0}>
+      <div className={styles.rowLeft}>
+        {/* Status circle */}
+        {isCompleted && (
+          <div className={styles.circleCompleted}>
+            <IconSpan name="check" size={13} className={styles.circleIcon} />
+          </div>
+        )}
+        {isActive && (
+          <div className={styles.circleActive}>
+            <span className={styles.circleActiveInner} />
+          </div>
+        )}
+        {isPending && <div className={styles.circlePending} />}
+
+        <div className={styles.rowText}>
+          <span
+            className={`${styles.rowName} ${
+              isActive
+                ? styles.rowNameActive
+                : isPending
+                ? styles.rowNamePending
+                : ""
+            }`}
+          >
+            {node.name}
+          </span>
+          <span
+            className={`${styles.rowRole} ${
+              isActive ? styles.rowRoleActive : ""
+            }`}
+          >
+            {node.role}
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.rowRight}>
+        {isActive && (
+          <>
+            <span className={styles.rowActiveLatency}>
+              <span className={styles.rowActivePing} />
+              <span>{node.latency}</span>
+            </span>
+            <span className={styles.rowActiveDetail}>查看详情 ↗</span>
+          </>
+        )}
+        {!isActive && (
+          <>
+            <span
+              className={`${styles.rowLatency} ${
+                isPending ? styles.rowLatencyMuted : ""
+              }`}
+            >
+              {node.latency}
+            </span>
+            <span className={styles.rowDetail}>查看详情 ↗</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

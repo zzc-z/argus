@@ -1,0 +1,100 @@
+/* KpiCard — single tile. Card surface via shadcn-like token vars. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+}
+
+.root:hover {
+  box-shadow: 0 4px 12px 0 rgba(15, 23, 42, 0.08);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.iconBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  background-color: color-mix(in srgb, var(--token-primary-container, #7039f9) 12%, transparent);
+  border: 1px solid var(--token-primary-fixed-dim, #cdbdff);
+}
+
+.label {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.valueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+}
+
+.value {
+  color: var(--token-on-surface, #191c1d);
+  font-size: 28px;
+  line-height: 1.05;
+}
+
+.sub {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.success {
+  color: rgb(16 185 129);
+}
+
+.primary {
+  color: var(--token-primary-container, #7039f9);
+}
+
+.secondary {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.footerText {
+  color: var(--token-on-surface-variant, #494456);
+  line-height: 1.3;
+}
+
+.highlight {
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 600;
+}
+
+.progressTrack {
+  position: relative;
+  height: 0.25rem;
+  width: 100%;
+  background-color: var(--token-surface-container, #edeeef);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.progressFill {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  background-color: var(--token-primary-container, #7039f9);
+  border-radius: 9999px;
+  transition: width 400ms ease-out;
+}

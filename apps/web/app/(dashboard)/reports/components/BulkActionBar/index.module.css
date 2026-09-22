@@ -1,0 +1,109 @@
+.root {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  z-index: 50;
+  background-color: var(--token-inverse-surface, #2e3132);
+  color: var(--token-inverse-on-surface, #f0f1f2);
+  padding: 0.625rem 1rem;
+  border-radius: 9999px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  transition: transform 300ms ease-out, opacity 300ms ease-out;
+  transform: translateX(-50%);
+}
+
+.visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.hidden {
+  transform: translateX(-50%) translateY(5rem);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.countGroup {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.countDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary-container, #7039f9);
+}
+
+.countText {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.countNum {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-weight: 700;
+}
+
+.sep {
+  height: 1rem;
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  font-size: 0.8125rem;
+}
+
+.actionBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background-color: transparent;
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.actionBtn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.actionDanger {
+  margin-left: 0.25rem;
+}
+
+.actionDanger:hover {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.cancelBtn {
+  padding: 0.25rem;
+  border-radius: 9999px;
+  background-color: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.cancelBtn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}

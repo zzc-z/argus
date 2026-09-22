@@ -1,0 +1,122 @@
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title {
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.02em;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.chip {
+  font-size: 12px;
+  line-height: 18px;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  color: var(--token-secondary, #575e70);
+}
+
+.stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--token-secondary, #575e70);
+}
+
+.statNumber {
+  font-weight: 600;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.statHighlight {
+  font-weight: 600;
+  color: var(--token-primary, #5704e1);
+}
+
+.dot {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  color: var(--token-outline-variant, #cac3d9);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.reindexBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  color: var(--token-on-surface, #191c1d);
+  border: none;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+}
+
+.reindexBtn:hover {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.reindexBtn:active {
+  transform: scale(0.99);
+}
+
+.syncIcon {
+  transition: transform 500ms ease;
+}
+
+.reindexBtn:hover .syncIcon {
+  transform: rotate(180deg);
+}
+
+.uploadBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  text-decoration: none;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  transition: opacity 150ms ease-out;
+}
+
+.uploadBtn:hover {
+  opacity: 0.95;
+}
+
+.uploadBtn:active {
+  transform: scale(0.99);
+}

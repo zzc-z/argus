@@ -1,0 +1,165 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-block: 1.5rem;
+}
+
+@media (min-width: 768px) {
+  .root {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+/* ── Title block ─────────────────────────────────────────────────── */
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--token-on-surface, #191c1d);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+.titleEn {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 12px;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  color: var(--token-secondary, #575e70);
+  font-weight: 500;
+}
+
+.subtitle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--token-secondary, #575e70);
+}
+
+.subtitleNum {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 600;
+}
+
+.subtitleDot {
+  color: var(--token-outline-variant, #cac3d9);
+}
+
+.dagStatus {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--token-primary, #5704e1);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.dagDot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary-container, #7039f9);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Actions ─────────────────────────────────────────────────────── */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filterBtn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  color: var(--token-on-surface, #191c1d);
+  border: 1px solid transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.filterBtn:hover {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.filterBtnIcon {
+  color: var(--token-secondary, #575e70);
+}
+
+.filterBadge {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary-container, #7039f9);
+}
+
+.primaryBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  border: 1px solid transparent;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition: opacity 150ms ease-out;
+}
+
+.primaryBtn:hover {
+  opacity: 0.95;
+}
+
+.primaryBtnLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #ffffff;
+}
+
+.primaryBtnKbd {
+  margin-left: 0.25rem;
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  padding: 0.1rem 0.375rem;
+  border-radius: 0.25rem;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}

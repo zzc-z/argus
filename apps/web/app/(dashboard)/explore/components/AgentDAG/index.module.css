@@ -1,0 +1,285 @@
+.section {
+  width: 100%;
+  background-color: #111111;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-bottom: 2rem;
+  transition: border-color 150ms ease-out;
+}
+
+.section:hover {
+  border-color: rgba(79, 124, 255, 0.4);
+}
+
+/* ──────── Header ──────── */
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.875rem;
+  margin-bottom: 0.875rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.headLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.headDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #7039f9;
+}
+
+.headTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fafafa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+}
+
+.headSep {
+  color: rgba(255, 255, 255, 0.16);
+  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-size: 12px;
+}
+
+.headPipeline {
+  font-size: 11px;
+  color: #666666;
+  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+}
+
+.headStats {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 12px;
+  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  color: #a0a0a0;
+}
+
+.headStatEmphasis {
+  color: #fafafa;
+  font-weight: 500;
+}
+
+.headStatSep {
+  color: #666666;
+}
+
+/* ──────── Timeline ──────── */
+
+.timeline {
+  position: relative;
+  padding-left: 8px;
+  padding-block: 4px;
+}
+
+.rail {
+  position: absolute;
+  left: 15px;
+  top: 12px;
+  bottom: 16px;
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.railActive {
+  position: absolute;
+  left: 15px;
+  top: 12px;
+  width: 1px;
+  background-color: rgba(255, 255, 255, 0.2);
+  transition: height 200ms ease-out;
+}
+
+/* ──────── Row ──────── */
+
+.row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+}
+
+.row:hover {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+.rowActive {
+  background-color: rgba(112, 57, 249, 0.08);
+  border: 1px solid rgba(112, 57, 249, 0.3);
+}
+
+.rowActive:hover {
+  background-color: rgba(112, 57, 249, 0.1);
+}
+
+.rowLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.rowText {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rowName {
+  font-size: 12px;
+  font-weight: 500;
+  color: #a0a0a0;
+  transition: color 120ms ease-out;
+}
+
+.row:hover .rowName {
+  color: #fafafa;
+}
+
+.rowNameActive {
+  font-weight: 600;
+  color: #fafafa;
+}
+
+.rowNamePending {
+  color: #666666;
+}
+
+.row:hover .rowNamePending {
+  color: #a0a0a0;
+}
+
+.rowRole {
+  font-size: 11px;
+  color: #666666;
+}
+
+.rowRoleActive {
+  color: #7039f9;
+}
+
+.rowRight {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-size: 11px;
+  color: #666666;
+}
+
+.rowLatency {
+  color: #a0a0a0;
+}
+
+.rowLatencyMuted {
+  color: #666666;
+}
+
+.rowDetail {
+  font-size: 10px;
+  color: #7039f9;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.row:hover .rowDetail {
+  opacity: 1;
+}
+
+.rowActiveLatency {
+  color: #7039f9;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.rowActivePing {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background-color: #7039f9;
+  animation: ping 1.2s ease-in-out infinite;
+}
+
+@keyframes ping {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+.rowActiveDetail {
+  font-size: 10px;
+  color: #7039f9;
+  opacity: 0.8;
+}
+
+/* ──────── Status circles ──────── */
+
+.circleCompleted {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #262626;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+
+.circleIcon {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.circleActive {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #7039f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  box-shadow: 0 0 12px #7039f9;
+  animation: cobaltPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes cobaltPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(79, 124, 255, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(79, 124, 255, 0);
+  }
+}
+
+.circleActiveInner {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: #ffffff;
+}
+
+.circlePending {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #0a0a0a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  z-index: 1;
+}

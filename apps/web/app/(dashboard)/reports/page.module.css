@@ -1,0 +1,34 @@
+.shell {
+  min-height: 100vh;
+  background-color: var(--token-surface, #f8f9fa);
+  color: var(--token-on-surface, #191c1d);
+}
+
+.main {
+  padding-left: 16rem;
+  padding-top: 3.5rem;
+  min-height: 100vh;
+}
+
+.content {
+  width: 100%;
+  padding-inline: 1.5rem;
+  padding-bottom: 4rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.stage {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  width: 100%;
+}
+
+.viewStage {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}

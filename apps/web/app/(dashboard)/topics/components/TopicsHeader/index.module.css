@@ -1,0 +1,144 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-block: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .root {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.eyebrowTag {
+  font-size: 12px;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  color: var(--token-primary, #5704e1);
+  font-weight: 500;
+}
+
+.eyebrowSep {
+  color: var(--token-secondary, #575e70);
+  font-size: 11px;
+}
+
+.eyebrowNote {
+  color: var(--token-secondary, #575e70);
+  font-size: 11px;
+}
+
+.title {
+  margin-top: 0.25rem;
+}
+
+.subtitle {
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  align-self: flex-start;
+  flex-shrink: 0;
+}
+
+@media (min-width: 1024px) {
+  .actions {
+    align-self: auto;
+  }
+}
+
+.successPill {
+  display: none;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  margin-right: 0.5rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+@media (min-width: 1280px) {
+  .successPill {
+    display: flex;
+  }
+}
+
+.successText {
+  display: flex;
+  flex-direction: column;
+  text-align: right;
+}
+
+.successValue {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.successIcon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--token-primary, #5704e1);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  font-family: "Geist", sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 12px -4px rgba(112, 57, 249, 0.4);
+  transition: opacity 150ms ease-out, transform 80ms ease-out;
+}
+
+.cta:hover {
+  opacity: 0.95;
+}
+
+.cta:active {
+  transform: scale(0.99);
+}
+
+.ctaKbd {
+  font-size: 12px;
+  background-color: rgba(255, 255, 255, 0.2);
+  color: var(--token-on-primary, #ffffff);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  margin-left: 0.25rem;
+}

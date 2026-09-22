@@ -1,0 +1,530 @@
+/* Container variants */
+.container {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  transition: background-color 150ms ease-out;
+}
+
+.unread {
+  background-color: color-mix(
+    in srgb,
+    var(--token-primary-fixed, #e8deff) 20%,
+    transparent
+  );
+}
+
+.unread:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--token-primary-fixed, #e8deff) 30%,
+    transparent
+  );
+}
+
+.read {
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  opacity: 0.9;
+}
+
+.read:hover {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  opacity: 1;
+}
+
+.compactContainer {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  opacity: 0.8;
+}
+
+/* Checkbox */
+.checkboxWrap {
+  padding-top: 0.25rem;
+}
+
+.checkbox {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  accent-color: var(--token-primary-container, #7039f9);
+  cursor: pointer;
+  outline: none;
+}
+
+/* Badge (left icon square) */
+.badge {
+  position: relative;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+
+.badgeUnread {
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  color: var(--token-primary-container, #7039f9);
+}
+
+.badgeDefault {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-secondary, #575e70);
+}
+
+.badgeWarn {
+  background-color: color-mix(in srgb, rgb(245 158 11) 10%, transparent);
+  color: rgb(217 119 6);
+}
+
+.badgeIconUnread {
+  color: var(--token-primary-container, #7039f9);
+}
+
+.badgeIconDefault {
+  color: var(--token-secondary, #575e70);
+}
+
+.badgeIconWarn {
+  color: rgb(217 119 6);
+}
+
+.badgeDot {
+  position: absolute;
+  border-radius: 9999px;
+  box-shadow: 0 0 8px rgba(112, 57, 249, 0.7);
+  animation: pulse 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.badgeDotInfo {
+  top: -0.25rem;
+  right: -0.25rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  background-color: var(--token-primary-container, #7039f9);
+  box-shadow: 0 0 8px rgba(112, 57, 249, 0.7);
+}
+
+.badgeDotSuccess {
+  top: -0.25rem;
+  right: -0.25rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  background-color: rgb(16 185 129);
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.7);
+}
+
+.badgeDotMemory {
+  top: -0.25rem;
+  right: -0.25rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: var(--token-primary-container, #7039f9);
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Body */
+.body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.headRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.titleWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.tag {
+  font-family: "Geist", sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.tagUnread {
+  font-weight: 600;
+}
+
+.title {
+  color: var(--token-on-surface, #191c1d);
+  font-family: "Geist", sans-serif;
+  transition: color 150ms ease-out, cursor 150ms ease-out;
+  cursor: pointer;
+}
+
+.title:hover {
+  color: var(--token-primary-container, #7039f9);
+}
+
+.time {
+  color: var(--token-secondary, #575e70);
+  white-space: nowrap;
+}
+
+.timeDetail {
+  color: var(--token-secondary, #575e70);
+}
+
+.bodyText {
+  margin-top: 0.25rem;
+  color: var(--token-secondary, #575e70);
+  font-family: "Geist", sans-serif;
+  line-height: 1.6;
+}
+
+/* Chips row (subscriptions) */
+.chipsRow {
+  margin-top: 0.625rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.chipsLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--token-secondary, #575e70);
+}
+
+.chip {
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+}
+
+.chipTopic {
+  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-on-surface, #191c1d);
+}
+
+.chipSep {
+  color: var(--token-outline-variant, #cac3d9);
+}
+
+.chipSource {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.chipSentiment {
+  color: var(--token-primary-container, #7039f9);
+}
+
+.sparkWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.sparkLabel {
+  font-size: 10px;
+  color: var(--token-secondary, #575e70);
+}
+
+.spark {
+  width: 4rem;
+  height: 1rem;
+  color: var(--token-primary-container, #7039f9);
+}
+
+/* Confidence row (reports) */
+.confRow {
+  margin-top: 0.625rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+
+.confLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.confDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: rgb(16 185 129);
+}
+
+.confScore {
+  font-size: 11px;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.confSep {
+  width: 1px;
+  height: 0.75rem;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+}
+
+.confSepHidden {
+  width: 1px;
+  height: 0.75rem;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+}
+
+.confMid {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.confIcon {
+  color: var(--token-primary-container, #7039f9);
+}
+
+.confSummary {
+  font-size: 11px;
+  color: var(--token-secondary, #575e70);
+}
+
+.confBadge {
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-on-surface, #191c1d);
+  font-size: 10px;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+}
+
+.actionsLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.actionsRight {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  opacity: 0.8;
+  transition: opacity 150ms ease-out;
+}
+
+.container:hover .actionsRight,
+.compactContainer:hover .actionsRight {
+  opacity: 1;
+}
+
+/* Buttons — primary pill (subscriptions) */
+.actionPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  font-size: 12px;
+  font-family: "Geist", sans-serif;
+  border: 0;
+  cursor: pointer;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  transition: opacity 150ms ease-out;
+}
+
+.actionPrimary:hover {
+  opacity: 0.9;
+}
+
+/* Pill — pill variant with full primary bg (reports "阅读报告") */
+.actionPillPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  font-size: 12px;
+  font-family: "Geist", sans-serif;
+  border: 0;
+  cursor: pointer;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  transition: background-color 150ms ease-out;
+}
+
+.actionPillPrimary:hover {
+  background-color: var(--token-primary, #5704e1);
+}
+
+.actionGhost {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  background-color: transparent;
+  color: var(--token-secondary, #575e70);
+  font-size: 12px;
+  font-family: "Geist", sans-serif;
+  border: 0;
+  cursor: pointer;
+  transition: color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.actionGhost:hover {
+  color: var(--token-on-surface, #191c1d);
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+/* Warning action (system) */
+.actionWarn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-on-surface, #191c1d);
+  font-size: 12px;
+  font-family: "Geist", sans-serif;
+  border: 0;
+  cursor: pointer;
+  transition: background-color 150ms ease-out;
+}
+
+.actionWarn:hover {
+  background-color: var(--token-surface-container-high, #e7e8e9);
+}
+
+.actionWarnIcon {
+  color: rgb(217 119 6);
+}
+
+.errorCode {
+  font-size: 11px;
+  color: var(--token-secondary, #575e70);
+}
+
+/* Plain link (管理记忆项 / 查看归档) */
+.linkPrimary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--token-primary-container, #7039f9);
+  font-size: 12px;
+  font-family: "Geist", sans-serif;
+  text-decoration: none;
+}
+
+.linkPrimary:hover {
+  text-decoration: underline;
+}
+
+.linkPlain {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--token-secondary, #575e70);
+  font-size: 12px;
+  font-family: "Geist", sans-serif;
+  text-decoration: none;
+  transition: color 150ms ease-out;
+}
+
+.linkPlain:hover {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.dotSep {
+  color: var(--token-outline-variant, #cac3d9);
+}
+
+.memoryWeight {
+  color: var(--token-secondary, #575e70);
+}
+
+.tailTag {
+  font-size: 11px;
+  color: var(--token-secondary, #575e70);
+}
+
+/* Icon action buttons (mark read / share) */
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+  background-color: transparent;
+  color: var(--token-secondary, #575e70);
+  border: 0;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.iconBtn:hover {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.iconBtnIconPrimary {
+  color: var(--token-secondary, #575e70);
+  transition: color 150ms ease-out;
+}
+
+.iconBtn:hover .iconBtnIconPrimary {
+  color: var(--token-primary-container, #7039f9);
+}
+
+.iconBtnIconDefault {
+  color: var(--token-secondary, #575e70);
+  transition: color 150ms ease-out;
+}
+
+.iconBtn:hover .iconBtnIconDefault {
+  color: var(--token-on-surface, #191c1d);
+}

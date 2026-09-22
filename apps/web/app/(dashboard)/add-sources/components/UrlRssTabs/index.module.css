@@ -1,0 +1,231 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.headLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.headDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background-color: var(--token-primary-container, #7039f9);
+}
+
+.headTitle {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.tabSwitch {
+  display: flex;
+  align-items: center;
+  padding: 0.125rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border-radius: 0.5rem;
+}
+
+.tabBtn {
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.375rem;
+  border: none;
+  background: transparent;
+  color: var(--token-secondary, #575e70);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+}
+
+.tabBtn:hover {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.tabBtnActive {
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 500;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.paneHidden {
+  display: none;
+}
+
+.urlRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .urlRow {
+    flex-direction: row;
+  }
+}
+
+.urlInputWrap {
+  position: relative;
+  flex: 1;
+}
+
+.urlIcon {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  padding-left: 0.75rem;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  color: var(--token-secondary, #575e70);
+}
+
+.urlInput {
+  width: 100%;
+  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border-radius: 0.5rem;
+  border: none;
+  outline: none;
+  color: var(--token-on-surface, #191c1d);
+  transition: all 150ms ease-out;
+}
+
+.urlInput::placeholder {
+  color: var(--token-secondary, #575e70);
+}
+
+.urlInput:focus {
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+}
+
+.fetchBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-inverse-surface, #2e3132);
+  color: var(--token-surface, #f8f9fa);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  transition: background-color 150ms ease-out;
+}
+
+.fetchBtn:hover {
+  background-color: var(--token-on-surface, #191c1d);
+}
+
+.toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.25rem 0;
+  padding-inline: 0.25rem;
+}
+
+.toggleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggleBox {
+  width: 16px;
+  height: 16px;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--token-on-primary, #ffffff);
+  transition: background-color 150ms ease-out;
+}
+
+.toggleLabel input:checked + .toggleBox {
+  background-color: var(--token-primary-container, #7039f9);
+}
+
+.toggleText {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.togglesMeta {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--token-secondary, #575e70);
+}
+
+.rssRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .rssRow {
+    flex-direction: row;
+  }
+}
+
+.periodSelect {
+  padding: 0.5rem 0.75rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-on-surface, #191c1d);
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  outline: none;
+}
+
+.subscribeBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  transition: opacity 150ms ease-out;
+}
+
+.subscribeBtn:hover {
+  opacity: 0.9;
+}
+
+.rssNote {
+  color: var(--token-secondary, #575e70);
+  padding-inline: 0.25rem;
+}

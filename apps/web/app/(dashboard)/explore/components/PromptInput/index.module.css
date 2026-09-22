@@ -1,0 +1,92 @@
+.wrap {
+  position: relative;
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+@media (min-width: 768px) {
+  .wrap {
+    padding-inline: 1.5rem;
+  }
+}
+
+.bar {
+  height: 48px;
+  background-color: #111111;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  padding-inline: 0.875rem;
+  gap: 0.75rem;
+  box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.6);
+  transition: border-color 150ms ease-out;
+}
+
+.bar:focus-within {
+  border-color: rgba(112, 57, 249, 0.5);
+}
+
+.toggleIcon {
+  color: #666666;
+  display: flex;
+  align-items: center;
+}
+
+.input {
+  flex: 1;
+  background-color: transparent;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: #fafafa;
+  font-family: inherit;
+}
+
+.input::placeholder {
+  color: #666666;
+}
+
+.rightCluster {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.shortcut {
+  display: none;
+  align-items: center;
+}
+
+@media (min-width: 640px) {
+  .shortcut {
+    display: flex;
+  }
+}
+
+.sendBtn {
+  height: 28px;
+  padding-inline: 12px;
+  border-radius: 8px;
+  background-color: #7039f9;
+  color: #ffffff;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: opacity 120ms ease-out;
+  font-family: inherit;
+}
+
+.sendBtn:hover {
+  opacity: 0.9;
+}
+
+.sendBtn:active {
+  opacity: 1;
+}

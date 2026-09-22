@@ -1,0 +1,138 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.headDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background-color: var(--token-primary-container, #7039f9);
+}
+
+.headTitle {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.headMeta {
+  font-size: 12px;
+  color: var(--token-secondary, #575e70);
+}
+
+.dropZone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1.5rem;
+  border-radius: 0.5rem;
+  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 60%, transparent);
+  cursor: pointer;
+  transition: all 200ms ease-out;
+}
+
+.dropZone:hover {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+}
+
+.dropZoneActive {
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.dropIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 0.75rem;
+  background-color: var(--token-surface-container, #edeeef);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.75rem;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  transition: transform 200ms ease-out;
+}
+
+.dropZone:hover .dropIcon {
+  transform: scale(1.05);
+}
+
+.dropTitle {
+  color: var(--token-on-surface, #191c1d);
+  margin-bottom: 0.25rem;
+}
+
+.dropLink {
+  color: var(--token-primary-container, #7039f9);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dropLink:hover {
+  text-decoration: underline;
+}
+
+.dropSub {
+  color: var(--token-secondary, #575e70);
+  max-width: 32rem;
+  margin-bottom: 0.75rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  color: var(--token-secondary, #575e70);
+}
+
+.chip {
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container-highest, #e1e3e4);
+}
+
+.legend {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: var(--token-secondary, #575e70);
+  font-size: 11px;
+  opacity: 0.8;
+  flex-wrap: wrap;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.legendDot {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+}

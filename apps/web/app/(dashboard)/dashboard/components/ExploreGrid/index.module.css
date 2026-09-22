@@ -1,0 +1,167 @@
+/* ExploreGrid — "Continue research" 3-column responsive grid of report cards. */
+
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.headTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.title {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.browseAll {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--token-primary-container, #7039f9);
+  text-decoration: none;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  transition: background-color 150ms ease-out;
+}
+
+.browseAll:hover {
+  background-color: color-mix(in srgb, var(--token-primary-container, #7039f9) 8%, transparent);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.75rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+  transition: box-shadow 200ms ease-out, transform 200ms ease-out;
+}
+
+.card:hover {
+  box-shadow: 0 4px 12px 0 rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.cover {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--token-primary-container, #7039f9) 6%, transparent),
+    color-mix(in srgb, var(--token-secondary, #575e70) 4%, transparent)
+  );
+  border-bottom: 1px solid var(--token-outline-variant, #cac3d9);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  color: var(--token-primary-container, #7039f9);
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 60%, transparent);
+  border: 1px solid var(--token-primary-fixed-dim, #cdbdff);
+}
+
+.cardTitle {
+  margin: 0;
+  color: var(--token-on-surface, #191c1d);
+  line-height: 1.35;
+}
+
+.body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.statsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.footer {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  border-width: 1px;
+  border-style: solid;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
+}
+
+.ctaPrimary {
+  background-color: var(--token-primary-container, #7039f9);
+  border-color: var(--token-primary-container, #7039f9);
+  color: var(--token-on-primary, #ffffff);
+}
+
+.ctaPrimary:hover {
+  background-color: color-mix(in srgb, var(--token-primary-container, #7039f9) 88%, var(--token-on-surface, #191c1d));
+}
+
+.ctaSecondary {
+  background-color: transparent;
+  border-color: var(--token-outline-variant, #cac3d9);
+  color: var(--token-on-surface, #191c1d);
+}
+
+.ctaSecondary:hover {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+}
