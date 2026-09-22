@@ -1,28 +1,10 @@
-/* Dashboard outer shell — sidebar + topbar offsets + responsive KPI/breakdown grids. */
-
-.shell {
-  min-height: 100vh;
-  background-color: var(--token-surface, #f8f9fa);
-}
-
-.column {
-  /* matches the Sidebar's fixed w-64 (16rem). */
-  padding-left: 16rem;
-  min-height: 100vh;
-}
-
-.main {
-  /* matches the TopBar's fixed h-14 (3.5rem). */
-  padding-top: 3.5rem;
-  min-height: 100vh;
-}
+/* Dashboard page body — sidebar/topbar offsets live in (dashboard)/layout.module.css. */
 
 .content {
   display: flex;
   flex-direction: column;
   gap: 1.5rem; /* space-lg */
-  padding: 1.5rem;
-  max-width: 100%;
+  width: 100%;
 }
 
 .kpiRow {
