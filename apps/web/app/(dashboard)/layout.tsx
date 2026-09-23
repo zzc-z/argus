@@ -65,7 +65,7 @@ export default function DashboardLayout({
         <div className={styles.sidebarFoot}>
           <div className={styles.clusterCard}>
             <div className={styles.clusterTop}>
-              <span className="font-label-sm">Agent Run Cluster</span>
+              <span className="font-label-sm text-secondary">Agent Run Cluster</span>
               <span className={`${styles.clusterActive} font-code`}>Active</span>
             </div>
             <div className={styles.progressTrack}>

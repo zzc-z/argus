@@ -13,9 +13,9 @@
 }
 
 .content {
+  /* (dashboard)/layout.tsx's .mainInner already provides padding-inline + padding-bottom;
+     this page is edge-to-edge inside that container. */
   width: 100%;
-  padding-inline: 1.5rem;
-  padding-bottom: 4rem;
   display: flex;
   flex-direction: column;
 }

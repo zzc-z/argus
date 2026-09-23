@@ -139,7 +139,7 @@ export default function ReportsPage() {
   // ── Render ──────────────────────────────────────────────────────
   return (
     <div className={styles.shell}>
-      <main className={styles.main}>
+      <div className={styles.main}>
         <div className={styles.content}>
           <ReportsHeader
             filterBadgeVisible={filterBadgeVisible}
@@ -201,7 +201,7 @@ export default function ReportsPage() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
 
       <BulkActionBar
         visible={selectedIds.size > 0}

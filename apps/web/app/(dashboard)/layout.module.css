@@ -179,13 +179,21 @@
   display: flex;
   flex-direction: column;
   gap: 0.375rem;
-  color: var(--token-on-surface-variant, #494456);
+  color: var(--token-secondary, #575e70);
 }
 
 .clusterTop {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* The "Agent Run Cluster" title uses `font-label-sm` utility which only sets
+   font-family; tailwind config doesn't register a `text-label-sm` fontSize
+   entry. Force 11px + uppercase-style letter-spacing to match design. */
+.clusterTop > span:first-child {
+  font-size: 11px;
+  letter-spacing: 0.02em;
 }
 
 .clusterActive {
@@ -230,7 +238,7 @@
   justify-content: space-between;
   padding-top: 0.25rem;
   padding-inline: 0.25rem;
-  color: var(--token-on-surface-variant, #494456);
+  color: var(--token-secondary, #575e70);
 }
 
 .sessionIcon {
