@@ -86,8 +86,7 @@
 }
 
 .statusLabel {
-  font-size: 0.6875rem;
-  font-weight: 500;
+  composes: text-label-sm from global;
   color: var(--token-on-surface, #191c1d);
 }
 
@@ -96,8 +95,7 @@
 }
 
 .statusThroughput {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 12px;
+  composes: text-code from global;
   color: var(--token-secondary, #575e70);
 }
 

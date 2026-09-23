@@ -55,19 +55,21 @@
 }
 
 .brandName {
-  font-size: 0.875rem;
+  font-family: var(--font-family-sans);
+  font-size: var(--text-headline-sm-size);
+  line-height: var(--text-headline-sm-line-height);
   font-weight: 500;
-  color: var(--token-on-surface, #191c1d);
   letter-spacing: -0.01em;
-  line-height: 1;
+  color: var(--token-on-surface, #191c1d);
 }
 
 .brandSub {
-  font-size: 0.6875rem;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-label-sm-size);
+  line-height: var(--text-label-sm-line-height);
   font-weight: 500;
-  color: var(--token-secondary, #575e70);
   letter-spacing: 0.02em;
-  line-height: 1;
+  color: var(--token-secondary, #575e70);
   margin-top: 0.25rem;
 }
 

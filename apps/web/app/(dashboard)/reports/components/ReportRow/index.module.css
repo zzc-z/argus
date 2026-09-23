@@ -155,10 +155,12 @@
 }
 
 .title {
-  font-size: 0.875rem;
+  font-family: var(--font-family-sans);
+  font-size: var(--text-headline-sm-size);
+  line-height: var(--text-headline-sm-line-height);
+  letter-spacing: var(--text-headline-sm-letter-spacing);
   font-weight: 600;
   color: var(--token-on-surface, #191c1d);
-  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -200,10 +202,12 @@
 }
 
 .summary {
-  font-size: 0.8125rem;
+  font-family: var(--font-family-sans);
+  font-size: var(--text-body-sm-size);
+  line-height: var(--text-body-sm-line-height);
+  letter-spacing: var(--text-body-sm-letter-spacing);
+  font-weight: var(--text-body-sm-weight);
   color: var(--token-secondary, #575e70);
-  letter-spacing: -0.005em;
-  line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
@@ -291,8 +295,10 @@
 }
 
 .timeSub {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line-height);
+  letter-spacing: var(--text-code-letter-spacing);
   color: var(--token-secondary, #575e70);
 }
 
@@ -306,8 +312,10 @@
 }
 
 .sourcesSub {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line-height);
+  letter-spacing: var(--text-code-letter-spacing);
   color: var(--token-secondary, #575e70);
 }
 

@@ -1,12 +1,14 @@
 .shell {
-  min-height: 100vh;
-  background-color: var(--token-surface, #f8f9fa);
+  /* (dashboard)/layout.tsx owns the chrome (sidebar + topbar) and the outer
+     `padding-left: 16rem` / `padding-top: 3.5rem` reservation. This root is
+     a transparent flex container; the page content extends edge-to-edge
+     within the layout's main column. */
   color: var(--token-on-surface, #191c1d);
+  display: flex;
+  flex-direction: column;
 }
 
 .main {
-  padding-left: 16rem;
-  padding-top: 3.5rem;
   min-height: 100vh;
 }
 

@@ -56,3 +56,85 @@ body {
 [class*="_chip_"] {
   white-space: nowrap;
 }
+
+/* ── Typography tokens — 1:1 with precision_technical_light/DESIGN.md ──
+   11 scales × 4 sub-values (size / line-height / letter-spacing / weight)
+   + 2 families. CSS Modules consume via `composes: <class> from global;`
+   (PostCSS Modules standard syntax). */
+
+:root {
+  /* families */
+  --font-family-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-family-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* headline-xl — 36/44/-0.03em/600 Geist */
+  --text-headline-xl-size: 36px;
+  --text-headline-xl-line-height: 44px;
+  --text-headline-xl-letter-spacing: -0.03em;
+  --text-headline-xl-weight: 600;
+
+  /* headline-xl-mobile — 28/36/-0.02em/600 Geist */
+  --text-headline-xl-mobile-size: 28px;
+  --text-headline-xl-mobile-line-height: 36px;
+  --text-headline-xl-mobile-letter-spacing: -0.02em;
+  --text-headline-xl-mobile-weight: 600;
+
+  /* headline-lg — 24/32/-0.02em/600 Geist */
+  --text-headline-lg-size: 24px;
+  --text-headline-lg-line-height: 32px;
+  --text-headline-lg-letter-spacing: -0.02em;
+  --text-headline-lg-weight: 600;
+
+  /* headline-md — 20/28/-0.015em/600 Geist */
+  --text-headline-md-size: 20px;
+  --text-headline-md-line-height: 28px;
+  --text-headline-md-letter-spacing: -0.015em;
+  --text-headline-md-weight: 600;
+
+  /* headline-sm — 16/24/-0.01em/500 Geist */
+  --text-headline-sm-size: 16px;
+  --text-headline-sm-line-height: 24px;
+  --text-headline-sm-letter-spacing: -0.01em;
+  --text-headline-sm-weight: 500;
+
+  /* body-lg — 16/26/-0.005em/400 Geist */
+  --text-body-lg-size: 16px;
+  --text-body-lg-line-height: 26px;
+  --text-body-lg-letter-spacing: -0.005em;
+  --text-body-lg-weight: 400;
+
+  /* body-md — 14/22/0em/400 Geist */
+  --text-body-md-size: 14px;
+  --text-body-md-line-height: 22px;
+  --text-body-md-letter-spacing: 0em;
+  --text-body-md-weight: 400;
+
+  /* body-sm — 13/20/-0.005em/400 Geist */
+  --text-body-sm-size: 13px;
+  --text-body-sm-line-height: 20px;
+  --text-body-sm-letter-spacing: -0.005em;
+  --text-body-sm-weight: 400;
+
+  /* label-md — 13/18/-0.01em/500 JetBrains Mono */
+  --text-label-md-size: 13px;
+  --text-label-md-line-height: 18px;
+  --text-label-md-letter-spacing: -0.01em;
+  --text-label-md-weight: 500;
+
+  /* label-sm — 11/16/0.02em/500 JetBrains Mono */
+  --text-label-sm-size: 11px;
+  --text-label-sm-line-height: 16px;
+  --text-label-sm-letter-spacing: 0.02em;
+  --text-label-sm-weight: 500;
+
+  /* code — 12/18/0em/400 JetBrains Mono */
+  --text-code-size: 12px;
+  --text-code-line-height: 18px;
+  --text-code-letter-spacing: 0em;
+  --text-code-weight: 400;
+}
+
+/* Typography tokens live in :root above. Component CSS modules consume
+   them directly via `var(--text-XXX-size)` etc. — no utility class layer,
+   because `composes: <name> from global;` is not honored by Next.js's
+   default css-loader. */

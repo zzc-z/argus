@@ -27,10 +27,10 @@ export default function DashboardLayout({
                 <ArgusMark size={20} />
               </div>
               <div className={styles.brandText}>
-                <span className={`${styles.brandName} font-headline-sm tracking-tight leading-none`}>
+                <span className={`${styles.brandName} font-headline-sm`}>
                   Argus
                 </span>
-                <span className={`${styles.brandSub} font-label-sm leading-none`}>
+                <span className={`${styles.brandSub} font-label-sm`}>
                   Synthesizer Core
                 </span>
               </div>

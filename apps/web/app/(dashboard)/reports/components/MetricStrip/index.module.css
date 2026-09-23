@@ -50,29 +50,35 @@
 }
 
 .tileValueDefault {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-family: var(--font-family-sans);
+  font-size: var(--text-headline-md-size);
+  line-height: var(--text-headline-md-line-height);
+  letter-spacing: var(--text-headline-md-letter-spacing);
+  font-weight: var(--text-headline-md-weight);
   color: var(--token-on-surface, #191c1d);
-  letter-spacing: -0.015em;
-  line-height: 1.2;
 }
 
 .tileValuePrimary {
-  font-size: 1.25rem;
-  font-weight: 600;
+  font-family: var(--font-family-sans);
+  font-size: var(--text-headline-md-size);
+  line-height: var(--text-headline-md-line-height);
+  letter-spacing: var(--text-headline-md-letter-spacing);
+  font-weight: var(--text-headline-md-weight);
   color: var(--token-primary, #5704e1);
-  letter-spacing: -0.015em;
-  line-height: 1.2;
 }
 
 .tileSubSuccess {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line-height);
+  letter-spacing: var(--text-code-letter-spacing);
   color: #059669;
 }
 
 .tileSubSecondary {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
-  font-size: 11px;
+  font-family: var(--font-family-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line-height);
+  letter-spacing: var(--text-code-letter-spacing);
   color: var(--token-secondary, #575e70);
 }

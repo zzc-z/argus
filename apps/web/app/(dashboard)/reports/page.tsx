@@ -17,8 +17,6 @@
 
 import * as React from "react";
 
-import { Sidebar } from "./components/Sidebar";
-import { TopBar } from "./components/TopBar";
 import { ReportsHeader } from "./components/ReportsHeader";
 import { MetricStrip } from "./components/MetricStrip";
 import { FilterBar, type SortId, type ViewMode } from "./components/FilterBar";
@@ -141,9 +139,6 @@ export default function ReportsPage() {
   // ── Render ──────────────────────────────────────────────────────
   return (
     <div className={styles.shell}>
-      <Sidebar />
-      <TopBar />
-
       <main className={styles.main}>
         <div className={styles.content}>
           <ReportsHeader
