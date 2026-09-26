@@ -47,7 +47,7 @@ export const reportColumns: ReadonlyArray<DataTableColumnDef<Report>> = [
     },
     meta: {
       align: "left",
-      width: { minWidth: "370px", maxWidth: "430px", flex: 2 },
+      width: { minWidth: "370px", flex: 2 },
       cellClassName: styles.colTitle,
     },
   },
@@ -111,18 +111,20 @@ export const reportColumns: ReadonlyArray<DataTableColumnDef<Report>> = [
       return (
         <div className={styles.sourcesCol}>
           <span className={styles.sources}>{r.sourcesCount} 篇</span>
-          <span className={styles.sourcesSub}>{r.viewsCount} 阅</span>
-          {isRunning ? (
-            <span className={styles.runningBadge}>
-              <IconSpan name="progress_activity" size={13} className={styles.runningBadgeIcon} />
-              <span>正在合成 ({r.runningProgress ?? 0}%)</span>
-            </span>
-          ) : (
-            <span className={styles.verifiedBadge}>
-              <IconSpan name="check_circle" size={14} />
-              <span>已交叉验证</span>
-            </span>
-          )}
+          <div className={styles.sourcesSubWrap}>
+            <span className={styles.sourcesSub}>{r.viewsCount} 阅</span>
+            {isRunning ? (
+              <span className={styles.runningBadge}>
+                <IconSpan name="progress_activity" size={13} className={styles.runningBadgeIcon} />
+                <span>正在合成 ({r.runningProgress ?? 0}%)</span>
+              </span>
+            ) : (
+              <span className={styles.verifiedBadge}>
+                <IconSpan name="check_circle" size={14} />
+                <span>已交叉验证</span>
+              </span>
+            )}
+          </div>
         </div>
       );
     },
