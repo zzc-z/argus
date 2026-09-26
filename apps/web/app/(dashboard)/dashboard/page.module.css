@@ -1,40 +1,37 @@
-/* Dashboard page body — sidebar/topbar offsets live in (dashboard)/layout.module.css. */
+/* Dashboard page body — chrome (sidebar + topbar) is owned by (dashboard)/layout.tsx.
+   Container classes mirror argus_dashboard/code.html. */
 
-.content {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem; /* space-lg */
-  width: 100%;
-}
-
-.kpiRow {
+/* KPI strip — 1 → 2 → 4 columns, with bottom margin separating from dual panel. */
+.kpiGrid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
+  margin-bottom: 1.5rem; /* mb-space-lg */
 }
 
 @media (min-width: 640px) {
-  .kpiRow {
+  .kpiGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (min-width: 1024px) {
-  .kpiRow {
+  .kpiGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
-.dualRow {
+/* Dual panel — RecentActivity (col-span-7) + Subscriptions (col-span-5). */
+.dualGrid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
   align-items: start;
+  margin-bottom: 1.5rem; /* mb-space-lg */
 }
 
 @media (min-width: 1024px) {
-  /* 7:5 split (matches design's lg:col-span-7 / lg:col-span-5). */
-  .dualRow {
-    grid-template-columns: 7fr 5fr;
+  .dualGrid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
   }
 }

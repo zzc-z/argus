@@ -14,6 +14,8 @@ const config: Config = {
         "inverse-primary": "#cdbdff",
         "error-container": "#ffdad6",
         "secondary-container": "#d9dff5",
+        "success-container": "#ecfdf5",
+        "on-success-container": "#047857",
         "on-tertiary-fixed": "#191c1e",
         "on-secondary-fixed": "#141b2b",
         "primary-fixed-dim": "#cdbdff",

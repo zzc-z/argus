@@ -132,6 +132,12 @@ body {
   --text-code-line-height: 18px;
   --text-code-letter-spacing: 0em;
   --text-code-weight: 400;
+
+  /* success container — used for "verified / ready / healthy" status pills;
+     Tailwind v4 spectrum, not 1:1 with argus design — argus has no green
+     token family, so the verified badge is the first consumer. */
+  --token-success-container: #ecfdf5;
+  --token-on-success-container: #047857;
 }
 
 /* Typography tokens live in :root above. Component CSS modules consume

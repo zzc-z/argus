@@ -34,3 +34,11 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+
+/* Override (dashboard)/layout.module.css .mainInner { padding-bottom: 7rem }.
+   The reports page doesn't need that much trailing whitespace; reset it to a
+   modest value so the Pagination footer sits close to the bottom edge like
+   the design. */
+.collapseMainInnerPadding {
+  margin-bottom: -5rem; /* 7rem → 2rem effective */
+}

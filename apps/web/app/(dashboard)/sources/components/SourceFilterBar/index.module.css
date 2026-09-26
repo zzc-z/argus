@@ -101,6 +101,10 @@
   outline: none;
   margin-left: 0.5rem;
   color: var(--token-on-surface, #191c1d);
+  font-family: var(--font-family-sans);
+  font-size: 13px;
+  line-height: 20px;
+  letter-spacing: -0.005em;
 }
 
 .searchInput::placeholder {

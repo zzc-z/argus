@@ -1,0 +1,121 @@
+/* DataTable 通用骨架 —— flex 列布局。
+ *  - header / row 都是 flex row，列宽通过 inline --col-flex / --col-min-w 注入
+ *  - 业务 cell 样式由调用方通过 meta.cellClassName 注入（badge / 时间 / 标题等）
+ *  - 不依赖 subgrid：每列 flex 由 meta.width 决定 */
+
+.root {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  overflow-x: auto;
+  overflow-y: hidden;
+  font-size: 0.8125rem;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.header,
+.row {
+  display: flex;
+  width: 100%;
+  min-width: 100%;
+}
+
+.header {
+  /* header cell 内容单行（如 button），按内容居中即可 */
+  align-items: center;
+}
+
+.row {
+  /* row cell 需要撑满行高（badge / status / 标题摘要两行结构） */
+  align-items: stretch;
+  /* row 最小高度 = 设计稿 74px；不强行撑 cell，让短内容（如 badge）保持自身高度 */
+  min-height: 4.625rem;
+}
+
+.header {
+  padding: 0.75rem 0;
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 60%,
+    transparent
+  );
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--token-secondary, #575e70);
+  font-family: var(--font-family-mono);
+  letter-spacing: -0.01em;
+  user-select: none;
+}
+
+.headerCell,
+.rowCell {
+  display: flex;
+  min-width: 0;
+  flex-grow: var(--col-flex, 0);
+  flex-shrink: 0;
+  flex-basis: 0;
+  min-width: var(--col-min-w, 0);
+  padding: 0 0.75rem;
+}
+
+.headerCell { align-items: center; }
+.rowCell { align-items: center; }
+
+/* 调用方在自家 CSS 里用 .rowMarker.colTitle / .headerMarker.colTitle 区分 */
+.headerMarker { /* 无样式，仅作选择器标记 */ }
+.rowMarker { /* 无样式，仅作选择器标记 */ }
+
+.alignLeft { justify-content: flex-start; text-align: left; }
+.alignRight { justify-content: flex-end; text-align: right; }
+.alignCenter { justify-content: center; text-align: center; }
+
+.row {
+  transition: background-color 150ms ease-out;
+  isolation: isolate;
+  background-color: transparent;
+}
+
+.row:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 50%,
+    transparent
+  );
+}
+
+.banded {
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 20%,
+    transparent
+  );
+}
+
+.checkboxCell {
+  min-width: 2.75rem;
+  padding-left: 1rem;
+  padding-right: 0;
+}
+
+.header .checkboxCell {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.checkboxInput {
+  accent-color: var(--token-primary, #5704e1);
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--token-secondary, #575e70);
+}

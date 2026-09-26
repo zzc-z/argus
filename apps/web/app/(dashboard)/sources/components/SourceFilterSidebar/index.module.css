@@ -1,7 +1,7 @@
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
   padding: 1rem;
   background-color: var(--token-surface-container-lowest, #ffffff);
   border-radius: 0.75rem;

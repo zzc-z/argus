@@ -1,6 +1,8 @@
-import * as React from "react";
+/**
+ * PageHeader — 1:1 with argus_dashboard/code.html top control row.
+ */
+
 import { IconSpan } from "@/components/common/IconSpan";
-import { StatusDot } from "@/components/common/StatusDot";
 import styles from "./index.module.css";
 
 export interface PageHeaderProps {
@@ -8,54 +10,53 @@ export interface PageHeaderProps {
   titleChip: string;
   greeting: string;
   date: string;
-  statusLabel: string;
   notifications: number;
+  activeSubscriptions: number;
 }
 
-/**
- * Dashboard top-of-main title row.
- * Layout: title + chip + greeting/date (left); status chip + notification btn (right).
- */
 export function PageHeader({
   title,
   titleChip,
   greeting,
   date,
-  statusLabel,
   notifications,
 }: PageHeaderProps) {
   return (
     <div className={styles.root}>
       <div className={styles.left}>
         <div className={styles.titleRow}>
-          <h1 className={`${styles.title} font-headline-lg font-semibold tracking-tight`}>
-            {title}
-          </h1>
-          <span className={`${styles.chip} font-label-sm font-medium`}>
-            {titleChip}
+          <span className={styles.title}>{title}</span>
+          <span className={styles.titleChip}>{titleChip}</span>
+        </div>
+        <div className={styles.meta}>
+          <span className={styles.greeting}>{greeting}</span>
+          <span className={styles.sep}>/</span>
+          <span>{date}</span>
+          <span className={styles.sep}>/</span>
+          <span className={styles.statusBlock}>
+            <span className={styles.statusDot} aria-hidden="true" />
+            推理拓扑已就绪
           </span>
         </div>
-        <p className={`${styles.meta} font-body-sm`}>
-          {greeting}
-          <span className={styles.dot}>·</span>
-          {date}
-        </p>
       </div>
 
       <div className={styles.right}>
-        <div className={styles.status}>
-          <StatusDot color="emerald" ping />
-          <span className={`${styles.statusText} font-label-sm font-medium`}>
-            {statusLabel}
-          </span>
-        </div>
-        <button type="button" className={styles.notifyBtn} aria-label="通知中心">
-          <IconSpan name="notifications" size={16} className="text-primary-container" />
+        <button type="button" aria-label="通知中心" className={styles.notifyBtn}>
+          <IconSpan name="notifications" size={20} />
           {notifications > 0 && (
-            <span className={`${styles.notifyCount} font-label-sm font-semibold`}>
-              {notifications}
-            </span>
+            <span className={styles.notifyCount}>{notifications}</span>
           )}
+        </button>
+
+        <button type="button" className={styles.tuneBtn}>
+          <IconSpan name="tune" size={18} />
+          <span className={styles.tuneLabel}>偏好配置</span>
+        </button>
+
+        <button type="button" className={styles.primaryBtn}>
+          <IconSpan name="add" size={18} />
+          <span className={styles.primaryLabel}>发起新研究</span>
+          <kbd className={styles.kbd}>⌘N</kbd>
         </button>
       </div>
     </div>

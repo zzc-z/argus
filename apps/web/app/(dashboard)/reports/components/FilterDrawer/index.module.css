@@ -63,11 +63,19 @@
 }
 
 .groupLabel {
+  font-family: var(--font-family-mono);
   font-size: 0.6875rem;
   font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.05em;
   color: var(--token-secondary, #575e70);
   text-transform: uppercase;
+}
+
+/* group separators between header → first group stay clean via root gap;
+   the remaining groups get an extra `pt-space-xs` nudge (0.25rem) on top
+   of the parent's `gap-space-md` so the rhythm matches the design. */
+.group + .group {
+  padding-top: 0.25rem;
 }
 
 /* ── Timeframe grid ──────────────────────────────────────────────── */
@@ -84,11 +92,14 @@
   background-color: transparent;
   border: none;
   text-align: left;
+  font-family: var(--font-family-mono);
   font-size: 0.8125rem;
+  line-height: 18px;
+  letter-spacing: -0.01em;
   font-weight: 500;
   color: var(--token-secondary, #575e70);
   cursor: pointer;
-  transition: background-color 150ms ease-out;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
 }
 
 .timeframeBtn:hover {
@@ -166,11 +177,13 @@
 }
 
 .citationPill {
+  font-family: var(--font-family-mono);
   font-size: 0.6875rem;
-  font-weight: 500;
+  line-height: 16px;
   letter-spacing: 0.02em;
+  font-weight: 500;
   padding: 0.25rem 0.625rem;
-  border-radius: 0.5rem;
+  border-radius: 0.25rem;
   background-color: var(--token-surface-container-low, #f3f4f5);
   color: var(--token-secondary, #575e70);
   cursor: pointer;
@@ -271,7 +284,8 @@
 }
 
 .confidenceNote {
+  font-family: var(--font-family-mono);
   font-size: 11px;
   color: var(--token-secondary, #575e70);
-  line-height: 1.5;
+  line-height: 1.625;
 }

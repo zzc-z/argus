@@ -52,26 +52,24 @@ export default function SourcesPage() {
   const indeterminate = selectedIds.size > 0 && selectedIds.size < sourceRows.length;
 
   return (
-    <main className={styles.main}>
-      <div className={styles.body}>
-        <SourcesHeader />
+    <div className={styles.body}>
+      <SourcesHeader />
 
-        <SourceFilterBar />
+      <SourceFilterBar />
 
-        <div className={styles.workspace}>
-          <SourceFilterSidebar />
-          <div className={styles.stage}>
-            <SourceBulkRibbon
-              selectedCount={selectedIds.size}
-              allChecked={allChecked}
-              indeterminate={indeterminate}
-              onToggleAll={toggleAll}
-            />
-            <SourceTable selectedIds={selectedIds} onToggleRow={toggleRow} />
-            <SourcePagination />
-          </div>
+      <div className={styles.workspace}>
+        <SourceFilterSidebar />
+        <div className={styles.stage}>
+          <SourceBulkRibbon
+            selectedCount={selectedIds.size}
+            allChecked={allChecked}
+            indeterminate={indeterminate}
+            onToggleAll={toggleAll}
+          />
+          <SourceTable selectedIds={selectedIds} onToggleRow={toggleRow} />
+          <SourcePagination />
         </div>
       </div>
-    </main>
+    </div>
   );
 }

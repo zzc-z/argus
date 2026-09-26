@@ -1,3 +1,11 @@
+/**
+ * RecentActivity — 1:1 with argus_dashboard/code.html activity feed.
+ *
+ * First row (newest) is highlighted with violet background + 1px inset
+ * border. Remaining rows render as bare list rows inside a divide-y
+ * container; their only interactive state is hover (low-contrast surface).
+ */
+
 import * as React from "react";
 import { IconSpan } from "@/components/common/IconSpan";
 import { cn } from "@/lib/utils";
@@ -8,65 +16,80 @@ export interface RecentActivityProps {
   items: ActivityItem[];
 }
 
-/**
- * Vertical activity feed card. First item gets a violet highlight (1px inset border).
- * Each row: 40px icon-box + body (title + meta) + right (badge top, timestamp bottom).
- */
 export function RecentActivity({ items }: RecentActivityProps) {
   return (
     <section className={styles.root}>
       <header className={styles.head}>
         <div className={styles.headTitle}>
-          <IconSpan name="history" size={18} className="text-primary-container" />
-          <h2 className={`${styles.title} font-headline-sm font-semibold tracking-tight`}>
+          <IconSpan
+            name="pulse_alert"
+            size={20}
+            className={styles.headIcon}
+          />
+          <h2
+            className={`${styles.title} font-headline-sm font-semibold`}
+          >
             最近活动动态
           </h2>
+          <span className={`${styles.streamChip} font-code`}>实时流</span>
         </div>
-        <button type="button" className={`${styles.viewAll} font-label-sm font-medium`}>
-          查看全部
-          <IconSpan name="arrow_forward" size={14} />
-        </button>
+        <a href="#" className={`${styles.viewAll} font-body-sm`}>
+          <span>查看全部日志</span>
+          <IconSpan name="chevron_right" size={16} />
+        </a>
       </header>
 
-      <ol className={styles.list}>
+      <div className={styles.listDivide}>
         {items.map((a, i) => (
-          <li
+          <div
             key={a.id}
             className={cn(
-              styles.item,
-              i === 0 && styles.itemFirst,
-              a.highlight && styles.itemHighlight
+              styles.row,
+              i === 0 || a.highlight ? styles.rowHighlight : styles.rowDefault
             )}
           >
-            <div
-              className={cn(
-                styles.iconBox,
-                a.iconBox === "primary" && styles.iconBoxPrimary,
-                a.iconBox === "accent" && styles.iconBoxAccent
-              )}
-            >
-              <IconSpan name={a.icon} size={18} />
+            <div className={styles.left}>
+              <div
+                className={cn(
+                  styles.iconBox,
+                  i === 0 || a.highlight
+                    ? styles.iconBoxHighlight
+                    : a.iconBox === "accent"
+                      ? styles.iconBoxAccent
+                      : styles.iconBoxDefault
+                )}
+              >
+                <IconSpan name={a.icon} size={16} />
+              </div>
+              <div className={styles.body}>
+                <span
+                  className={`${styles.itemTitle} font-body-sm font-medium`}
+                >
+                  {a.title}
+                </span>
+                <span className={`${styles.itemMeta} font-code`}>{a.meta}</span>
+              </div>
             </div>
-            <div className={styles.body}>
-              <p className={`${styles.itemTitle} font-body-sm font-medium`}>{a.title}</p>
-              <p className={`${styles.itemMeta} font-label-sm`}>{a.meta}</p>
-            </div>
+
             <div className={styles.right}>
               <span
                 className={cn(
                   styles.badge,
                   a.badgeTone === "highlight" && styles.badgeHighlight,
                   a.badgeTone === "muted" && styles.badgeMuted,
+                  a.badgeTone === "plain" && styles.badgePlain,
                   a.badgeTone === "warning" && styles.badgeWarning
                 )}
               >
                 {a.badgeText}
               </span>
-              <span className={`${styles.timestamp} font-label-sm`}>{a.timestamp}</span>
+              <span className={`${styles.timestamp} font-code`}>
+                {a.timestamp}
+              </span>
             </div>
-          </li>
+          </div>
         ))}
-      </ol>
+      </div>
     </section>
   );
 }

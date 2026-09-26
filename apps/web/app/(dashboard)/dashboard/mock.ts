@@ -65,6 +65,8 @@ export interface ExploreReport {
   ctaPrimary: boolean;
   /** Material-symbol name used as a decorative cover hint (no external image). */
   coverIcon: string;
+  /** Background-image URL for the card cover (design argus_dashboard/code.html). */
+  coverImage: string;
 }
 
 export const KPIS: Kpi[] = [
@@ -229,7 +231,7 @@ export const SUBSCRIPTIONS: Subscription[] = [
     id: "s3",
     title: "欧盟 AI 法案监管落地",
     badgeText: "2 条新动态",
-    badgeTone: "unread",
+    badgeTone: "none",
     updatedAt: "更新于 昨天 09:30",
     source: "抓取源: EU Commission",
     active: true,
@@ -267,6 +269,8 @@ export const REPORTS: ExploreReport[] = [
     ctaLabel: "继续阅读 / 恢复会话",
     ctaPrimary: true,
     coverIcon: "memory",
+    coverImage:
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuAHiRfr3LD5xJtB2tEiex7rZd74c6JtZEGqYkjQ9AmRL3Uz9NNELcQxY2mVYGhujhqz96f61mlwvfjeNMc-EHkBVzGFdSm6-UAX4x4wUwbL4Wnw2N3hDlbHzKV98alpB5nDZWHHkXOR-Lw7gJn2wmyMItzmrNl3mVQPtmWX2f5y0L2GqzcZHJloCUgaXN3poCCph2v3PxocYzsJUbElL_mSdAzhWDIFgrhVwzxO7Neie9vS6YM19RTT",
   },
   {
     id: "r2",
@@ -279,6 +283,8 @@ export const REPORTS: ExploreReport[] = [
     ctaLabel: "查看研报",
     ctaPrimary: false,
     coverIcon: "analytics",
+    coverImage:
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuAU4mO4XmBoIXUSudKYeAZZCqGDyYNOKikXZ3SmKpRQ2WeGAHGBx_BENb5hPhgwjd6qjujcxKENTgamN1eBgFql4rBgQLAAEY9fxPt_DfOUj9wr5s0VhRmNtCT7GiqEagwoz8ikZp6PufbOzfW5JCntOSBO4V4P1d6j83oWyCHnBzqd5yO2utasjyi--uGAxEbt5OpOnsR4OWW6_Ae4KH9dAomhQ3Ve6Vv8IvYpI5afXvjRMzjOf1wg",
   },
   {
     id: "r3",
@@ -291,5 +297,7 @@ export const REPORTS: ExploreReport[] = [
     ctaLabel: "查看研报",
     ctaPrimary: false,
     coverIcon: "gavel",
+    coverImage:
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuAKYtkBAoAZ2JL_wllmsMwv8qYdbzfxP2tSMz4ftKJb5lCoJQQap9fUitx9FVKE2bj_PDS06iPJHdJPXbuGWojV9CMfl__MBmGScJ1bIz2PrDSCyGMIkgncc9YdV744X9zSxb6-J-XW2j5jeQT_4PI1K-Usy4Ks0vqywJk-0wjCULifzo7CIVsiYm0wfjsrIYWCEV0Fn6mY_qZjkyh26gRGjiFo4HkUMWWvu98xdIZY7I5BStLlzGpK",
   },
 ];
