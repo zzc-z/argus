@@ -1,16 +1,16 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 export interface TopicsHeaderProps {
   /** Total topics configured (subtitle: "已配置 N 个研究课题监控"). */
-  totalTopics?: number;
+  totalTopics?: number
   /** Total sources ingested (subtitle: "已接入 N 个全网权威数据源"). */
-  totalSources?: number;
+  totalSources?: number
   /** Probe success rate printed in the quick-peek pill. */
-  successRate?: string;
+  successRate?: string
 }
 
 /**
@@ -22,25 +22,25 @@ export interface TopicsHeaderProps {
 export function TopicsHeader({
   totalTopics = 7,
   totalSources = 847,
-  successRate = "99.82%",
+  successRate = '99.82%',
 }: TopicsHeaderProps) {
   const openDrawer = React.useCallback(() => {
-    window.dispatchEvent(new CustomEvent("argus:topics:open-drawer"));
-  }, []);
+    window.dispatchEvent(new CustomEvent('argus:topics:open-drawer'))
+  }, [])
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if ((e.metaKey || e.ctrlKey) && (e.key === "n" || e.key === "N")) {
-        e.preventDefault();
-        openDrawer();
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'n' || e.key === 'N')) {
+        e.preventDefault()
+        openDrawer()
       }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [openDrawer]);
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [openDrawer])
 
   return (
     <section className={styles.root}>
@@ -50,19 +50,23 @@ export function TopicsHeader({
           <span className={styles.eyebrowSep}>·</span>
           <span className={styles.eyebrowNote}>DAG Cluster 巡检引擎已联机</span>
         </div>
-        <h1 className={`${styles.title} font-headline-xl tracking-tight text-on-surface`}>
+        <h1 className={`${styles.title} font-headline-xl text-on-surface tracking-tight`}>
           主题订阅管理 (Topic Subscriptions)
         </h1>
         <p className={`${styles.subtitle} font-body-md text-secondary`}>
-          当前已配置 <span className="font-code font-semibold text-on-surface">{totalTopics}</span> 个研究课题监控，已接入{" "}
-          <span className="font-code font-semibold text-on-surface">{totalSources}</span> 个全网权威数据源与 RSS 高置信度流
+          当前已配置 <span className="font-code text-on-surface font-semibold">{totalTopics}</span>{' '}
+          个研究课题监控，已接入{' '}
+          <span className="font-code text-on-surface font-semibold">{totalSources}</span>{' '}
+          个全网权威数据源与 RSS 高置信度流
         </p>
       </div>
 
       <div className={styles.actions}>
         <div className={styles.successPill}>
           <div className={styles.successText}>
-            <span className="font-label-sm uppercase tracking-wider text-secondary">巡检成功率</span>
+            <span className="font-label-sm text-secondary uppercase tracking-wider">
+              巡检成功率
+            </span>
             <span className={`${styles.successValue} font-code`}>{successRate}</span>
           </div>
           <div className={styles.successIcon}>
@@ -76,5 +80,5 @@ export function TopicsHeader({
         </button>
       </div>
     </section>
-  );
+  )
 }

@@ -1,6 +1,6 @@
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 /**
  * Streaming synthesis terminal view inside the DAG card.
@@ -17,14 +17,14 @@ export function LiveTerminal() {
         <span className={styles.live}>● 实时写入中</span>
       </div>
       <p className={styles.line}>
-        <span className={styles.agentTag}>» [Agent-02]:</span>{" "}
-        经对比 12 家主流 Foundry 财报与 IEEE 最新微架构测试基准，3nm GAA 漏电抑制指标已收敛。
+        <span className={styles.agentTag}>» [Agent-02]:</span> 经对比 12 家主流 Foundry 财报与 IEEE
+        最新微架构测试基准，3nm GAA 漏电抑制指标已收敛。
       </p>
       <p className={styles.line}>
-        <span className={styles.systemTag}>» [System]:</span>{" "}
-        自动生成架构演进决策雷达图，预计 2.4s 后完成研报终审...
+        <span className={styles.systemTag}>» [System]:</span> 自动生成架构演进决策雷达图，预计 2.4s
+        后完成研报终审...
         <span className={styles.caret} />
       </p>
     </div>
-  );
+  )
 }

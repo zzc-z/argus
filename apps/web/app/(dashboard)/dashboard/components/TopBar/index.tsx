@@ -1,7 +1,7 @@
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { KbdHint } from "@/components/common/KbdHint";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { KbdHint } from '@/components/common/KbdHint'
+import styles from './index.module.css'
 
 /** Fixed top bar — global search + bell + user. 1:1 extracted from argus_dashboard. */
 export function TopBar() {
@@ -35,5 +35,5 @@ export function TopBar() {
         </div>
       </div>
     </header>
-  );
+  )
 }

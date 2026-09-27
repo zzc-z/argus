@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 /**
  * Sources (资料库) — source library list page.
@@ -16,40 +16,40 @@
  *   - SourcePagination    (page numbers)
  */
 
-import * as React from "react";
-import { useState } from "react";
+import * as React from 'react'
+import { useState } from 'react'
 
-import { SourcesHeader } from "./components/SourcesHeader";
-import { SourceFilterBar } from "./components/SourceFilterBar";
-import { SourceFilterSidebar } from "./components/SourceFilterSidebar";
-import { SourceBulkRibbon } from "./components/SourceBulkRibbon";
-import { SourceTable } from "./components/SourceTable";
-import { SourcePagination } from "./components/SourcePagination";
+import { SourcesHeader } from './components/SourcesHeader'
+import { SourceFilterBar } from './components/SourceFilterBar'
+import { SourceFilterSidebar } from './components/SourceFilterSidebar'
+import { SourceBulkRibbon } from './components/SourceBulkRibbon'
+import { SourceTable } from './components/SourceTable'
+import { SourcePagination } from './components/SourcePagination'
 
-import { sourceRows } from "./mock";
-import styles from "./page.module.css";
+import { sourceRows } from './mock'
+import styles from './page.module.css'
 
 export default function SourcesPage() {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const toggleRow = (id: string) => {
     setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   const toggleAll = () => {
     setSelectedIds((prev) => {
-      if (prev.size === sourceRows.length) return new Set();
-      return new Set(sourceRows.map((r) => r.id));
-    });
-  };
+      if (prev.size === sourceRows.length) return new Set()
+      return new Set(sourceRows.map((r) => r.id))
+    })
+  }
 
-  const allChecked = selectedIds.size === sourceRows.length;
-  const indeterminate = selectedIds.size > 0 && selectedIds.size < sourceRows.length;
+  const allChecked = selectedIds.size === sourceRows.length
+  const indeterminate = selectedIds.size > 0 && selectedIds.size < sourceRows.length
 
   return (
     <div className={styles.body}>
@@ -71,5 +71,5 @@ export default function SourcesPage() {
         </div>
       </div>
     </div>
-  );
+  )
 }

@@ -34,7 +34,9 @@
   cursor: pointer;
   color: var(--token-on-surface-variant, #494456);
   text-align: left;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .item:hover {

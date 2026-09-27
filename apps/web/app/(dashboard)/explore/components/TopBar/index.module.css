@@ -51,7 +51,7 @@
 .sep {
   color: #666666;
   font-size: 12px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
 }
 
 .session {
@@ -67,7 +67,7 @@
 .modelBadge {
   font-size: 10px;
   text-transform: uppercase;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   padding: 2px 6px;
   border-radius: 8px;
   background-color: rgba(255, 255, 255, 0.04);
@@ -126,7 +126,7 @@
 
 .kbd {
   font-size: 10px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #666666;
   background-color: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -161,13 +161,18 @@
 }
 
 @keyframes livePulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .liveText {
   font-size: 11px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #a0a0a0;
 }
 
@@ -182,7 +187,9 @@
   align-items: center;
   gap: 6px;
   cursor: pointer;
-  transition: color 150ms ease-out, border-color 150ms ease-out;
+  transition:
+    color 150ms ease-out,
+    border-color 150ms ease-out;
 }
 
 .toggle:hover {

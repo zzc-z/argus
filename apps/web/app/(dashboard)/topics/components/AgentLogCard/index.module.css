@@ -36,15 +36,22 @@
 }
 
 @keyframes ping {
-  0%   { transform: scale(1);   opacity: 1; }
-  75%, 100% { transform: scale(2); opacity: 0; }
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
 }
 
 .log {
   background-color: var(--token-surface-container-low, #f3f4f5);
   border-radius: 0.5rem;
   padding: 0.625rem;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 12px;
   color: var(--token-secondary, #575e70);
   display: flex;

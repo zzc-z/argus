@@ -1,5 +1,5 @@
-import * as React from "react";
-import styles from "./index.module.css";
+import * as React from 'react'
+import styles from './index.module.css'
 
 /**
  * Visual DAG topology fault diagram — root, planner, vector, critic (suspended), synthesizer, destination.
@@ -83,13 +83,7 @@ export function TopologyDiagram() {
           r="14"
           strokeWidth="1.5"
         />
-        <text
-          className="font-code fill-secondary"
-          textAnchor="middle"
-          x="80"
-          y="64"
-          fontSize="10"
-        >
+        <text className="fill-secondary font-code" textAnchor="middle" x="80" y="64" fontSize="10">
           ROOT
         </text>
 
@@ -101,13 +95,7 @@ export function TopologyDiagram() {
           r="14"
           strokeWidth="1.5"
         />
-        <text
-          className="font-code fill-primary"
-          textAnchor="middle"
-          x="160"
-          y="39"
-          fontSize="9"
-        >
+        <text className="fill-primary font-code" textAnchor="middle" x="160" y="39" fontSize="9">
           PLAN
         </text>
 
@@ -119,13 +107,7 @@ export function TopologyDiagram() {
           r="14"
           strokeWidth="1.5"
         />
-        <text
-          className="font-code fill-secondary"
-          textAnchor="middle"
-          x="160"
-          y="89"
-          fontSize="9"
-        >
+        <text className="fill-secondary font-code" textAnchor="middle" x="160" y="89" fontSize="9">
           VEC
         </text>
 
@@ -138,7 +120,7 @@ export function TopologyDiagram() {
           strokeWidth="1.5"
         />
         <text
-          className="font-code fill-error font-medium"
+          className="fill-error font-code font-medium"
           textAnchor="middle"
           x="240"
           y="39"
@@ -155,13 +137,7 @@ export function TopologyDiagram() {
           r="14"
           strokeWidth="1.5"
         />
-        <text
-          className="font-code fill-secondary"
-          textAnchor="middle"
-          x="240"
-          y="89"
-          fontSize="9"
-        >
+        <text className="fill-secondary font-code" textAnchor="middle" x="240" y="89" fontSize="9">
           SYN
         </text>
 
@@ -174,13 +150,7 @@ export function TopologyDiagram() {
           strokeWidth="1.5"
           strokeDasharray="2 2"
         />
-        <text
-          className="font-code fill-outline"
-          textAnchor="middle"
-          x="320"
-          y="64"
-          fontSize="9"
-        >
+        <text className="fill-outline font-code" textAnchor="middle" x="320" y="64" fontSize="9">
           DEST
         </text>
 
@@ -196,5 +166,5 @@ export function TopologyDiagram() {
         />
       </svg>
     </div>
-  );
+  )
 }

@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
 import {
   SIDEBAR_CLUSTER_BAR_WIDTH,
   SIDEBAR_CLUSTER_DAG,
@@ -15,8 +15,8 @@ import {
   SIDEBAR_SUBTITLE,
   SIDEBAR_VERSION,
   SIDEBAR_WORKSPACE_LABEL,
-} from "../../mock";
-import styles from "./index.module.css";
+} from '../../mock'
+import styles from './index.module.css'
 
 /**
  * Left navigation rail. 1:1 with argus_reports/code.html.
@@ -61,8 +61,8 @@ export function Sidebar() {
               <a
                 key={item.id}
                 href={item.href}
-                className={`${styles.navItem} ${item.active ? styles.navItemActive : ""}`}
-                aria-current={item.active ? "page" : undefined}
+                className={`${styles.navItem} ${item.active ? styles.navItemActive : ''}`}
+                aria-current={item.active ? 'page' : undefined}
               >
                 <IconSpan name={item.icon} size={18} />
                 <span>{item.label}</span>
@@ -94,5 +94,5 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
-  );
+  )
 }

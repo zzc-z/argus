@@ -10,19 +10,11 @@
 }
 
 .unread {
-  background-color: color-mix(
-    in srgb,
-    var(--token-primary-fixed, #e8deff) 20%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 20%, transparent);
 }
 
 .unread:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--token-primary-fixed, #e8deff) 30%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 30%, transparent);
 }
 
 .read {
@@ -135,8 +127,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 /* Body */
@@ -163,7 +160,7 @@
 }
 
 .tag {
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   font-size: 16px;
   line-height: 24px;
   letter-spacing: -0.01em;
@@ -177,8 +174,10 @@
 
 .title {
   color: var(--token-on-surface, #191c1d);
-  font-family: "Geist", sans-serif;
-  transition: color 150ms ease-out, cursor 150ms ease-out;
+  font-family: 'Geist', sans-serif;
+  transition:
+    color 150ms ease-out,
+    cursor 150ms ease-out;
   cursor: pointer;
 }
 
@@ -198,7 +197,7 @@
 .bodyText {
   margin-top: 0.25rem;
   color: var(--token-secondary, #575e70);
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   line-height: 1.6;
 }
 
@@ -222,7 +221,7 @@
   gap: 0.25rem;
   flex-wrap: wrap;
   font-size: 11px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   color: var(--token-secondary, #575e70);
 }
 
@@ -369,7 +368,7 @@
   background-color: var(--token-primary-container, #7039f9);
   color: var(--token-on-primary, #ffffff);
   font-size: 12px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   border: 0;
   cursor: pointer;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
@@ -390,7 +389,7 @@
   background-color: var(--token-primary-container, #7039f9);
   color: var(--token-on-primary, #ffffff);
   font-size: 12px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   border: 0;
   cursor: pointer;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
@@ -410,10 +409,12 @@
   background-color: transparent;
   color: var(--token-secondary, #575e70);
   font-size: 12px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   border: 0;
   cursor: pointer;
-  transition: color 150ms ease-out, background-color 150ms ease-out;
+  transition:
+    color 150ms ease-out,
+    background-color 150ms ease-out;
 }
 
 .actionGhost:hover {
@@ -431,7 +432,7 @@
   background-color: var(--token-surface-container, #edeeef);
   color: var(--token-on-surface, #191c1d);
   font-size: 12px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   border: 0;
   cursor: pointer;
   transition: background-color 150ms ease-out;
@@ -457,7 +458,7 @@
   gap: 0.25rem;
   color: var(--token-primary-container, #7039f9);
   font-size: 12px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   text-decoration: none;
 }
 
@@ -471,7 +472,7 @@
   gap: 0.25rem;
   color: var(--token-secondary, #575e70);
   font-size: 12px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   text-decoration: none;
   transition: color 150ms ease-out;
 }
@@ -504,7 +505,9 @@
   color: var(--token-secondary, #575e70);
   border: 0;
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .iconBtn:hover {

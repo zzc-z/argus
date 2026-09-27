@@ -22,7 +22,7 @@
 .theadRow {
   background-color: var(--token-surface-container-low, #f3f4f5);
   color: var(--token-secondary, #575e70);
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
   letter-spacing: -0.01em;
   font-weight: 500;
@@ -33,17 +33,34 @@
   padding-inline: 1rem;
 }
 
-.thCheck  { width: 2.5rem; }
-.thTitle  { min-width: 320px; }
-.thSources{ min-width: 210px; }
-.thUpdated{ min-width: 130px; }
-.thUnread { min-width: 130px; }
-.thFreq   { min-width: 150px; }
-.thStatus { min-width: 110px; }
-.thActions{ width: 5rem; text-align: right; }
+.thCheck {
+  width: 2.5rem;
+}
+.thTitle {
+  min-width: 320px;
+}
+.thSources {
+  min-width: 210px;
+}
+.thUpdated {
+  min-width: 130px;
+}
+.thUnread {
+  min-width: 130px;
+}
+.thFreq {
+  min-width: 150px;
+}
+.thStatus {
+  min-width: 110px;
+}
+.thActions {
+  width: 5rem;
+  text-align: right;
+}
 
 .tbody {
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   font-size: 13px;
   color: var(--token-on-surface, #191c1d);
 }
@@ -70,7 +87,7 @@
   padding: 0.75rem 1rem;
   background-color: var(--token-surface-container-low, #f3f4f5);
   color: var(--token-secondary, #575e70);
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   font-size: 13px;
 }
 
@@ -137,7 +154,9 @@
   border: none;
   font-size: 12px;
   cursor: pointer;
-  transition: background-color 150ms, color 150ms;
+  transition:
+    background-color 150ms,
+    color 150ms;
 }
 
 .batchBtn:hover:not(:disabled) {

@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import styles from "./index.module.css";
+import * as React from 'react'
+import styles from './index.module.css'
 
 /**
  * Bottom pagination bar — summary text + page buttons.
@@ -37,5 +37,5 @@ export function SourcePagination() {
         </button>
       </div>
     </div>
-  );
+  )
 }

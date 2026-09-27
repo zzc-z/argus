@@ -1,13 +1,13 @@
-import * as React from "react";
-import styles from "./index.module.css";
+import * as React from 'react'
+import styles from './index.module.css'
 
 export interface PaginationFooterProps {
-  shownFrom: number;
-  shownTo: number;
-  total: number;
-  currentPage: number;
+  shownFrom: number
+  shownTo: number
+  total: number
+  currentPage: number
   /** When true, the surrounding section uses a compact 1-row layout. */
-  compact?: boolean;
+  compact?: boolean
 }
 
 /**
@@ -21,7 +21,7 @@ export function PaginationFooter({
   currentPage,
   compact,
 }: PaginationFooterProps) {
-  const pages = [1, 2, 3];
+  const pages = [1, 2, 3]
   return (
     <div className={compact ? styles.rowCompact : styles.row}>
       <span className={styles.label}>
@@ -45,5 +45,5 @@ export function PaginationFooter({
         </button>
       </div>
     </div>
-  );
+  )
 }

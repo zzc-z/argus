@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
 import {
   FILTER_TABS,
   SEARCH_PLACEHOLDER,
@@ -9,21 +9,21 @@ import {
   SORT_OPTIONS,
   VIEW_GRID_LABEL,
   VIEW_TABLE_LABEL,
-} from "../../mock";
-import styles from "./index.module.css";
+} from '../../mock'
+import styles from './index.module.css'
 
-export type ViewMode = "table" | "grid";
-export type SortId = (typeof SORT_OPTIONS)[number]["id"];
+export type ViewMode = 'table' | 'grid'
+export type SortId = (typeof SORT_OPTIONS)[number]['id']
 
 export interface FilterBarProps {
-  activeTabId: string;
-  onTabChange: (id: string) => void;
-  search: string;
-  onSearchChange: (v: string) => void;
-  sortId: SortId;
-  onSortChange: (id: SortId) => void;
-  view: ViewMode;
-  onViewChange: (v: ViewMode) => void;
+  activeTabId: string
+  onTabChange: (id: string) => void
+  search: string
+  onSearchChange: (v: string) => void
+  sortId: SortId
+  onSortChange: (id: SortId) => void
+  view: ViewMode
+  onViewChange: (v: ViewMode) => void
 }
 
 /**
@@ -45,21 +45,21 @@ export function FilterBar({
       {/* Category tabs */}
       <div className={styles.tabs}>
         {FILTER_TABS.map((tab) => {
-          const active = tab.id === activeTabId;
+          const active = tab.id === activeTabId
           return (
             <button
               key={tab.id}
               type="button"
-              className={`${styles.tab} ${active ? styles.tabActive : ""}`}
+              className={`${styles.tab} ${active ? styles.tabActive : ''}`}
               onClick={() => onTabChange(tab.id)}
               aria-pressed={active}
             >
               <span>{tab.label}</span>
-              <span className={`${styles.tabCount} ${active ? styles.tabCountActive : ""}`}>
+              <span className={`${styles.tabCount} ${active ? styles.tabCountActive : ''}`}>
                 {tab.count}
               </span>
             </button>
-          );
+          )
         })}
       </div>
 
@@ -95,8 +95,8 @@ export function FilterBar({
         <div className={styles.viewSwitcher}>
           <button
             type="button"
-            className={`${styles.viewBtn} ${view === "table" ? styles.viewBtnActive : ""}`}
-            onClick={() => onViewChange("table")}
+            className={`${styles.viewBtn} ${view === 'table' ? styles.viewBtnActive : ''}`}
+            onClick={() => onViewChange('table')}
             aria-label={VIEW_TABLE_LABEL}
             title={VIEW_TABLE_LABEL}
           >
@@ -104,8 +104,8 @@ export function FilterBar({
           </button>
           <button
             type="button"
-            className={`${styles.viewBtn} ${view === "grid" ? styles.viewBtnActive : ""}`}
-            onClick={() => onViewChange("grid")}
+            className={`${styles.viewBtn} ${view === 'grid' ? styles.viewBtnActive : ''}`}
+            onClick={() => onViewChange('grid')}
             aria-label={VIEW_GRID_LABEL}
             title={VIEW_GRID_LABEL}
           >
@@ -114,5 +114,5 @@ export function FilterBar({
         </div>
       </div>
     </div>
-  );
+  )
 }

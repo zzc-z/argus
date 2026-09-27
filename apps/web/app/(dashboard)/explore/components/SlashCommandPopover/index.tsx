@@ -1,13 +1,13 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { SLASH_COMMANDS, type SlashCommand } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { SLASH_COMMANDS, type SlashCommand } from '../../mock'
+import styles from './index.module.css'
 
 export interface SlashCommandPopoverProps {
-  visible: boolean;
-  onSelect: (cmd: SlashCommand) => void;
+  visible: boolean
+  onSelect: (cmd: SlashCommand) => void
 }
 
 /**
@@ -15,7 +15,7 @@ export interface SlashCommandPopoverProps {
  * Selecting an entry inserts the command text into the input (handled by parent).
  */
 export function SlashCommandPopover({ visible, onSelect }: SlashCommandPopoverProps) {
-  if (!visible) return null;
+  if (!visible) return null
 
   return (
     <div className={styles.popover} role="listbox">
@@ -24,12 +24,7 @@ export function SlashCommandPopover({ visible, onSelect }: SlashCommandPopoverPr
         <span>智能体指令 (Agent Commands)</span>
       </div>
       {SLASH_COMMANDS.map((c) => (
-        <button
-          key={c.cmd}
-          type="button"
-          className={styles.row}
-          onClick={() => onSelect(c)}
-        >
+        <button key={c.cmd} type="button" className={styles.row} onClick={() => onSelect(c)}>
           <div className={styles.rowLeft}>
             <span className={styles.rowCmd}>{c.cmd}</span>
             <span className={styles.rowDesc}>{c.description}</span>
@@ -38,5 +33,5 @@ export function SlashCommandPopover({ visible, onSelect }: SlashCommandPopoverPr
         </button>
       ))}
     </div>
-  );
+  )
 }

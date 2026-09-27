@@ -2,25 +2,19 @@
  * PageHeader — 1:1 with argus_dashboard/code.html top control row.
  */
 
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 export interface PageHeaderProps {
-  title: string;
-  titleChip: string;
-  greeting: string;
-  date: string;
-  notifications: number;
-  activeSubscriptions: number;
+  title: string
+  titleChip: string
+  greeting: string
+  date: string
+  notifications: number
+  activeSubscriptions: number
 }
 
-export function PageHeader({
-  title,
-  titleChip,
-  greeting,
-  date,
-  notifications,
-}: PageHeaderProps) {
+export function PageHeader({ title, titleChip, greeting, date, notifications }: PageHeaderProps) {
   return (
     <div className={styles.root}>
       <div className={styles.left}>
@@ -43,9 +37,7 @@ export function PageHeader({
       <div className={styles.right}>
         <button type="button" aria-label="通知中心" className={styles.notifyBtn}>
           <IconSpan name="notifications" size={20} />
-          {notifications > 0 && (
-            <span className={styles.notifyCount}>{notifications}</span>
-          )}
+          {notifications > 0 && <span className={styles.notifyCount}>{notifications}</span>}
         </button>
 
         <button type="button" className={styles.tuneBtn}>
@@ -60,5 +52,5 @@ export function PageHeader({
         </button>
       </div>
     </div>
-  );
+  )
 }

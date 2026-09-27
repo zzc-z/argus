@@ -1,14 +1,14 @@
-"use client";
+'use client'
 
-import { TopicsHeader } from "./components/TopicsHeader";
-import { MetricsGrid } from "./components/MetricsGrid";
-import { FilterBar } from "./components/FilterBar";
-import { TopicTable } from "./components/TopicTable";
-import { TemplateCard } from "./components/TemplateCard";
-import { AgentLogCard } from "./components/AgentLogCard";
-import { NewSubscriptionDrawer } from "./components/NewSubscriptionDrawer";
+import { TopicsHeader } from './components/TopicsHeader'
+import { MetricsGrid } from './components/MetricsGrid'
+import { FilterBar } from './components/FilterBar'
+import { TopicTable } from './components/TopicTable'
+import { TemplateCard } from './components/TemplateCard'
+import { AgentLogCard } from './components/AgentLogCard'
+import { NewSubscriptionDrawer } from './components/NewSubscriptionDrawer'
 
-import { TEMPLATES, AGENT_LOG } from "./mock";
+import { TEMPLATES, AGENT_LOG } from './mock'
 
 /**
  * 主题订阅管理 (Topic Subscriptions) page — 1:1 with argus_topics/code.html.
@@ -25,8 +25,8 @@ import { TEMPLATES, AGENT_LOG } from "./mock";
  */
 export default function TopicsPage() {
   return (
-    <main className="w-full px-space-lg bg-surface min-h-screen pt-space-lg pb-space-xl">
-      <div className="flex flex-col w-full">
+    <main className="px-space-lg pt-space-lg pb-space-xl bg-surface min-h-screen w-full">
+      <div className="flex w-full flex-col">
         <TopicsHeader />
 
         <MetricsGrid />
@@ -35,7 +35,7 @@ export default function TopicsPage() {
 
         <TopicTable />
 
-        <section className="grid grid-cols-1 lg:grid-cols-3 gap-space-md mt-space-lg">
+        <section className="gap-space-md mt-space-lg grid grid-cols-1 lg:grid-cols-3">
           {TEMPLATES.map((tpl) => (
             <TemplateCard
               key={tpl.id}
@@ -51,5 +51,5 @@ export default function TopicsPage() {
         <NewSubscriptionDrawer />
       </div>
     </main>
-  );
+  )
 }

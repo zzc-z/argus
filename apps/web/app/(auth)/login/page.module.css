@@ -16,15 +16,27 @@
   flex-direction: column;
   justify-content: space-between;
   background-color: var(--token-surface-container-lowest, #ffffff);
-  border-right: 1px solid color-mix(in srgb, var(--token-surface-container-high, #e7e8e9) 70%, transparent);
+  border-right: 1px solid
+    color-mix(in srgb, var(--token-surface-container-high, #e7e8e9) 70%, transparent);
   position: relative;
   z-index: 10;
   padding: 2rem 1.5rem;
 
-  @media (min-width: 640px)  { padding-inline: 3rem; }
-  @media (min-width: 768px)  { padding-inline: 4rem; }
-  @media (min-width: 1024px) { width: 46%; padding-inline: 3.5rem; padding-block: 2.5rem; }
-  @media (min-width: 1280px) { width: 44%; padding-inline: 5rem; }
+  @media (min-width: 640px) {
+    padding-inline: 3rem;
+  }
+  @media (min-width: 768px) {
+    padding-inline: 4rem;
+  }
+  @media (min-width: 1024px) {
+    width: 46%;
+    padding-inline: 3.5rem;
+    padding-block: 2.5rem;
+  }
+  @media (min-width: 1280px) {
+    width: 44%;
+    padding-inline: 5rem;
+  }
 }
 
 .legal {

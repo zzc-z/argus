@@ -4,7 +4,7 @@
    Tailwind arbitrary value compilation. */
 
 :global(.material-symbols-outlined) {
-  font-family: "Material Symbols Outlined";
+  font-family: 'Material Symbols Outlined';
   font-weight: normal;
   font-style: normal;
   font-size: inherit;
@@ -15,6 +15,6 @@
   white-space: nowrap;
   word-wrap: normal;
   direction: ltr;
-  -webkit-font-feature-settings: "liga";
+  -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
 }

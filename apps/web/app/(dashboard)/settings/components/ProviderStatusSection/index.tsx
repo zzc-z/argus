@@ -1,14 +1,14 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { StatusDot } from "@/components/common/StatusDot";
-import type { ProviderStatus } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { StatusDot } from '@/components/common/StatusDot'
+import type { ProviderStatus } from '../../mock'
+import styles from './index.module.css'
 
 export interface ProviderStatusSectionProps {
-  providers: ProviderStatus[];
-  onConfigure: () => void;
+  providers: ProviderStatus[]
+  onConfigure: () => void
 }
 
 /**
@@ -21,7 +21,7 @@ export function ProviderStatusSection({ providers, onConfigure }: ProviderStatus
       <div className={styles.head}>
         <div className={styles.headLeft}>
           <IconSpan name="bolt" size={20} className="text-primary-container" />
-          <h3 className={`${styles.title} font-headline-sm font-medium text-on-surface`}>
+          <h3 className={`${styles.title} font-headline-sm text-on-surface font-medium`}>
             模型与 API 接入简览
           </h3>
           <span className={`${styles.tag} font-label-sm text-secondary`}>
@@ -49,7 +49,7 @@ export function ProviderStatusSection({ providers, onConfigure }: ProviderStatus
               </span>
               <span
                 className={`${styles.metricLabel} font-code ${
-                  p.metricTone === "primary" ? "text-primary" : "text-secondary"
+                  p.metricTone === 'primary' ? 'text-primary' : 'text-secondary'
                 }`}
               >
                 {p.metricLabel}
@@ -59,5 +59,5 @@ export function ProviderStatusSection({ providers, onConfigure }: ProviderStatus
         ))}
       </div>
     </section>
-  );
+  )
 }

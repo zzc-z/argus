@@ -29,7 +29,9 @@
   border: none;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .tab:hover {
@@ -79,7 +81,9 @@
   color: var(--token-on-surface-variant, #494456);
   cursor: pointer;
   border-radius: 0.25rem;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .expandBtn:hover {

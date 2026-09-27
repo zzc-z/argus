@@ -7,8 +7,12 @@
   color: var(--token-inverse-on-surface, #f0f1f2);
   padding: 0.625rem 1rem;
   border-radius: 9999px;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  transition: transform 300ms ease-out, opacity 300ms ease-out;
+  box-shadow:
+    0 20px 25px -5px rgba(0, 0, 0, 0.15),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  transition:
+    transform 300ms ease-out,
+    opacity 300ms ease-out;
   transform: translateX(-50%);
 }
 
@@ -50,7 +54,7 @@
 }
 
 .countNum {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-weight: 700;
 }
 
@@ -100,7 +104,9 @@
   color: rgba(255, 255, 255, 0.7);
   border: none;
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .cancelBtn:hover {

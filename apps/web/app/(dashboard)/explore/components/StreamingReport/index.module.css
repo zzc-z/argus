@@ -19,7 +19,7 @@
   gap: 0.75rem;
   margin-bottom: 0.75rem;
   font-size: 12px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #666666;
 }
 
@@ -76,7 +76,7 @@
 /* ──────── Citation superscript ──────── */
 
 .cite {
-  font-feature-settings: "sups" 1;
+  font-feature-settings: 'sups' 1;
   font-variant-numeric: super;
   display: inline-flex;
   align-items: center;
@@ -92,7 +92,10 @@
   cursor: pointer;
   position: relative;
   top: -0.45em;
-  transition: color 120ms ease-out, background-color 120ms ease-out, border-color 120ms ease-out;
+  transition:
+    color 120ms ease-out,
+    background-color 120ms ease-out,
+    border-color 120ms ease-out;
   font-family: inherit;
 }
 
@@ -125,7 +128,7 @@
   padding-bottom: 0.5rem;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   font-size: 12px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #666666;
 }
 
@@ -138,7 +141,7 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   font-size: 12px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
 }
 
 .metricCol {
@@ -188,6 +191,12 @@
 }
 
 @keyframes cursorBlink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }

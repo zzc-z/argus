@@ -43,7 +43,11 @@
 }
 
 .row:hover {
-  background-color: color-mix(in srgb, var(--token-surface-container-lowest, #ffffff) 60%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-lowest, #ffffff) 60%,
+    transparent
+  );
 }
 
 .td {

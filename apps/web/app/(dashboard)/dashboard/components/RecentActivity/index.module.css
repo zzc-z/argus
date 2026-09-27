@@ -102,11 +102,7 @@
 
 .rowHighlight {
   border-radius: 0.375rem;
-  background-color: color-mix(
-    in srgb,
-    var(--token-primary-fixed, #e8deff) 20%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 20%, transparent);
   box-shadow: inset 0 0 0 1px var(--token-primary-container, #7039f9);
 }
 

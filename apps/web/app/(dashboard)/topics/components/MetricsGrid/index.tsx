@@ -1,7 +1,7 @@
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { METRICS } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { METRICS } from '../../mock'
+import styles from './index.module.css'
 
 /**
  * Four-card metrics row beneath the header. Each card renders one icon + label,
@@ -20,21 +20,21 @@ export function MetricsGrid() {
               name={m.icon}
               size={18}
               className={
-                m.iconTone === "primary"
-                  ? "text-primary"
-                  : m.iconTone === "error"
-                    ? "text-error"
-                    : "text-secondary"
+                m.iconTone === 'primary'
+                  ? 'text-primary'
+                  : m.iconTone === 'error'
+                    ? 'text-error'
+                    : 'text-secondary'
               }
             />
           </div>
           <div className={styles.cardValue}>
-            <span className={`${styles.value} font-headline-lg font-semibold text-on-surface`}>
+            <span className={`${styles.value} font-headline-lg text-on-surface font-semibold`}>
               {m.value}
             </span>
             <span className={`${styles.caption} font-label-sm text-secondary`}>{m.caption}</span>
           </div>
-          {m.accent?.kind === "progress" && m.accent.ratio !== undefined && (
+          {m.accent?.kind === 'progress' && m.accent.ratio !== undefined && (
             <div className={styles.progress} role="presentation">
               <span
                 className={styles.progressFill}
@@ -42,17 +42,19 @@ export function MetricsGrid() {
               />
             </div>
           )}
-          {m.accent?.kind === "footer" && (
-            <div className={`${styles.accentFooter} ${m.iconTone === "error" ? styles.accentPrimary : ""} font-label-sm text-secondary`}>
-              {m.iconTone === "error" && <span className={styles.accentDot} />}
+          {m.accent?.kind === 'footer' && (
+            <div
+              className={`${styles.accentFooter} ${m.iconTone === 'error' ? styles.accentPrimary : ''} font-label-sm text-secondary`}
+            >
+              {m.iconTone === 'error' && <span className={styles.accentDot} />}
               {m.accent.text}
             </div>
           )}
-          {m.accent?.kind === "delta" && (
+          {m.accent?.kind === 'delta' && (
             <span className={`${styles.delta} font-code text-primary`}>{m.accent.text}</span>
           )}
         </article>
       ))}
     </section>
-  );
+  )
 }

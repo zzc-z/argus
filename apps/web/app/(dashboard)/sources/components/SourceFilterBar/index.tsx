@@ -1,8 +1,8 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 /**
  * Filter & control sub-bar — category tabs + search + view switcher + sort.
@@ -10,11 +10,11 @@ import styles from "./index.module.css";
  */
 export function SourceFilterBar() {
   const tabs = [
-    { label: "全部", count: 847, active: true },
-    { label: "文档 Documents", count: 412, active: false },
-    { label: "网页 URLs", count: 287, active: false },
-    { label: "订阅源 RSS", count: 148, active: false },
-  ];
+    { label: '全部', count: 847, active: true },
+    { label: '文档 Documents', count: 412, active: false },
+    { label: '网页 URLs', count: 287, active: false },
+    { label: '订阅源 RSS', count: 148, active: false },
+  ]
 
   return (
     <section className={styles.bar}>
@@ -23,11 +23,11 @@ export function SourceFilterBar() {
           <button
             key={tab.label}
             type="button"
-            className={`${styles.tab} ${tab.active ? styles.tabActive : ""} font-body-sm`}
+            className={`${styles.tab} ${tab.active ? styles.tabActive : ''} font-body-sm`}
           >
             <span>{tab.label}</span>
             <span
-              className={`${styles.tabCount} font-code ${tab.active ? styles.tabCountActive : ""}`}
+              className={`${styles.tabCount} font-code ${tab.active ? styles.tabCountActive : ''}`}
             >
               {tab.count}
             </span>
@@ -67,5 +67,5 @@ export function SourceFilterBar() {
         </button>
       </div>
     </section>
-  );
+  )
 }

@@ -1,9 +1,9 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import Link from "next/link";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import Link from 'next/link'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 /**
  * Page header — breadcrumbs (back to /sources) + title + live status chip.
@@ -24,12 +24,11 @@ export function AddSourcesHeader() {
       <div className={styles.titleRow}>
         <div className={styles.titleLeft}>
           <h1 className={`${styles.title} font-headline-lg font-semibold tracking-tight`}>
-            添加研究资料{" "}
+            添加研究资料{' '}
             <span className={`${styles.titleAccent} font-code font-normal`}>Add Sources</span>
           </h1>
           <p className={`${styles.subtitle} font-body-sm`}>
-            上传离线研究文档、输入网页链接或订阅专业 RSS 数据流以扩充 Argus
-            知识库与推演图谱
+            上传离线研究文档、输入网页链接或订阅专业 RSS 数据流以扩充 Argus 知识库与推演图谱
           </p>
         </div>
 
@@ -45,5 +44,5 @@ export function AddSourcesHeader() {
         </div>
       </div>
     </header>
-  );
+  )
 }

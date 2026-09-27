@@ -1,15 +1,15 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import type { NotificationWithMeta, NotificationCategory } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import type { NotificationWithMeta, NotificationCategory } from '../../mock'
+import styles from './index.module.css'
 
 export interface NotificationItemProps {
-  item: NotificationWithMeta;
-  selected: boolean;
-  onToggle: () => void;
-  onMarkRead: () => void;
+  item: NotificationWithMeta
+  selected: boolean
+  onToggle: () => void
+  onMarkRead: () => void
 }
 
 /**
@@ -18,22 +18,17 @@ export interface NotificationItemProps {
  * argus_notifications/code.html lines 121-365.
  */
 export function NotificationItem({ item, selected, onToggle, onMarkRead }: NotificationItemProps) {
-  const compact = isCompact(item);
+  const compact = isCompact(item)
   const containerClass = compact
     ? styles.compactContainer
     : item.unread
-    ? `${styles.container} ${styles.unread}`
-    : `${styles.container} ${styles.read}`;
+      ? `${styles.container} ${styles.unread}`
+      : `${styles.container} ${styles.read}`
 
   return (
     <article className={containerClass}>
       <div className={styles.checkboxWrap}>
-        <input
-          type="checkbox"
-          className={styles.checkbox}
-          checked={selected}
-          onChange={onToggle}
-        />
+        <input type="checkbox" className={styles.checkbox} checked={selected} onChange={onToggle} />
       </div>
 
       {!compact && (
@@ -43,16 +38,16 @@ export function NotificationItem({ item, selected, onToggle, onMarkRead }: Notif
       <div className={styles.body}>
         <div className={styles.headRow}>
           <div className={styles.titleWrap}>
-            <span className={`${styles.tag} ${item.unread ? styles.tagUnread : ""}`}>
+            <span className={`${styles.tag} ${item.unread ? styles.tagUnread : ''}`}>
               {item.tag}
             </span>
             <span
-              className={`${styles.title} font-headline-sm ${item.unread ? "font-semibold" : "font-medium"} truncate`}
+              className={`${styles.title} font-headline-sm ${item.unread ? 'font-semibold' : 'font-medium'} truncate`}
             >
               {item.title}
             </span>
           </div>
-          <span className={`${styles.time} font-label-sm font-code`}>
+          <span className={`${styles.time} font-code font-label-sm`}>
             {item.time}
             {item.timeDetail && <span className={styles.timeDetail}> · {item.timeDetail}</span>}
           </span>
@@ -88,7 +83,7 @@ export function NotificationItem({ item, selected, onToggle, onMarkRead }: Notif
         )}
       </div>
     </article>
-  );
+  )
 }
 
 function isCompact(item: NotificationWithMeta): boolean {
@@ -99,7 +94,7 @@ function isCompact(item: NotificationWithMeta): boolean {
     !item.errorCode &&
     !item.memoryWeight &&
     !item.tailTag
-  );
+  )
 }
 
 function NotificationBadge({
@@ -107,26 +102,26 @@ function NotificationBadge({
   severity,
   unread,
 }: {
-  icon: string;
-  severity: NotificationWithMeta["severity"];
-  unread: boolean;
+  icon: string
+  severity: NotificationWithMeta['severity']
+  unread: boolean
 }) {
-  let badgeClass = styles.badgeDefault;
-  let iconClass = styles.badgeIconDefault;
-  let dot: React.ReactNode = null;
+  let badgeClass = styles.badgeDefault
+  let iconClass = styles.badgeIconDefault
+  let dot: React.ReactNode = null
 
-  if (severity === "warning") {
-    badgeClass = styles.badgeWarn;
-    iconClass = styles.badgeIconWarn;
+  if (severity === 'warning') {
+    badgeClass = styles.badgeWarn
+    iconClass = styles.badgeIconWarn
   } else if (unread) {
-    badgeClass = styles.badgeUnread;
-    iconClass = styles.badgeIconUnread;
-    if (severity === "info") {
-      dot = <span className={`${styles.badgeDot} ${styles.badgeDotInfo}`} />;
-    } else if (severity === "success") {
-      dot = <span className={`${styles.badgeDot} ${styles.badgeDotSuccess}`} />;
-    } else if (severity === "memory") {
-      dot = <span className={`${styles.badgeDot} ${styles.badgeDotMemory}`} />;
+    badgeClass = styles.badgeUnread
+    iconClass = styles.badgeIconUnread
+    if (severity === 'info') {
+      dot = <span className={`${styles.badgeDot} ${styles.badgeDotInfo}`} />
+    } else if (severity === 'success') {
+      dot = <span className={`${styles.badgeDot} ${styles.badgeDotSuccess}`} />
+    } else if (severity === 'memory') {
+      dot = <span className={`${styles.badgeDot} ${styles.badgeDotMemory}`} />
     }
   }
 
@@ -135,7 +130,7 @@ function NotificationBadge({
       <IconSpan name={icon} size={20} className={iconClass} />
       {dot}
     </div>
-  );
+  )
 }
 
 function ChipsRow({
@@ -144,10 +139,10 @@ function ChipsRow({
   sentiment,
   sparkline,
 }: {
-  topic: string;
-  source: string;
-  sentiment: string;
-  sparkline?: string;
+  topic: string
+  source: string
+  sentiment: string
+  sparkline?: string
 }) {
   return (
     <div className={styles.chipsRow}>
@@ -161,12 +156,7 @@ function ChipsRow({
       {sparkline && (
         <div className={styles.sparkWrap}>
           <span className={`${styles.sparkLabel} font-code`}>波动:</span>
-          <svg
-            className={styles.spark}
-            viewBox="0 0 64 16"
-            fill="none"
-            aria-hidden="true"
-          >
+          <svg className={styles.spark} viewBox="0 0 64 16" fill="none" aria-hidden="true">
             <path
               d={sparkline}
               stroke="currentColor"
@@ -178,7 +168,7 @@ function ChipsRow({
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function ConfidenceRow({
@@ -186,9 +176,9 @@ function ConfidenceRow({
   summary,
   badge,
 }: {
-  score: string;
-  summary: string;
-  badge?: string;
+  score: string
+  summary: string
+  badge?: string
 }) {
   return (
     <div className={styles.confRow}>
@@ -208,7 +198,7 @@ function ConfidenceRow({
         </>
       )}
     </div>
-  );
+  )
 }
 
 function BottomActions({
@@ -218,18 +208,18 @@ function BottomActions({
   tailTag,
   onMarkRead,
 }: {
-  category: NotificationCategory;
-  errorCode?: string;
-  memoryWeight?: string;
-  tailTag?: string;
-  onMarkRead: () => void;
+  category: NotificationCategory
+  errorCode?: string
+  memoryWeight?: string
+  tailTag?: string
+  onMarkRead: () => void
 }) {
-  let left: React.ReactNode = null;
+  let left: React.ReactNode = null
   let right: React.ReactNode = (
     <IconAction icon="check_circle" title="标为已读" onClick={onMarkRead} hoverTone="primary" />
-  );
+  )
 
-  if (category === "subscriptions") {
+  if (category === 'subscriptions') {
     left = (
       <>
         <button type="button" className={`${styles.actionPrimary} font-headline-sm`}>
@@ -240,8 +230,8 @@ function BottomActions({
           定位至知识拓扑
         </button>
       </>
-    );
-  } else if (category === "reports") {
+    )
+  } else if (category === 'reports') {
     left = (
       <>
         <button type="button" className={`${styles.actionPillPrimary} font-headline-sm`}>
@@ -253,14 +243,14 @@ function BottomActions({
           <span>导出 PDF/Markdown</span>
         </button>
       </>
-    );
+    )
     right = (
       <>
         {right}
         <IconAction icon="share" title="分享报告" hoverTone="default" onClick={onMarkRead} />
       </>
-    );
-  } else if (category === "memory") {
+    )
+  } else if (category === 'memory') {
     left = (
       <>
         <a className={`${styles.linkPrimary} font-headline-sm`} href="#">
@@ -270,8 +260,8 @@ function BottomActions({
         <span className={`${styles.dotSep} font-code`}>·</span>
         <span className={`${styles.memoryWeight} font-label-sm`}>{memoryWeight}</span>
       </>
-    );
-  } else if (category === "weekly") {
+    )
+  } else if (category === 'weekly') {
     left = (
       <>
         <a className={`${styles.linkPlain} font-body-sm`} href="#">
@@ -280,8 +270,8 @@ function BottomActions({
         </a>
         <span className={`${styles.tailTag} font-code`}>{tailTag}</span>
       </>
-    );
-  } else if (category === "system") {
+    )
+  } else if (category === 'system') {
     left = (
       <>
         <button type="button" className={`${styles.actionWarn} font-body-sm`}>
@@ -290,7 +280,7 @@ function BottomActions({
         </button>
         <span className={`${styles.errorCode} font-code`}>{errorCode}</span>
       </>
-    );
+    )
   }
 
   return (
@@ -298,7 +288,7 @@ function BottomActions({
       <div className={styles.actionsLeft}>{left}</div>
       <div className={styles.actionsRight}>{right}</div>
     </div>
-  );
+  )
 }
 
 function IconAction({
@@ -307,21 +297,16 @@ function IconAction({
   onClick,
   hoverTone,
 }: {
-  icon: string;
-  title: string;
-  onClick: () => void;
-  hoverTone: "primary" | "default";
+  icon: string
+  title: string
+  onClick: () => void
+  hoverTone: 'primary' | 'default'
 }) {
   const iconHoverClass =
-    hoverTone === "primary" ? styles.iconBtnIconPrimary : styles.iconBtnIconDefault;
+    hoverTone === 'primary' ? styles.iconBtnIconPrimary : styles.iconBtnIconDefault
   return (
-    <button
-      type="button"
-      className={styles.iconBtn}
-      title={title}
-      onClick={onClick}
-    >
+    <button type="button" className={styles.iconBtn} title={title} onClick={onClick}>
       <IconSpan name={icon} size={16} className={iconHoverClass} />
     </button>
-  );
+  )
 }

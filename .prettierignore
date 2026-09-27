@@ -1,0 +1,11 @@
+node_modules
+.next
+.turbo
+dist
+coverage
+.pnpm-store
+prd
+playwright-report
+test-results
+.claude
+.worktrees

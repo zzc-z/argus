@@ -1,13 +1,13 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { useEffect, useState } from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { useEffect, useState } from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
-type Theme = "light" | "dark";
+type Theme = 'light' | 'dark'
 
-const STORAGE_KEY = "argus.theme";
+const STORAGE_KEY = 'argus.theme'
 
 /**
  * Light/Dark theme toggle button.
@@ -21,20 +21,20 @@ const STORAGE_KEY = "argus.theme";
  * to keep server & client HTML identical before hydration.
  */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("light");
+  const [theme, setTheme] = useState<Theme>('light')
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    const initial: Theme = stored === "dark" ? "dark" : "light";
-    setTheme(initial);
-    document.documentElement.dataset.theme = initial;
-  }, []);
+    const stored = window.localStorage.getItem(STORAGE_KEY)
+    const initial: Theme = stored === 'dark' ? 'dark' : 'light'
+    setTheme(initial)
+    document.documentElement.dataset.theme = initial
+  }, [])
 
   function toggle() {
-    const next: Theme = theme === "light" ? "dark" : "light";
-    setTheme(next);
-    document.documentElement.dataset.theme = next;
-    window.localStorage.setItem(STORAGE_KEY, next);
+    const next: Theme = theme === 'light' ? 'dark' : 'light'
+    setTheme(next)
+    document.documentElement.dataset.theme = next
+    window.localStorage.setItem(STORAGE_KEY, next)
   }
 
   return (
@@ -42,13 +42,10 @@ export function ThemeToggle() {
       type="button"
       onClick={toggle}
       className={styles.toggle}
-      aria-label={`切换到${theme === "light" ? "深色" : "浅色"}主题`}
-      title={`切换到${theme === "light" ? "深色" : "浅色"}主题`}
+      aria-label={`切换到${theme === 'light' ? '深色' : '浅色'}主题`}
+      title={`切换到${theme === 'light' ? '深色' : '浅色'}主题`}
     >
-      <IconSpan
-        name={theme === "light" ? "dark_mode" : "light_mode"}
-        size={16}
-      />
+      <IconSpan name={theme === 'light' ? 'dark_mode' : 'light_mode'} size={16} />
     </button>
-  );
+  )
 }

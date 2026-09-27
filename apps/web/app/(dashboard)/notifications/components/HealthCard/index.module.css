@@ -20,12 +20,12 @@
   letter-spacing: -0.01em;
   font-weight: 600;
   color: var(--token-on-surface, #191c1d);
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
 }
 
 .score {
   font-size: 12px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-weight: 500;
   color: var(--token-primary-container, #7039f9);
 }
@@ -36,7 +36,7 @@
   gap: 0.5rem;
   font-size: 14px;
   line-height: 22px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
 }
 
 .sourceRow {
@@ -59,13 +59,13 @@
 
 .valueOk {
   font-size: 11px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   color: rgb(5 150 105);
 }
 
 .valueWarn {
   font-size: 11px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   color: rgb(217 119 6);
 }
 
@@ -102,13 +102,13 @@
 
 .recoveryLabel {
   font-size: 11px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   color: var(--token-secondary, #575e70);
 }
 
 .recoveryBtn {
   font-size: 11px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   color: var(--token-primary-container, #7039f9);
   background: transparent;
   border: 0;

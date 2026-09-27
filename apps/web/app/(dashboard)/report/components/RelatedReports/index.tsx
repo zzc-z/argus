@@ -1,14 +1,14 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { cn } from "@/lib/utils";
-import { type RelatedReport } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { cn } from '@/lib/utils'
+import { type RelatedReport } from '../../mock'
+import styles from './index.module.css'
 
 export interface RelatedReportsProps {
-  reports: RelatedReport[];
-  onViewAll?: () => void;
+  reports: RelatedReport[]
+  onViewAll?: () => void
 }
 
 /**
@@ -21,14 +21,14 @@ export function RelatedReports({ reports, onViewAll }: RelatedReportsProps) {
       <header className={styles.header}>
         <div className={styles.headerLeft}>
           <IconSpan name="dataset" size={20} className="text-primary" />
-          <span className={cn(styles.title, "font-headline-sm")}>关联研报 (Related)</span>
+          <span className={cn(styles.title, 'font-headline-sm')}>关联研报 (Related)</span>
         </div>
         <a
           href="#"
-          className={cn(styles.viewAll, "font-label-sm")}
+          className={cn(styles.viewAll, 'font-label-sm')}
           onClick={(e) => {
-            e.preventDefault();
-            onViewAll?.();
+            e.preventDefault()
+            onViewAll?.()
           }}
         >
           查看全部
@@ -38,17 +38,17 @@ export function RelatedReports({ reports, onViewAll }: RelatedReportsProps) {
       <div className={styles.list}>
         {reports.map((r) => (
           <a key={r.id} href="#" className={styles.item}>
-            <div className={cn(styles.itemTop, "font-label-sm")}>
+            <div className={cn(styles.itemTop, 'font-label-sm')}>
               <span>
                 {r.category} · {r.recency}
               </span>
-              <span className={cn(styles.matchPct, "font-code")}>{r.matchPct}% 相关</span>
+              <span className={cn(styles.matchPct, 'font-code')}>{r.matchPct}% 相关</span>
             </div>
-            <span className={cn(styles.itemTitle, "font-body-md")}>{r.title}</span>
-            <span className={cn(styles.itemMeta, "font-label-sm")}>{r.meta}</span>
+            <span className={cn(styles.itemTitle, 'font-body-md')}>{r.title}</span>
+            <span className={cn(styles.itemMeta, 'font-label-sm')}>{r.meta}</span>
           </a>
         ))}
       </div>
     </div>
-  );
+  )
 }

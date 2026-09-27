@@ -1,5 +1,5 @@
-import * as React from "react";
-import styles from "./index.module.css";
+import * as React from 'react'
+import styles from './index.module.css'
 
 /**
  * Right-rail card — source ingestion health (3 source rows + bar + auto-recovery).
@@ -26,7 +26,7 @@ export function HealthCard() {
         </button>
       </div>
     </section>
-  );
+  )
 }
 
 function SourceRow({
@@ -35,13 +35,13 @@ function SourceRow({
   tone,
   fill,
 }: {
-  label: string;
-  value: string;
-  tone: "ok" | "warn";
-  fill: string;
+  label: string
+  value: string
+  tone: 'ok' | 'warn'
+  fill: string
 }) {
-  const barClass = tone === "ok" ? styles.barOk : styles.barWarn;
-  const valueClass = tone === "ok" ? styles.valueOk : styles.valueWarn;
+  const barClass = tone === 'ok' ? styles.barOk : styles.barWarn
+  const valueClass = tone === 'ok' ? styles.valueOk : styles.valueWarn
   return (
     <>
       <div className={styles.sourceRow}>
@@ -52,5 +52,5 @@ function SourceRow({
         <div className={`${styles.barFill} ${barClass}`} style={{ width: fill }} />
       </div>
     </>
-  );
+  )
 }

@@ -1,14 +1,14 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
-export type UrlRssTab = "url" | "rss";
+export type UrlRssTab = 'url' | 'rss'
 
 export interface UrlRssTabsProps {
-  tab: UrlRssTab;
-  onTabChange: (t: UrlRssTab) => void;
+  tab: UrlRssTab
+  onTabChange: (t: UrlRssTab) => void
 }
 
 /**
@@ -21,26 +21,24 @@ export function UrlRssTabs({ tab, onTabChange }: UrlRssTabsProps) {
       <div className={styles.head}>
         <div className={styles.headLeft}>
           <span className={styles.headDot} />
-          <span className={`${styles.headTitle} font-headline-sm`}>
-            网络链接与实时数据流
-          </span>
+          <span className={`${styles.headTitle} font-headline-sm`}>网络链接与实时数据流</span>
         </div>
         <div className={styles.tabSwitch} role="tablist">
           <button
             type="button"
             role="tab"
-            aria-selected={tab === "url"}
-            onClick={() => onTabChange("url")}
-            className={`${styles.tabBtn} ${tab === "url" ? styles.tabBtnActive : ""} font-label-sm`}
+            aria-selected={tab === 'url'}
+            onClick={() => onTabChange('url')}
+            className={`${styles.tabBtn} ${tab === 'url' ? styles.tabBtnActive : ''} font-label-sm`}
           >
             单页面深度抓取
           </button>
           <button
             type="button"
             role="tab"
-            aria-selected={tab === "rss"}
-            onClick={() => onTabChange("rss")}
-            className={`${styles.tabBtn} ${tab === "rss" ? styles.tabBtnActive : ""} font-label-sm`}
+            aria-selected={tab === 'rss'}
+            onClick={() => onTabChange('rss')}
+            className={`${styles.tabBtn} ${tab === 'rss' ? styles.tabBtnActive : ''} font-label-sm`}
           >
             RSS / Atom 订阅源
           </button>
@@ -49,9 +47,9 @@ export function UrlRssTabs({ tab, onTabChange }: UrlRssTabsProps) {
 
       {/* URL pane */}
       <div
-        className={`${styles.pane} ${tab === "url" ? "" : styles.paneHidden}`}
+        className={`${styles.pane} ${tab === 'url' ? '' : styles.paneHidden}`}
         role="tabpanel"
-        aria-hidden={tab !== "url"}
+        aria-hidden={tab !== 'url'}
       >
         <div className={styles.urlRow}>
           <div className={styles.urlInputWrap}>
@@ -81,9 +79,9 @@ export function UrlRssTabs({ tab, onTabChange }: UrlRssTabsProps) {
 
       {/* RSS pane */}
       <div
-        className={`${styles.pane} ${tab === "rss" ? "" : styles.paneHidden}`}
+        className={`${styles.pane} ${tab === 'rss' ? '' : styles.paneHidden}`}
         role="tabpanel"
-        aria-hidden={tab !== "rss"}
+        aria-hidden={tab !== 'rss'}
       >
         <div className={styles.rssRow}>
           <div className={styles.urlInputWrap}>
@@ -96,10 +94,7 @@ export function UrlRssTabs({ tab, onTabChange }: UrlRssTabsProps) {
               placeholder="https://domain.com/feed.xml 或 Substack RSS 链接"
             />
           </div>
-          <select
-            className={`${styles.periodSelect} font-body-sm`}
-            defaultValue="1h"
-          >
+          <select className={`${styles.periodSelect} font-body-sm`} defaultValue="1h">
             <option value="1h">周期: 每小时 (1h)</option>
             <option value="6h">周期: 每 6 小时</option>
             <option value="24h">周期: 每天 (24h)</option>
@@ -114,21 +109,17 @@ export function UrlRssTabs({ tab, onTabChange }: UrlRssTabsProps) {
         </p>
       </div>
     </section>
-  );
+  )
 }
 
 function CheckToggle({ label, defaultChecked }: { label: string; defaultChecked?: boolean }) {
   return (
     <label className={styles.toggleLabel}>
-      <input
-        type="checkbox"
-        defaultChecked={defaultChecked}
-        className="sr-only peer"
-      />
+      <input type="checkbox" defaultChecked={defaultChecked} className="peer sr-only" />
       <span className={styles.toggleBox}>
         <IconSpan name="check" size={14} className="text-on-primary" />
       </span>
       <span className={`${styles.toggleText} font-body-sm`}>{label}</span>
     </label>
-  );
+  )
 }

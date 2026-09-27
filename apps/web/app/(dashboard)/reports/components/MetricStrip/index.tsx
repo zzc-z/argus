@@ -1,9 +1,9 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { METRIC_TILES } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { METRIC_TILES } from '../../mock'
+import styles from './index.module.css'
 
 /**
  * 4-up KPI tile strip. Pure presentation; data from mock.ts.
@@ -19,21 +19,21 @@ export function MetricStrip() {
               name={tile.icon}
               size={16}
               className={
-                tile.valueTone === "primary" ? styles.tileIconPrimary : styles.tileIconSuccess
+                tile.valueTone === 'primary' ? styles.tileIconPrimary : styles.tileIconSuccess
               }
             />
           </div>
           <div className={styles.tileValueRow}>
             <span
               className={
-                tile.valueTone === "primary" ? styles.tileValuePrimary : styles.tileValueDefault
+                tile.valueTone === 'primary' ? styles.tileValuePrimary : styles.tileValueDefault
               }
             >
               {tile.value}
             </span>
             <span
               className={
-                tile.subTone === "success" ? styles.tileSubSuccess : styles.tileSubSecondary
+                tile.subTone === 'success' ? styles.tileSubSuccess : styles.tileSubSecondary
               }
             >
               {tile.sub}
@@ -42,5 +42,5 @@ export function MetricStrip() {
         </div>
       ))}
     </section>
-  );
+  )
 }

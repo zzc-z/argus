@@ -30,7 +30,7 @@
   letter-spacing: -0.01em;
   font-weight: 600;
   color: var(--token-on-surface, #191c1d);
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
 }
 
 .configLink {
@@ -40,7 +40,7 @@
   font-weight: 500;
   color: var(--token-primary-container, #7039f9);
   text-decoration: none;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   transition: text-decoration 150ms ease-out;
 }
 
@@ -95,7 +95,7 @@
   line-height: 20px;
   font-weight: 500;
   color: var(--token-on-surface, #191c1d);
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
 }
 
 .channelSub {
@@ -104,7 +104,7 @@
   letter-spacing: 0.02em;
   font-weight: 500;
   color: var(--token-secondary, #575e70);
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .channelDot {
@@ -116,7 +116,7 @@
 
 .channelLink {
   font-size: 11px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   color: var(--token-primary-container, #7039f9);
   text-decoration: none;
   cursor: pointer;
@@ -137,7 +137,7 @@
 
 .smsLabel {
   font-size: 12px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
 }
 
 .toggle {
@@ -169,7 +169,7 @@
 }
 
 .toggleTrack::after {
-  content: "";
+  content: '';
   position: absolute;
   top: 2px;
   left: 2px;

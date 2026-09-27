@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "clean": "rm -rf .next .turbo"
+    "clean": "rm -rf .next .turbo",
+    "format": "prettier --write \"**/*.{ts,tsx,css,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,css,md,json}\""
   },
   "dependencies": {
     "@argus/shared": "workspace:*",
@@ -32,6 +34,8 @@
     "html-to-jsx": "^0.0.4",
     "less": "^4.2.0",
     "postcss": "^8.4",
+    "prettier": "^3.3",
+    "prettier-plugin-tailwindcss": "^0.6",
     "tailwindcss": "^3.4",
     "typescript": "^5.6"
   }

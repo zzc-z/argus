@@ -11,7 +11,11 @@
   padding: 0.5rem 0.75rem;
   border-radius: 0.5rem;
   border: 1px dashed color-mix(in srgb, var(--token-outline-variant, #cac3d9) 70%, transparent);
-  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 40%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 40%,
+    transparent
+  );
   color: var(--token-secondary, #575e70);
   font-size: 0.75rem;
   cursor: pointer;
@@ -49,7 +53,11 @@
 .panel {
   margin-top: 0.625rem;
   padding: 0.875rem;
-  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 80%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 80%,
+    transparent
+  );
   border: 1px solid var(--token-surface-container-high, #e7e8e9);
   border-radius: 0.5rem;
   display: flex;

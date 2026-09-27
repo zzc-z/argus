@@ -24,13 +24,22 @@
 }
 
 @keyframes ping {
-  75%, 100% {
+  75%,
+  100% {
     transform: scale(2);
     opacity: 0;
   }
 }
 
-.emerald { background-color: rgb(16 185 129); }
-.purple  { background-color: rgb(168 85 247); }
-.amber   { background-color: rgb(245 158 11); }
-.rose    { background-color: rgb(244 63 94); }
+.emerald {
+  background-color: rgb(16 185 129);
+}
+.purple {
+  background-color: rgb(168 85 247);
+}
+.amber {
+  background-color: rgb(245 158 11);
+}
+.rose {
+  background-color: rgb(244 63 94);
+}

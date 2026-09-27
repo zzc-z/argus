@@ -36,11 +36,17 @@
   padding-top: 0.25rem;
   color: rgb(212 212 212);
 
-  &:nth-child(3) { color: rgb(163 163 163); }
+  &:nth-child(3) {
+    color: rgb(163 163 163);
+  }
 }
 
-.agentTag   { color: rgb(192 132 252); }
-.systemTag  { color: rgb(115 115 115); }
+.agentTag {
+  color: rgb(192 132 252);
+}
+.systemTag {
+  color: rgb(115 115 115);
+}
 
 .caret {
   display: inline-block;
@@ -53,6 +59,11 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0.4; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }

@@ -9,7 +9,8 @@
   z-index: 40;
   display: flex;
   flex-direction: column;
-  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
     opacity 200ms ease-out;
 }
 
@@ -69,8 +70,13 @@
 }
 
 @keyframes livePulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .headTitle {
@@ -78,7 +84,7 @@
   font-size: 12px;
   font-weight: 600;
   color: #fafafa;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   letter-spacing: -0.01em;
 }
 
@@ -90,7 +96,7 @@
 
 .headLatency {
   font-size: 11px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #666666;
   margin-right: 8px;
 }
@@ -106,7 +112,9 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 120ms ease-out, color 120ms ease-out;
+  transition:
+    background-color 120ms ease-out,
+    color 120ms ease-out;
 }
 
 .closeBtn:hover {
@@ -141,7 +149,9 @@
   border: none;
   background-color: transparent;
   cursor: pointer;
-  transition: color 120ms ease-out, background-color 120ms ease-out;
+  transition:
+    color 120ms ease-out,
+    background-color 120ms ease-out;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -187,7 +197,7 @@
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #a0a0a0;
 }
 
@@ -207,7 +217,7 @@
 .toolsHead {
   font-size: 10px;
   text-transform: uppercase;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #666666;
   margin-bottom: 0.5rem;
   display: flex;
@@ -242,7 +252,7 @@
   align-items: center;
   justify-content: space-between;
   font-size: 12px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
 }
 
 .toolRowName {
@@ -265,7 +275,7 @@
 
 .toolRowArgs {
   font-size: 10px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #666666;
   margin-top: 4px;
   overflow: hidden;
@@ -279,7 +289,7 @@
   flex: 1;
   padding: 0.75rem;
   overflow-y: auto;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   font-size: 11px;
   line-height: 1.6;
   color: #a0a0a0;
@@ -305,7 +315,7 @@
 
 .phoenixLink {
   font-size: 12px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #a0a0a0;
   text-decoration: none;
   display: flex;
@@ -324,6 +334,6 @@
 
 .spanId {
   font-size: 10px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #666666;
 }

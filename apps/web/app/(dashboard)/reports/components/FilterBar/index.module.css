@@ -41,7 +41,9 @@
   letter-spacing: -0.005em;
   white-space: nowrap;
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .tab:hover {
@@ -60,7 +62,7 @@
 }
 
 .tabCount {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
   padding: 0 0.375rem;
   border-radius: 0.25rem;
@@ -126,7 +128,7 @@
 
 .kbd {
   margin-left: 0.375rem;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
   background-color: var(--token-surface-container, #edeeef);
   color: var(--token-secondary, #575e70);
@@ -188,7 +190,9 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 150ms ease-out, color 150ms ease-out,
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out,
     box-shadow 150ms ease-out;
 }
 

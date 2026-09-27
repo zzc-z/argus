@@ -83,11 +83,7 @@
 .coverOverlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.6) 0%,
-    transparent 100%
-  );
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.6) 0%, transparent 100%);
   pointer-events: none;
 }
 
@@ -193,7 +189,9 @@
   border-radius: 0.5rem;
   border: 0;
   cursor: pointer;
-  transition: opacity 150ms ease-out, background-color 150ms ease-out,
+  transition:
+    opacity 150ms ease-out,
+    background-color 150ms ease-out,
     transform 100ms ease-out;
 }
 

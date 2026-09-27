@@ -1,9 +1,9 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { queueItems, queueSummary, type QueueItem } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { queueItems, queueSummary, type QueueItem } from '../../mock'
+import styles from './index.module.css'
 
 /**
  * Ingestion queue monitor — 4 task items + ETA footer + action row.
@@ -37,14 +37,14 @@ export function QueueMonitor() {
           <div className={styles.summaryLeft}>
             <IconSpan name="speed" size={16} className="text-primary-container" />
             <span className="font-code">
-              预计剩余处理:{" "}
+              预计剩余处理:{' '}
               <strong className={`${styles.summaryStrong} font-code`}>
                 {queueSummary.etaSeconds}
               </strong>
             </span>
           </div>
           <span className="font-code">
-            GPU 负载:{" "}
+            GPU 负载:{' '}
             <strong className={`${styles.summaryGpu} font-code`}>{queueSummary.gpuLoad}</strong>
           </span>
         </div>
@@ -59,11 +59,11 @@ export function QueueMonitor() {
         </div>
       </div>
     </section>
-  );
+  )
 }
 
 function QueueRow({ item }: { item: QueueItem }) {
-  const accentClass = styles[`accent_${item.iconAccent}`];
+  const accentClass = styles[`accent_${item.iconAccent}`]
 
   return (
     <div className={styles.item}>
@@ -103,11 +103,11 @@ function QueueRow({ item }: { item: QueueItem }) {
         <div className={styles.waveRow}>
           <div className={styles.wave}>
             {[
-              { h: "full", op: 80, pulse: true },
+              { h: 'full', op: 80, pulse: true },
               { h: 8, op: 60 },
-              { h: "full", op: 90, pulse: true },
+              { h: 'full', op: 90, pulse: true },
               { h: 6, op: 40 },
-              { h: "full", op: 100 },
+              { h: 'full', op: 100 },
               { h: 10, op: 70, pulse: true },
               { h: 4 },
               { h: 6 },
@@ -115,21 +115,21 @@ function QueueRow({ item }: { item: QueueItem }) {
               { h: 8 },
             ].map((bar, i) => {
               const height =
-                bar.h === "full" ? "100%" : typeof bar.h === "number" ? `${bar.h}px` : "auto";
-              const opacity = bar.op ?? 50;
+                bar.h === 'full' ? '100%' : typeof bar.h === 'number' ? `${bar.h}px` : 'auto'
+              const opacity = bar.op ?? 50
               return (
                 <span
                   key={i}
-                  className={`${styles.waveBar} ${bar.pulse ? "animate-pulse" : ""}`}
+                  className={`${styles.waveBar} ${bar.pulse ? 'animate-pulse' : ''}`}
                   style={{
-                    height: height === "auto" ? undefined : height,
+                    height: height === 'auto' ? undefined : height,
                     backgroundColor:
                       opacity >= 50
                         ? `color-mix(in srgb, var(--token-primary-container, #7039f9) ${opacity}%, transparent)`
-                        : "var(--token-surface-container-high, #e7e8e9)",
+                        : 'var(--token-surface-container-high, #e7e8e9)',
                   }}
                 />
-              );
+              )
             })}
           </div>
           {item.timeCurrent && item.timeTotal && (
@@ -150,7 +150,7 @@ function QueueRow({ item }: { item: QueueItem }) {
       <div className={styles.statusRow}>
         <span
           className={`${styles.statusText} font-label-sm ${
-            item.entities ? styles.statusTextDone : ""
+            item.entities ? styles.statusTextDone : ''
           }`}
         >
           {item.entities ? (
@@ -167,9 +167,7 @@ function QueueRow({ item }: { item: QueueItem }) {
           {item.timing && !item.done && (
             <span className={`${styles.statusTiming} font-code`}>{item.timing}</span>
           )}
-          {item.done && (
-            <span className={`${styles.statusTiming} font-code`}>{item.timing}</span>
-          )}
+          {item.done && <span className={`${styles.statusTiming} font-code`}>{item.timing}</span>}
           {!item.done && !item.waveform && (
             <button
               type="button"
@@ -193,5 +191,5 @@ function QueueRow({ item }: { item: QueueItem }) {
         </div>
       </div>
     </div>
-  );
+  )
 }

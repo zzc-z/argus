@@ -12,7 +12,9 @@
   font-style: italic;
   color: rgb(212 212 212);
 
-  @media (min-width: 640px) { font-size: 1rem; }
+  @media (min-width: 640px) {
+    font-size: 1rem;
+  }
 }
 
 .meta {

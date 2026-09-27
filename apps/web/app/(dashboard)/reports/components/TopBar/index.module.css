@@ -51,7 +51,7 @@
 }
 
 .kbd {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
   background-color: var(--token-surface-container, #edeeef);
   color: var(--token-secondary, #575e70);
@@ -81,8 +81,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .statusLabel {
@@ -109,7 +114,9 @@
   background-color: transparent;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .iconBtn:hover {

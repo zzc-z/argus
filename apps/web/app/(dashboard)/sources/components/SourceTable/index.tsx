@@ -1,13 +1,13 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { sourceRows, type SourceRow } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { sourceRows, type SourceRow } from '../../mock'
+import styles from './index.module.css'
 
 export interface SourceTableProps {
-  selectedIds: Set<string>;
-  onToggleRow: (id: string) => void;
+  selectedIds: Set<string>
+  onToggleRow: (id: string) => void
 }
 
 /**
@@ -47,7 +47,7 @@ export function SourceTable({ selectedIds, onToggleRow }: SourceTableProps) {
         </table>
       </div>
     </div>
-  );
+  )
 }
 
 function SourceRowView({
@@ -55,16 +55,16 @@ function SourceRowView({
   checked,
   onToggle,
 }: {
-  row: SourceRow;
-  checked: boolean;
-  onToggle: () => void;
+  row: SourceRow
+  checked: boolean
+  onToggle: () => void
 }) {
-  const isProcessing = row.status === "processing";
-  const isLive = row.status === "live";
+  const isProcessing = row.status === 'processing'
+  const isLive = row.status === 'live'
 
   return (
     <tr
-      className={`${styles.row} ${isProcessing ? styles.rowHighlight : ""}`}
+      className={`${styles.row} ${isProcessing ? styles.rowHighlight : ''}`}
       data-status={row.status}
     >
       <td className={`${styles.td} ${styles.tdSelect}`}>
@@ -81,10 +81,7 @@ function SourceRowView({
             <IconSpan name={row.iconName} size={18} />
           </div>
           <div className={styles.titleText}>
-            <a
-              href="#"
-              className={`${styles.titleLink} font-headline-sm group-hover:underline`}
-            >
+            <a href="#" className={`${styles.titleLink} font-headline-sm group-hover:underline`}>
               {row.title}
             </a>
             <span className={`${styles.meta} font-code`}>{row.meta}</span>
@@ -97,9 +94,7 @@ function SourceRowView({
       <td className={`${styles.td} ${styles.tdNowrap}`}>
         <div className={styles.sizeBlock}>
           <span
-            className={`${styles.sizePrimary} font-code ${
-              isLive ? styles.sizePrimaryLive : ""
-            }`}
+            className={`${styles.sizePrimary} font-code ${isLive ? styles.sizePrimaryLive : ''}`}
           >
             {row.size}
           </span>
@@ -112,10 +107,7 @@ function SourceRowView({
                 </span>
               </div>
               <div className={styles.progressBar}>
-                <div
-                  className={styles.progressFill}
-                  style={{ width: `${row.progress}%` }}
-                />
+                <div className={styles.progressFill} style={{ width: `${row.progress}%` }} />
               </div>
             </div>
           )}
@@ -141,10 +133,16 @@ function SourceRowView({
             </button>
           ) : isProcessing ? (
             <>
-              <button type="button" className={`${styles.rowBtn} ${styles.rowBtnDanger} font-body-sm`}>
+              <button
+                type="button"
+                className={`${styles.rowBtn} ${styles.rowBtnDanger} font-body-sm`}
+              >
                 取消
               </button>
-              <button type="button" className={`${styles.rowBtn} ${styles.rowBtnPlain} font-body-sm`}>
+              <button
+                type="button"
+                className={`${styles.rowBtn} ${styles.rowBtnPlain} font-body-sm`}
+              >
                 详情
               </button>
             </>
@@ -153,11 +151,7 @@ function SourceRowView({
               <button type="button" className={`${styles.rowBtn} font-body-sm`}>
                 查看切片
               </button>
-              <button
-                type="button"
-                className={`${styles.iconBtn}`}
-                aria-label="更多操作"
-              >
+              <button type="button" className={`${styles.iconBtn}`} aria-label="更多操作">
                 <IconSpan name="more_vert" size={18} />
               </button>
             </>
@@ -165,38 +159,38 @@ function SourceRowView({
         </div>
       </td>
     </tr>
-  );
+  )
 }
 
 function StatusBadge({ row }: { row: SourceRow }) {
-  if (row.status === "ready") {
+  if (row.status === 'ready') {
     return (
       <span className={`${styles.badge} ${styles.badgeReady} font-label-sm`}>
         <span className={styles.dotReady} />
         已就绪
       </span>
-    );
+    )
   }
-  if (row.status === "processing") {
+  if (row.status === 'processing') {
     return (
       <span className={`${styles.badge} ${styles.badgeProcessing} font-label-sm`}>
         <span className={`${styles.spinDot} animate-spin`} />
         处理中
       </span>
-    );
+    )
   }
-  if (row.status === "live") {
+  if (row.status === 'live') {
     return (
       <span className={`${styles.badge} ${styles.badgeLive} font-label-sm`}>
         <span className={`${styles.dotLive} animate-ping`} />
         持续监听
       </span>
-    );
+    )
   }
   return (
     <span className={`${styles.badge} ${styles.badgeFailed} font-label-sm`}>
       <span className={styles.dotFailed} />
       失败
     </span>
-  );
+  )
 }

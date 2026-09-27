@@ -1,15 +1,15 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { BULK_ACTIONS } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { BULK_ACTIONS } from '../../mock'
+import styles from './index.module.css'
 
 export interface BulkActionBarProps {
-  visible: boolean;
-  count: number;
-  onCancel: () => void;
-  onAction: (id: string) => void;
+  visible: boolean
+  count: number
+  onCancel: () => void
+  onAction: (id: string) => void
 }
 
 /**
@@ -36,7 +36,7 @@ export function BulkActionBar({ visible, count, onCancel, onAction }: BulkAction
               key={a.id}
               type="button"
               className={`${styles.actionBtn} ${
-                "tone" in a && a.tone === "danger" ? styles.actionDanger : ""
+                'tone' in a && a.tone === 'danger' ? styles.actionDanger : ''
               }`}
               onClick={() => onAction(a.id)}
             >
@@ -55,5 +55,5 @@ export function BulkActionBar({ visible, count, onCancel, onAction }: BulkAction
         </button>
       </div>
     </div>
-  );
+  )
 }

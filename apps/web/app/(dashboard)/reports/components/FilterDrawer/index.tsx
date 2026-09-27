@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
 import {
   CITATION_SCALES,
   CONFIDENCE_LABEL,
@@ -16,23 +16,23 @@ import {
   PIPELINE_STATUSES,
   TIMEFRAME_OPTIONS,
   TOPIC_FILTERS,
-} from "../../mock";
-import styles from "./index.module.css";
+} from '../../mock'
+import styles from './index.module.css'
 
 export interface FilterDrawerProps {
   /** Active timeframe id. */
-  activeTimeframeId: string;
-  onTimeframeChange: (id: string) => void;
+  activeTimeframeId: string
+  onTimeframeChange: (id: string) => void
   /** Checked topic ids. */
-  checkedTopicIds: ReadonlySet<string>;
-  onTopicToggle: (id: string) => void;
+  checkedTopicIds: ReadonlySet<string>
+  onTopicToggle: (id: string) => void
   /** Active citation scale id. */
-  activeCitationId: string;
-  onCitationChange: (id: string) => void;
+  activeCitationId: string
+  onCitationChange: (id: string) => void
   /** Checked pipeline status ids. */
-  checkedStatusIds: ReadonlySet<string>;
-  onStatusToggle: (id: string) => void;
-  onReset: () => void;
+  checkedStatusIds: ReadonlySet<string>
+  onStatusToggle: (id: string) => void
+  onReset: () => void
 }
 
 /**
@@ -67,17 +67,17 @@ export function FilterDrawer({
         <span className={styles.groupLabel}>{FILTER_TIMEFRAME_TITLE}</span>
         <div className={styles.timeframeGrid}>
           {TIMEFRAME_OPTIONS.map((t) => {
-            const active = t.id === activeTimeframeId;
+            const active = t.id === activeTimeframeId
             return (
               <button
                 key={t.id}
                 type="button"
-                className={`${styles.timeframeBtn} ${active ? styles.timeframeBtnActive : ""}`}
+                className={`${styles.timeframeBtn} ${active ? styles.timeframeBtnActive : ''}`}
                 onClick={() => onTimeframeChange(t.id)}
               >
                 {t.label}
               </button>
-            );
+            )
           })}
         </div>
       </div>
@@ -87,7 +87,7 @@ export function FilterDrawer({
         <span className={styles.groupLabel}>{FILTER_TOPIC_TITLE}</span>
         <div className={styles.topicList}>
           {TOPIC_FILTERS.map((topic) => {
-            const checked = checkedTopicIds.has(topic.id);
+            const checked = checkedTopicIds.has(topic.id)
             return (
               <label key={topic.id} className={styles.topicItem}>
                 <span className={styles.topicItemLeft}>
@@ -101,7 +101,7 @@ export function FilterDrawer({
                 </span>
                 <span className={styles.topicCount}>{topic.count}</span>
               </label>
-            );
+            )
           })}
         </div>
       </div>
@@ -111,24 +111,24 @@ export function FilterDrawer({
         <span className={styles.groupLabel}>{FILTER_CITATION_TITLE}</span>
         <div className={styles.citationRow}>
           {CITATION_SCALES.map((c) => {
-            const active = c.id === activeCitationId;
+            const active = c.id === activeCitationId
             return (
               <span
                 key={c.id}
-                className={`${styles.citationPill} ${active ? styles.citationPillActive : ""}`}
+                className={`${styles.citationPill} ${active ? styles.citationPillActive : ''}`}
                 onClick={() => onCitationChange(c.id)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    onCitationChange(c.id);
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault()
+                    onCitationChange(c.id)
                   }
                 }}
               >
                 {c.label}
               </span>
-            );
+            )
           })}
         </div>
       </div>
@@ -138,7 +138,7 @@ export function FilterDrawer({
         <span className={styles.groupLabel}>{FILTER_STATUS_TITLE}</span>
         <div className={styles.statusList}>
           {PIPELINE_STATUSES.map((s) => {
-            const checked = checkedStatusIds.has(s.id);
+            const checked = checkedStatusIds.has(s.id)
             return (
               <label key={s.id} className={styles.statusItem}>
                 <input
@@ -149,7 +149,7 @@ export function FilterDrawer({
                 />
                 <span>{s.label}</span>
               </label>
-            );
+            )
           })}
         </div>
       </div>
@@ -166,5 +166,5 @@ export function FilterDrawer({
         <span className={styles.confidenceNote}>{CONFIDENCE_NOTE}</span>
       </div>
     </aside>
-  );
+  )
 }

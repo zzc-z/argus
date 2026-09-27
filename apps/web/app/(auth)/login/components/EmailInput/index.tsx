@@ -1,14 +1,14 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { Label } from "@/components/ui";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { Label } from '@/components/ui'
+import styles from './index.module.css'
 
 export interface EmailInputProps {
-  id: string;
-  label: string;
-  placeholder?: string;
+  id: string
+  label: string
+  placeholder?: string
 }
 
 /**
@@ -40,5 +40,5 @@ export function EmailInput({ id, label, placeholder }: EmailInputProps) {
         </button>
       </div>
     </div>
-  );
+  )
 }

@@ -1,12 +1,12 @@
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 const BADGES = [
-  { icon: "verified_user", label: "端到端隔离环境" },
-  { icon: "bolt", label: "零保留模型训练" },
-  { icon: "security", label: "SOC2 Type II 审计中" },
-] as const;
+  { icon: 'verified_user', label: '端到端隔离环境' },
+  { icon: 'bolt', label: '零保留模型训练' },
+  { icon: 'security', label: 'SOC2 Type II 审计中' },
+] as const
 
 /**
  * Bottom-left three trust micro-badges. Single source for the row,
@@ -21,11 +21,9 @@ export function TrustBadges() {
             <IconSpan name={b.icon} size={15} className="text-primary-container" />
             <span>{b.label}</span>
           </div>
-          {i < BADGES.length - 1 && (
-            <span className={styles.sep}>/</span>
-          )}
+          {i < BADGES.length - 1 && <span className={styles.sep}>/</span>}
         </React.Fragment>
       ))}
     </footer>
-  );
+  )
 }

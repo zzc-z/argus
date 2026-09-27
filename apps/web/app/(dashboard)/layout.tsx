@@ -1,22 +1,18 @@
-import * as React from "react";
-import Link from "next/link";
+import * as React from 'react'
+import Link from 'next/link'
 
-import { IconSpan } from "@/components/common/IconSpan";
-import { ArgusMark } from "@/components/common/ArgusMark";
-import { ThemeToggle } from "@/components/common/ThemeToggle";
+import { IconSpan } from '@/components/common/IconSpan'
+import { ArgusMark } from '@/components/common/ArgusMark'
+import { ThemeToggle } from '@/components/common/ThemeToggle'
 
-import styles from "./layout.module.css";
+import styles from './layout.module.css'
 
 /**
  * Dashboard route group layout — sidebar (fixed left) + top header (fixed top)
  * + main scroll area. Both chrome pieces are 1:1 from argus_report_detail's
  * outer chrome; the right `children` is the page body.
  */
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>
@@ -27,12 +23,8 @@ export default function DashboardLayout({
                 <ArgusMark size={20} />
               </div>
               <div className={styles.brandText}>
-                <span className={`${styles.brandName} font-headline-sm`}>
-                  Argus
-                </span>
-                <span className={`${styles.brandSub} font-label-sm`}>
-                  Synthesizer Core
-                </span>
+                <span className={`${styles.brandName} font-headline-sm`}>Argus</span>
+                <span className={`${styles.brandSub} font-label-sm`}>Synthesizer Core</span>
               </div>
             </div>
             <span className={`${styles.versionChip} font-code`}>v2.4</span>
@@ -69,7 +61,7 @@ export default function DashboardLayout({
               <span className={`${styles.clusterActive} font-code`}>Active</span>
             </div>
             <div className={styles.progressTrack}>
-              <div className={styles.progressFill} style={{ width: "66.66%" }} />
+              <div className={styles.progressFill} style={{ width: '66.66%' }} />
             </div>
             <div className={`${styles.clusterMeta} font-code`}>
               <span>DAG: 14 Nodes</span>
@@ -114,9 +106,7 @@ export default function DashboardLayout({
             <ThemeToggle />
             <div className={styles.userBox}>
               <div className={styles.userText}>
-                <span className={`${styles.userName} font-body-sm font-medium`}>
-                  Thomas Lin
-                </span>
+                <span className={`${styles.userName} font-body-sm font-medium`}>Thomas Lin</span>
                 <span className={`${styles.userRole} font-label-sm`}>Lead Researcher</span>
               </div>
               <div className={styles.avatar} aria-hidden="true">
@@ -134,13 +124,13 @@ export default function DashboardLayout({
         </main>
       </div>
     </div>
-  );
+  )
 }
 
 interface NavLinkProps {
-  href: string;
-  icon: string;
-  label: string;
+  href: string
+  icon: string
+  label: string
 }
 
 function NavLink({ href, icon, label }: NavLinkProps) {
@@ -150,7 +140,7 @@ function NavLink({ href, icon, label }: NavLinkProps) {
       <IconSpan name={icon} size={18} />
       <span className="font-body-sm">{label}</span>
     </Link>
-  );
+  )
 }
 
 /**
@@ -160,5 +150,5 @@ function NavLink({ href, icon, label }: NavLinkProps) {
  * breadcrumb slot without forcing pages to repeat chrome.
  */
 function PageHeaderChrome() {
-  return null;
+  return null
 }

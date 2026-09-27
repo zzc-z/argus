@@ -67,7 +67,8 @@
 }
 
 @keyframes ping {
-  75%, 100% {
+  75%,
+  100% {
     transform: scale(2);
     opacity: 0;
   }
@@ -119,7 +120,7 @@
 
 .starred {
   color: #f59e0b;
-  font-variation-settings: "FILL" 1;
+  font-variation-settings: 'FILL' 1;
 }
 
 .summary {
@@ -160,11 +161,7 @@
 }
 
 .topic-secondary {
-  background-color: color-mix(
-    in srgb,
-    var(--token-secondary-container, #d9dff5) 60%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--token-secondary-container, #d9dff5) 60%, transparent);
   color: var(--token-on-secondary-container, #5c6274);
 }
 
@@ -329,8 +326,12 @@
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .actionGroup {
@@ -352,7 +353,9 @@
   border: none;
   color: var(--token-secondary, #575e70);
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .actionBtn:hover {
@@ -368,9 +371,5 @@
 /* 注入到 rowClassName —— DataTable 的 row 默认 bg transparent，
    hover/banded 已由 DataTable 处理；running 是 ReportTable 特有状态 */
 .runningRow {
-  background-color: color-mix(
-    in srgb,
-    var(--token-primary-fixed, #e8deff) 20%,
-    transparent
-  );
+  background-color: color-mix(in srgb, var(--token-primary-fixed, #e8deff) 20%, transparent);
 }

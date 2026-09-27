@@ -43,19 +43,19 @@
   color: #fafafa;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
 }
 
 .headSep {
   color: rgba(255, 255, 255, 0.16);
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   font-size: 12px;
 }
 
 .headPipeline {
   font-size: 11px;
   color: #666666;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
 }
 
 .headStats {
@@ -63,7 +63,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 12px;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: #a0a0a0;
 }
 
@@ -177,7 +177,7 @@
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  font-family: var(--font-jetbrains-mono, "JetBrains Mono"), monospace;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   font-size: 11px;
   color: #666666;
 }
@@ -218,8 +218,15 @@
 }
 
 @keyframes ping {
-  0%, 100% { opacity: 0.4; transform: scale(0.85); }
-  50% { opacity: 1; transform: scale(1.15); }
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
 }
 
 .rowActiveDetail {
@@ -260,7 +267,8 @@
 }
 
 @keyframes cobaltPulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(79, 124, 255, 0.55);
   }
   50% {

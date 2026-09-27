@@ -1,7 +1,7 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
 import {
   CTA_FILTER_LABEL,
   CTA_NEW_RESEARCH_LABEL,
@@ -15,13 +15,13 @@ import {
   PAGE_SUBTITLE_TRACK_SUFFIX,
   PAGE_TITLE,
   PAGE_TITLE_EN,
-} from "../../mock";
-import styles from "./index.module.css";
+} from '../../mock'
+import styles from './index.module.css'
 
 export interface ReportsHeaderProps {
-  filterBadgeVisible: boolean;
-  onToggleFilters: () => void;
-  onNewResearch: () => void;
+  filterBadgeVisible: boolean
+  onToggleFilters: () => void
+  onNewResearch: () => void
 }
 
 /**
@@ -67,16 +67,12 @@ export function ReportsHeader({
           <span>{CTA_FILTER_LABEL}</span>
           {filterBadgeVisible && <span className={styles.filterBadge} />}
         </button>
-        <button
-          type="button"
-          className={styles.primaryBtn}
-          onClick={onNewResearch}
-        >
+        <button type="button" className={styles.primaryBtn} onClick={onNewResearch}>
           <IconSpan name="add" size={18} />
           <span className={styles.primaryBtnLabel}>{CTA_NEW_RESEARCH_LABEL}</span>
           <span className={styles.primaryBtnKbd}>{CTA_NEW_RESEARCH_SHORTCUT}</span>
         </button>
       </div>
     </header>
-  );
+  )
 }

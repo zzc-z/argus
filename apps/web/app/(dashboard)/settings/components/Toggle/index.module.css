@@ -32,13 +32,16 @@
 }
 
 .track::after {
-  content: "";
+  content: '';
   position: absolute;
   top: 2px;
   left: 2px;
   background-color: var(--token-surface-container-lowest, #ffffff);
   border-radius: 9999px;
-  transition: transform 180ms ease-out, width 180ms ease-out, height 180ms ease-out;
+  transition:
+    transform 180ms ease-out,
+    width 180ms ease-out,
+    height 180ms ease-out;
 }
 
 .wrap[data-on] .track {

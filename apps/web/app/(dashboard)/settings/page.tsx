@@ -1,6 +1,6 @@
-"use client";
+'use client'
 
-import * as React from "react";
+import * as React from 'react'
 import {
   memoryItemsSeed,
   memoryRulesSeed,
@@ -10,13 +10,13 @@ import {
   type MemoryRule,
   type ProviderStatus,
   type SettingsNavId,
-} from "./mock";
-import { SettingsSidebar } from "./components/SettingsSidebar";
-import { ProfileBanner } from "./components/ProfileBanner";
-import { LongTermMemorySection } from "./components/LongTermMemorySection";
-import { MemoryItemsSection } from "./components/MemoryItemsSection";
-import { ProviderStatusSection } from "./components/ProviderStatusSection";
-import styles from "./page.module.css";
+} from './mock'
+import { SettingsSidebar } from './components/SettingsSidebar'
+import { ProfileBanner } from './components/ProfileBanner'
+import { LongTermMemorySection } from './components/LongTermMemorySection'
+import { MemoryItemsSection } from './components/MemoryItemsSection'
+import { ProviderStatusSection } from './components/ProviderStatusSection'
+import styles from './page.module.css'
 
 /**
  * /settings page (design §1-497).
@@ -31,114 +31,110 @@ import styles from "./page.module.css";
  * by `window.confirm` inside each component.
  */
 export default function SettingsPage() {
-  const [activeNav, setActiveNav] = React.useState<SettingsNavId>("memory");
-  const [masterEnabled, setMasterEnabled] = React.useState(true);
-  const [crossTopicReasoning, setCrossTopicReasoning] = React.useState(true);
-  const [rules, setRules] = React.useState<MemoryRule[]>(() => [...memoryRulesSeed]);
-  const [items, setItems] = React.useState<MemoryItem[]>(() => [...memoryItemsSeed]);
-  const [providers] = React.useState<ProviderStatus[]>(() => [...providerStatusesSeed]);
-  const [activeFilter, setActiveFilter] = React.useState<MemoryFilter["id"]>("all");
-  const [searchQuery, setSearchQuery] = React.useState("");
+  const [activeNav, setActiveNav] = React.useState<SettingsNavId>('memory')
+  const [masterEnabled, setMasterEnabled] = React.useState(true)
+  const [crossTopicReasoning, setCrossTopicReasoning] = React.useState(true)
+  const [rules, setRules] = React.useState<MemoryRule[]>(() => [...memoryRulesSeed])
+  const [items, setItems] = React.useState<MemoryItem[]>(() => [...memoryItemsSeed])
+  const [providers] = React.useState<ProviderStatus[]>(() => [...providerStatusesSeed])
+  const [activeFilter, setActiveFilter] = React.useState<MemoryFilter['id']>('all')
+  const [searchQuery, setSearchQuery] = React.useState('')
 
   /* ── Counts for filter tab labels (design §270-285) ── */
   const countsByFilter = React.useMemo(() => {
-    const counts: Record<MemoryFilter["id"], number> = {
+    const counts: Record<MemoryFilter['id'], number> = {
       all: items.length,
       preference: 0,
       reflection: 0,
       definition: 0,
       correction: 0,
-    };
-    for (const it of items) counts[it.kind] += 1;
-    return counts;
-  }, [items]);
+    }
+    for (const it of items) counts[it.kind] += 1
+    return counts
+  }, [items])
 
   /* ── Filtered + searched view of items ── */
   const visibleItems = React.useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = searchQuery.trim().toLowerCase()
     return items.filter((it) => {
-      const matchesKind = activeFilter === "all" || it.kind === activeFilter;
+      const matchesKind = activeFilter === 'all' || it.kind === activeFilter
       const matchesQuery =
-        q.length === 0 ||
-        it.body.toLowerCase().includes(q) ||
-        it.memId.toLowerCase().includes(q);
-      return matchesKind && matchesQuery;
-    });
-  }, [items, activeFilter, searchQuery]);
+        q.length === 0 || it.body.toLowerCase().includes(q) || it.memId.toLowerCase().includes(q)
+      return matchesKind && matchesQuery
+    })
+  }, [items, activeFilter, searchQuery])
 
   /* ── Rule handlers ── */
   const handleRuleToggle = React.useCallback((id: string, next: boolean) => {
-    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled: next } : r)));
-  }, []);
+    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled: next } : r)))
+  }, [])
 
   const handleRuleEdit = React.useCallback((id: string) => {
-    if (typeof window === "undefined") return;
-    window.alert(`（Mock）打开准则编辑器: ${id}`);
-  }, []);
+    if (typeof window === 'undefined') return
+    window.alert(`（Mock）打开准则编辑器: ${id}`)
+  }, [])
 
   const handleRuleDelete = React.useCallback((id: string) => {
-    setRules((prev) => prev.filter((r) => r.id !== id));
-  }, []);
+    setRules((prev) => prev.filter((r) => r.id !== id))
+  }, [])
 
   const handleAddRule = React.useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.alert("（Mock）新建准则弹窗将在此打开");
-  }, []);
+    if (typeof window === 'undefined') return
+    window.alert('（Mock）新建准则弹窗将在此打开')
+  }, [])
 
   /* ── Memory item handlers ── */
   const handleAddItem = React.useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.alert("（Mock）手动添加记忆项表单将在此打开");
-  }, []);
+    if (typeof window === 'undefined') return
+    window.alert('（Mock）手动添加记忆项表单将在此打开')
+  }, [])
 
   const handleEditItem = React.useCallback((id: string) => {
-    if (typeof window === "undefined") return;
-    window.alert(`（Mock）编辑记忆项: ${id}`);
-  }, []);
+    if (typeof window === 'undefined') return
+    window.alert(`（Mock）编辑记忆项: ${id}`)
+  }, [])
 
   const handleDeleteItem = React.useCallback((id: string) => {
-    setItems((prev) => prev.filter((it) => it.id !== id));
-  }, []);
+    setItems((prev) => prev.filter((it) => it.id !== id))
+  }, [])
 
   const handleExportJson = React.useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.alert("（Mock）导出记忆图谱 JSON");
-  }, []);
+    if (typeof window === 'undefined') return
+    window.alert('（Mock）导出记忆图谱 JSON')
+  }, [])
 
   const handleClearAll = React.useCallback(() => {
-    setItems([]);
-  }, []);
+    setItems([])
+  }, [])
 
   /* ── Profile banner handlers ── */
   const handleManageProfile = React.useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.alert("（Mock）打开资料管理弹窗");
-  }, []);
+    if (typeof window === 'undefined') return
+    window.alert('（Mock）打开资料管理弹窗')
+  }, [])
 
   const handleSyncSso = React.useCallback(() => {
-    if (typeof window === "undefined") return;
-    const ok = window.confirm("确认触发 SSO 凭据同步？");
-    if (ok) window.alert("（Mock）已触发 SSO 同步");
-  }, []);
+    if (typeof window === 'undefined') return
+    const ok = window.confirm('确认触发 SSO 凭据同步？')
+    if (ok) window.alert('（Mock）已触发 SSO 同步')
+  }, [])
 
   /* ── Provider handlers ── */
   const handleConfigureProviders = React.useCallback(() => {
-    if (typeof window === "undefined") return;
-    window.alert("（Mock）跳转到「模型与 API 密钥」");
-    setActiveNav("api-keys");
-  }, []);
+    if (typeof window === 'undefined') return
+    window.alert('（Mock）跳转到「模型与 API 密钥」')
+    setActiveNav('api-keys')
+  }, [])
 
   return (
     <div className={styles.root}>
       {/* Page header (design §7-15) */}
       <header className={styles.pageHeader}>
         <div className={styles.pageTitleRow}>
-          <h1 className={`${styles.pageTitle} font-headline-lg font-semibold text-on-surface`}>
+          <h1 className={`${styles.pageTitle} font-headline-lg text-on-surface font-semibold`}>
             系统设置
           </h1>
-          <span className={`${styles.pageTitleMeta} font-code text-secondary`}>
-            / Settings
-          </span>
+          <span className={`${styles.pageTitleMeta} font-code text-secondary`}>/ Settings</span>
         </div>
         <p className={`${styles.pageDesc} font-body-sm text-secondary`}>
           管理研究员个人偏好、长短期记忆图谱、多模型协同 API 及系统集成
@@ -152,10 +148,7 @@ export default function SettingsPage() {
         </aside>
 
         <div className={styles.right}>
-          <ProfileBanner
-            onManageProfile={handleManageProfile}
-            onSyncSso={handleSyncSso}
-          />
+          <ProfileBanner onManageProfile={handleManageProfile} onSyncSso={handleSyncSso} />
           <LongTermMemorySection
             masterEnabled={masterEnabled}
             crossTopicReasoning={crossTopicReasoning}
@@ -181,12 +174,9 @@ export default function SettingsPage() {
             onExportJson={handleExportJson}
             onClearAll={handleClearAll}
           />
-          <ProviderStatusSection
-            providers={providers}
-            onConfigure={handleConfigureProviders}
-          />
+          <ProviderStatusSection providers={providers} onConfigure={handleConfigureProviders} />
         </div>
       </div>
     </div>
-  );
+  )
 }

@@ -26,7 +26,9 @@
   border-radius: 0.5rem;
   border: 1px solid var(--token-outline-variant, #cac3d9);
   background-color: var(--token-surface-container-low, #f3f4f5);
-  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+  transition:
+    border-color 150ms ease-out,
+    background-color 150ms ease-out;
 }
 
 .search:focus-within {
@@ -112,7 +114,11 @@
   width: 2rem;
   height: 2rem;
   border-radius: 9999px;
-  background: linear-gradient(135deg, var(--token-primary-container, #7039f9), var(--token-secondary, #575e70));
+  background: linear-gradient(
+    135deg,
+    var(--token-primary-container, #7039f9),
+    var(--token-secondary, #575e70)
+  );
   display: inline-block;
 }
 

@@ -1,15 +1,15 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
 import {
   DataTable,
   type DataTableColumnDef,
   type DataTableProps,
   type DataTableSelection,
-} from "@/components/common/DataTable";
-import { TABLE_HEADER, type Report } from "../../mock";
-import styles from "./index.module.css";
+} from '@/components/common/DataTable'
+import { TABLE_HEADER, type Report } from '../../mock'
+import styles from './index.module.css'
 
 /* ── 列定义 ──────────────────────────────────────────────────
  * 提到模块级常量：业务无关部分（id / header / cell）抽出，便于多视图复用 / 测试 mock。
@@ -17,71 +17,73 @@ import styles from "./index.module.css";
 
 export const reportColumns: ReadonlyArray<DataTableColumnDef<Report>> = [
   {
-    id: "title",
+    id: 'title',
     header: () => (
       <button type="button" className={styles.headerBtn}>
         <span>{TABLE_HEADER.title}</span>
-        <span className={styles.headerSortIcon} aria-hidden="true">↓</span>
+        <span className={styles.headerSortIcon} aria-hidden="true">
+          ↓
+        </span>
       </button>
     ),
     cell: ({ row }) => {
-      const r = row.original as Report;
-      const isRunning = r.status === "running";
+      const r = row.original as Report
+      const isRunning = r.status === 'running'
       return (
         <div className={styles.titleWrap}>
           <div className={styles.titleLine}>
             {isRunning && <span className={styles.runningDot} aria-hidden="true" />}
-            <a className={styles.title} href="#">{r.title}</a>
+            <a className={styles.title} href="#">
+              {r.title}
+            </a>
             <button
               type="button"
-              className={`${styles.star} ${r.starred ? styles.starred : ""}`}
-              aria-label={r.starred ? "取消星标" : "星标关注"}
-              title={r.starred ? "取消星标" : "星标关注"}
+              className={`${styles.star} ${r.starred ? styles.starred : ''}`}
+              aria-label={r.starred ? '取消星标' : '星标关注'}
+              title={r.starred ? '取消星标' : '星标关注'}
             >
               <IconSpan name="star" size={16} />
             </button>
           </div>
           <p className={styles.summary}>{r.summary}</p>
         </div>
-      );
+      )
     },
     meta: {
-      align: "left",
-      width: { minWidth: "370px", flex: 2 },
+      align: 'left',
+      width: { minWidth: '370px', flex: 2 },
       cellClassName: styles.colTitle,
     },
   },
   {
-    id: "topic",
+    id: 'topic',
     header: () => (
       <button type="button" className={styles.headerBtn}>
         <span>{TABLE_HEADER.topic}</span>
       </button>
     ),
     cell: ({ row }) => {
-      const t = (row.original as Report).topic;
+      const t = (row.original as Report).topic
       return (
-        <span className={`${styles.topicBadge} ${styles[`topic-${t.tone}`] ?? ""}`}>
-          {t.label}
-        </span>
-      );
+        <span className={`${styles.topicBadge} ${styles[`topic-${t.tone}`] ?? ''}`}>{t.label}</span>
+      )
     },
     meta: {
-      align: "left",
-      width: { flex: 0, minWidth: "120px", basis: "120px" },
+      align: 'left',
+      width: { flex: 0, minWidth: '120px', basis: '120px' },
       cellClassName: styles.colTopic,
     },
   },
   {
-    id: "generatedAt",
+    id: 'generatedAt',
     header: () => (
       <button type="button" className={styles.headerBtn}>
         <span>{TABLE_HEADER.generatedAt}</span>
       </button>
     ),
     cell: ({ row }) => {
-      const r = row.original as Report;
-      const isRunning = r.status === "running";
+      const r = row.original as Report
+      const isRunning = r.status === 'running'
       return (
         <div className={styles.timeCol}>
           <span className={isRunning ? styles.timePrimary : styles.timeDefault}>
@@ -89,25 +91,25 @@ export const reportColumns: ReadonlyArray<DataTableColumnDef<Report>> = [
           </span>
           <span className={styles.timeSub}>{r.generatedAtSub}</span>
         </div>
-      );
+      )
     },
     meta: {
-      align: "left",
-      headerAlign: "left",
-      width: { minWidth: "5.5rem", flex: 0.5 },
+      align: 'left',
+      headerAlign: 'left',
+      width: { minWidth: '5.5rem', flex: 0.5 },
       cellClassName: styles.colGeneratedAt,
     },
   },
   {
-    id: "sources",
+    id: 'sources',
     header: () => (
       <button type="button" className={styles.headerBtn}>
         <span>{TABLE_HEADER.sources}</span>
       </button>
     ),
     cell: ({ row }) => {
-      const r = row.original as Report;
-      const isRunning = r.status === "running";
+      const r = row.original as Report
+      const isRunning = r.status === 'running'
       return (
         <div className={styles.sourcesCol}>
           <div className={styles.sourcesLeft}>
@@ -126,39 +128,39 @@ export const reportColumns: ReadonlyArray<DataTableColumnDef<Report>> = [
             </span>
           )}
         </div>
-      );
+      )
     },
     meta: {
-      align: "left",
-      headerAlign: "left",
-      width: { flex: 0.75, minWidth: "5rem" },
+      align: 'left',
+      headerAlign: 'left',
+      width: { flex: 0.75, minWidth: '5rem' },
       cellClassName: styles.colSources,
     },
   },
   {
-    id: "status",
+    id: 'status',
     header: () => <span>{TABLE_HEADER.status}</span>,
     cell: ({ row }) => {
-      const r = row.original as Report;
-      const isRunning = r.status === "running";
+      const r = row.original as Report
+      const isRunning = r.status === 'running'
       return (
         <div className={styles.actionsCol}>
           <div className={styles.actionGroup}>
             <button
               type="button"
               className={styles.actionBtn}
-              aria-label={isRunning ? "查看运行中 DAG 图谱" : "阅读研报"}
-              title={isRunning ? "查看运行中 DAG 图谱" : "阅读研报"}
+              aria-label={isRunning ? '查看运行中 DAG 图谱' : '阅读研报'}
+              title={isRunning ? '查看运行中 DAG 图谱' : '阅读研报'}
             >
-              <IconSpan name={isRunning ? "account_tree" : "visibility"} size={18} />
+              <IconSpan name={isRunning ? 'account_tree' : 'visibility'} size={18} />
             </button>
             <button
               type="button"
               className={styles.actionBtn}
-              aria-label={isRunning ? "暂停生成" : "导出 PDF"}
-              title={isRunning ? "暂停生成" : "导出 PDF"}
+              aria-label={isRunning ? '暂停生成' : '导出 PDF'}
+              title={isRunning ? '暂停生成' : '导出 PDF'}
             >
-              <IconSpan name={isRunning ? "pause" : "download"} size={18} />
+              <IconSpan name={isRunning ? 'pause' : 'download'} size={18} />
             </button>
             <button
               type="button"
@@ -170,33 +172,33 @@ export const reportColumns: ReadonlyArray<DataTableColumnDef<Report>> = [
             </button>
           </div>
         </div>
-      );
+      )
     },
     meta: {
-      align: "right",
-      headerAlign: "right",
-      width: { minWidth: "8rem" },
+      align: 'right',
+      headerAlign: 'right',
+      width: { minWidth: '8rem' },
       cellClassName: styles.colStatus,
     },
   },
-];
+]
 
 /** ReportTable props —— 兼容旧版散开字段 + 新版 selection 对象。
  *  调用方可以选其一；优先识别 selection（DataTable 原生形态），回退到 5 个散开字段。 */
 export interface ReportTableProps {
-  reports: ReadonlyArray<Report>;
+  reports: ReadonlyArray<Report>
   /** 新版：DataTable 原生 selection 对象 */
-  selection?: DataTableSelection<Report>;
+  selection?: DataTableSelection<Report>
   /** 旧版散开字段 —— 调用方仍在用，向后兼容 */
-  selectedIds?: ReadonlySet<string>;
-  onToggle?: (id: string) => void;
-  onToggleAll?: () => void;
-  allSelected?: boolean;
-  partiallySelected?: boolean;
+  selectedIds?: ReadonlySet<string>
+  onToggle?: (id: string) => void
+  onToggleAll?: () => void
+  allSelected?: boolean
+  partiallySelected?: boolean
   /** 默认使用上方 reportColumns；调用方可在测试 / 替代视图中覆盖 */
-  columns?: ReadonlyArray<DataTableColumnDef<Report>>;
-  rowClassName?: DataTableProps<Report>["rowClassName"];
-  className?: string;
+  columns?: ReadonlyArray<DataTableColumnDef<Report>>
+  rowClassName?: DataTableProps<Report>['rowClassName']
+  className?: string
 }
 
 /**
@@ -217,26 +219,32 @@ export function ReportTable(props: ReportTableProps) {
     partiallySelected,
     rowClassName,
     className,
-  } = props;
+  } = props
 
   // 优先用新版 selection，回退到散开字段
   const selectionProp: DataTableSelection<Report> | undefined = React.useMemo(() => {
-    if (selection) return selection;
-    if (selectedIds && onToggle && onToggleAll && allSelected !== undefined && partiallySelected !== undefined) {
-      return { selectedIds, onToggle, onToggleAll, allSelected, partiallySelected };
+    if (selection) return selection
+    if (
+      selectedIds &&
+      onToggle &&
+      onToggleAll &&
+      allSelected !== undefined &&
+      partiallySelected !== undefined
+    ) {
+      return { selectedIds, onToggle, onToggleAll, allSelected, partiallySelected }
     }
-    return undefined;
-  }, [selection, selectedIds, onToggle, onToggleAll, allSelected, partiallySelected]);
+    return undefined
+  }, [selection, selectedIds, onToggle, onToggleAll, allSelected, partiallySelected])
 
   // running 行注入背景色
   const finalRowClassName = React.useCallback(
     (row: Report, i: number) => {
-      const base = rowClassName?.(row, i) ?? "";
-      const isRunning = row.status === "running" ? styles.runningRow : "";
-      return [base, isRunning].filter(Boolean).join(" ");
+      const base = rowClassName?.(row, i) ?? ''
+      const isRunning = row.status === 'running' ? styles.runningRow : ''
+      return [base, isRunning].filter(Boolean).join(' ')
     },
     [rowClassName],
-  );
+  )
 
   return (
     <DataTable<Report>
@@ -247,5 +255,5 @@ export function ReportTable(props: ReportTableProps) {
       rowClassName={finalRowClassName}
       className={className}
     />
-  );
+  )
 }

@@ -5,7 +5,11 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 50%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 50%,
+    transparent
+  );
 }
 
 @media (min-width: 640px) {

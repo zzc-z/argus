@@ -111,7 +111,9 @@
   border: none;
   cursor: pointer;
   white-space: nowrap;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
   font-size: 11px;
 }
 
@@ -258,7 +260,9 @@
   font-size: 11px;
   padding: 0.125rem 0.25rem;
   border-radius: 0.25rem;
-  transition: color 150ms ease-out, background-color 150ms ease-out;
+  transition:
+    color 150ms ease-out,
+    background-color 150ms ease-out;
 }
 
 .linkBtn:hover {

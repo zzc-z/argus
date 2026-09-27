@@ -46,7 +46,11 @@
   text-align: center;
   padding: 1.5rem;
   border-radius: 0.5rem;
-  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 60%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 60%,
+    transparent
+  );
   cursor: pointer;
   transition: all 200ms ease-out;
 }

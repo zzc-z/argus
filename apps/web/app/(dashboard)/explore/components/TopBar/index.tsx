@@ -1,13 +1,13 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { SESSION_BREADCRUMB, MODEL_BADGE } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { SESSION_BREADCRUMB, MODEL_BADGE } from '../../mock'
+import styles from './index.module.css'
 
 export interface TopBarProps {
-  onToggleInspector: () => void;
-  inspectorOpen: boolean;
+  onToggleInspector: () => void
+  inspectorOpen: boolean
 }
 
 /**
@@ -58,15 +58,17 @@ export function TopBar({ onToggleInspector, inspectorOpen }: TopBarProps) {
         <button
           type="button"
           onClick={onToggleInspector}
-          className={`${styles.toggle} ${inspectorOpen ? styles.toggleOpen : ""}`}
+          className={`${styles.toggle} ${inspectorOpen ? styles.toggleOpen : ''}`}
           title="打开/收起检查器"
         >
           <IconSpan name="view_sidebar" size={14} className={styles.toggleIcon} />
           <span className={styles.toggleLabel}>检查器</span>
         </button>
 
-        <div className={styles.avatar} title="账户">TL</div>
+        <div className={styles.avatar} title="账户">
+          TL
+        </div>
       </div>
     </header>
-  );
+  )
 }

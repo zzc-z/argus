@@ -51,7 +51,9 @@
   border: none;
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: color 150ms ease-out, background-color 150ms ease-out;
+  transition:
+    color 150ms ease-out,
+    background-color 150ms ease-out;
 }
 
 .stepBtn:not(:disabled):hover {
@@ -75,10 +77,12 @@
   background-color: transparent;
   color: var(--token-secondary, #575e70);
   border: none;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .pageBtn:hover {
@@ -101,6 +105,6 @@
 .ellipsis {
   padding-inline: 0.25rem;
   color: var(--token-secondary, #575e70);
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
 }

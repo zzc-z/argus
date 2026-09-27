@@ -10,13 +10,13 @@
  *   4. Explore grid    — 3 report cards with cover image + CTA
  */
 
-import { PageHeader } from "./components/PageHeader";
-import { KpiCard } from "./components/KpiCard";
-import { RecentActivity } from "./components/RecentActivity";
-import { Subscriptions } from "./components/Subscriptions";
-import { ExploreGrid } from "./components/ExploreGrid";
-import { KPIS, ACTIVITIES, SUBSCRIPTIONS, REPORTS } from "./mock";
-import styles from "./page.module.css";
+import { PageHeader } from './components/PageHeader'
+import { KpiCard } from './components/KpiCard'
+import { RecentActivity } from './components/RecentActivity'
+import { Subscriptions } from './components/Subscriptions'
+import { ExploreGrid } from './components/ExploreGrid'
+import { KPIS, ACTIVITIES, SUBSCRIPTIONS, REPORTS } from './mock'
+import styles from './page.module.css'
 
 export default function DashboardPage() {
   return (
@@ -43,5 +43,5 @@ export default function DashboardPage() {
 
       <ExploreGrid reports={REPORTS} />
     </>
-  );
+  )
 }

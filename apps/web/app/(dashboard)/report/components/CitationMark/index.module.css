@@ -15,7 +15,9 @@
   cursor: pointer;
   transform: translateY(-0.125rem);
   margin-inline: 0.125rem;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .mark:hover {

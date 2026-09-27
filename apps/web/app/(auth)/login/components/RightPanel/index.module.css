@@ -9,11 +9,19 @@
   padding: 2rem;
   overflow: hidden;
 
-  @media (min-width: 640px) { padding: 3rem; }
-  @media (min-width: 1024px) { padding: 4rem; }
-  @media (min-width: 1280px) { width: 56%; }
+  @media (min-width: 640px) {
+    padding: 3rem;
+  }
+  @media (min-width: 1024px) {
+    padding: 4rem;
+  }
+  @media (min-width: 1280px) {
+    width: 56%;
+  }
 
-  @media (min-width: 1024px) and (max-width: 1279.98px) { width: 54%; }
+  @media (min-width: 1024px) and (max-width: 1279.98px) {
+    width: 54%;
+  }
 }
 
 .gridPattern {

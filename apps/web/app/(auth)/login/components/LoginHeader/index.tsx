@@ -1,9 +1,9 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { ArgusMark } from "@/components/common/ArgusMark";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { ArgusMark } from '@/components/common/ArgusMark'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 /**
  * Login page top header — left: brand + version chip; right: docs + language.
@@ -15,7 +15,9 @@ export function LoginHeader() {
       <div className={styles.brand}>
         <ArgusMark size={20} />
         <div className={styles.brandText}>
-          <span className={`${styles.brandName} font-headline-md font-semibold tracking-tight text-on-surface`}>
+          <span
+            className={`${styles.brandName} font-headline-md text-on-surface font-semibold tracking-tight`}
+          >
             Argus
           </span>
           <span className={`${styles.versionChip} font-label-sm font-medium tracking-tight`}>
@@ -25,16 +27,16 @@ export function LoginHeader() {
       </div>
 
       <nav className={styles.utility}>
-        <a className={`${styles.utilityLink} hidden sm:flex text-xs font-medium`} href="#">
+        <a className={`${styles.utilityLink} hidden text-xs font-medium sm:flex`} href="#">
           <IconSpan name="help" size={15} className="text-outline" />
           <span>文档中心</span>
         </a>
-        <span className={`${styles.utilitySep} hidden sm:inline font-code text-xs`}>/</span>
+        <span className={`${styles.utilitySep} font-code hidden text-xs sm:inline`}>/</span>
         <button type="button" className={`${styles.langBtn} text-xs`}>
           <IconSpan name="translate" size={14} />
           <span>简中</span>
         </button>
       </nav>
     </header>
-  );
+  )
 }

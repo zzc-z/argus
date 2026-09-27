@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 /**
  * /explore — Argus multi-agent deep research console.
@@ -23,80 +23,75 @@
  *           └──────────────────────────┘
  */
 
-import * as React from "react";
-import { Inter } from "next/font/google";
+import * as React from 'react'
+import { Inter } from 'next/font/google'
 
-import { TopBar } from "./components/TopBar";
-import { AgentDAG } from "./components/AgentDAG";
-import { StreamingReport } from "./components/StreamingReport";
+import { TopBar } from './components/TopBar'
+import { AgentDAG } from './components/AgentDAG'
+import { StreamingReport } from './components/StreamingReport'
 import {
   InspectorDrawer,
   getDefaultInspectorPayload,
   buildNodePayload,
   buildCitationPayload,
   type InspectorPayload,
-} from "./components/InspectorDrawer";
-import { PromptInput } from "./components/PromptInput";
-import type { SlashCommand } from "./mock";
-import styles from "./page.module.css";
+} from './components/InspectorDrawer'
+import { PromptInput } from './components/PromptInput'
+import type { SlashCommand } from './mock'
+import styles from './page.module.css'
 
 const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  weight: ["400", "500", "600"],
-});
+  subsets: ['latin'],
+  display: 'swap',
+  weight: ['400', '500', '600'],
+})
 
 export default function ExplorePage() {
-  const [inspectorOpen, setInspectorOpen] = React.useState(true);
-  const [inspectorPayload, setInspectorPayload] =
-    React.useState<InspectorPayload>(() => getDefaultInspectorPayload());
+  const [inspectorOpen, setInspectorOpen] = React.useState(true)
+  const [inspectorPayload, setInspectorPayload] = React.useState<InspectorPayload>(() =>
+    getDefaultInspectorPayload(),
+  )
 
-  const [promptValue, setPromptValue] = React.useState("");
+  const [promptValue, setPromptValue] = React.useState('')
   // Popover is visible when value starts with "/" (and is exactly "/", per
   // design — typing more characters hides it again).
-  const slashVisible = promptValue === "/";
+  const slashVisible = promptValue === '/'
 
-  const handleSelectNode = React.useCallback(
-    (node: Parameters<typeof buildNodePayload>[0]) => {
-      setInspectorOpen(true);
-      setInspectorPayload(buildNodePayload(node));
-    },
-    []
-  );
+  const handleSelectNode = React.useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
+    setInspectorOpen(true)
+    setInspectorPayload(buildNodePayload(node))
+  }, [])
 
   const handleSelectCitation = React.useCallback(
     (citation: Parameters<typeof buildCitationPayload>[0]) => {
-      setInspectorOpen(true);
-      setInspectorPayload(buildCitationPayload(citation));
+      setInspectorOpen(true)
+      setInspectorPayload(buildCitationPayload(citation))
     },
-    []
-  );
+    [],
+  )
 
   const handleToggleInspector = React.useCallback(() => {
-    setInspectorOpen((v) => !v);
-  }, []);
+    setInspectorOpen((v) => !v)
+  }, [])
 
   const handleCloseInspector = React.useCallback(() => {
-    setInspectorOpen(false);
-  }, []);
+    setInspectorOpen(false)
+  }, [])
 
   const handlePromptSubmit = React.useCallback((value: string) => {
     // Stub: real submit would route to a chat handler. For now we just
     // clear the input — design has no console.log spam.
-    setPromptValue("");
-    void value;
-  }, []);
+    setPromptValue('')
+    void value
+  }, [])
 
   const handleSlashSelect = React.useCallback((cmd: SlashCommand) => {
-    setPromptValue(`${cmd.cmd} `);
-  }, []);
+    setPromptValue(`${cmd.cmd} `)
+  }, [])
 
   return (
     <div className={`${styles.shell} ${inter.className}`}>
-      <TopBar
-        onToggleInspector={handleToggleInspector}
-        inspectorOpen={inspectorOpen}
-      />
+      <TopBar onToggleInspector={handleToggleInspector} inspectorOpen={inspectorOpen} />
 
       <div className={styles.main}>
         {/* Center column: DAG + Streaming Report */}
@@ -126,5 +121,5 @@ export default function ExplorePage() {
         </div>
       </div>
     </div>
-  );
+  )
 }

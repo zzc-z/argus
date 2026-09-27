@@ -1,15 +1,11 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import {
-  DRAWER_FREQUENCIES,
-  SOURCE_PRESETS,
-  type Frequency,
-} from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { DRAWER_FREQUENCIES, SOURCE_PRESETS, type Frequency } from '../../mock'
+import styles from './index.module.css'
 
-const OPEN_EVENT = "argus:topics:open-drawer";
+const OPEN_EVENT = 'argus:topics:open-drawer'
 
 /**
  * Right slide-over drawer for creating a new subscription.
@@ -29,29 +25,29 @@ const OPEN_EVENT = "argus:topics:open-drawer";
  * Cancel / Save button, or Escape key.
  */
 export function NewSubscriptionDrawer() {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(false)
 
   React.useEffect(() => {
-    const onOpen = () => setOpen(true);
+    const onOpen = () => setOpen(true)
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener(OPEN_EVENT, onOpen);
-    window.addEventListener("keydown", onKey);
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener(OPEN_EVENT, onOpen)
+    window.addEventListener('keydown', onKey)
     return () => {
-      window.removeEventListener(OPEN_EVENT, onOpen);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, []);
+      window.removeEventListener(OPEN_EVENT, onOpen)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [])
 
   return (
     <div
       id="drawer-container"
       aria-hidden={!open}
-      className={`${styles.shell} ${open ? styles.shellOpen : ""}`}
+      className={`${styles.shell} ${open ? styles.shellOpen : ''}`}
     >
       <div
-        className={`${styles.backdrop} ${open ? styles.backdropOpen : ""}`}
+        className={`${styles.backdrop} ${open ? styles.backdropOpen : ''}`}
         onClick={() => setOpen(false)}
         aria-hidden="true"
       />
@@ -59,29 +55,29 @@ export function NewSubscriptionDrawer() {
         <Drawer open={open} onClose={() => setOpen(false)} />
       </div>
     </div>
-  );
+  )
 }
 
 interface DrawerProps {
-  open: boolean;
-  onClose: () => void;
+  open: boolean
+  onClose: () => void
 }
 
 function Drawer({ open, onClose }: DrawerProps) {
-  const [frequency, setFrequency] = React.useState<Frequency>("realtime");
+  const [frequency, setFrequency] = React.useState<Frequency>('realtime')
   const [selectedSources, setSelectedSources] = React.useState<Set<string>>(
-    () => new Set(SOURCE_PRESETS.filter((s) => s.defaultChecked).map((s) => s.id))
-  );
-  const [policy, setPolicy] = React.useState<"auto" | "manual">("auto");
+    () => new Set(SOURCE_PRESETS.filter((s) => s.defaultChecked).map((s) => s.id)),
+  )
+  const [policy, setPolicy] = React.useState<'auto' | 'manual'>('auto')
 
   const toggleSource = (id: string) => {
     setSelectedSources((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   return (
     <aside
@@ -89,7 +85,7 @@ function Drawer({ open, onClose }: DrawerProps) {
       role="dialog"
       aria-modal="true"
       aria-label="新建研究课题订阅"
-      className={`${styles.panel} ${open ? styles.panelOpen : ""}`}
+      className={`${styles.panel} ${open ? styles.panelOpen : ''}`}
     >
       <header className={styles.header}>
         <div className={styles.headerLeft}>
@@ -105,12 +101,7 @@ function Drawer({ open, onClose }: DrawerProps) {
             </span>
           </div>
         </div>
-        <button
-          type="button"
-          className={styles.closeBtn}
-          onClick={onClose}
-          aria-label="关闭"
-        >
+        <button type="button" className={styles.closeBtn} onClick={onClose} aria-label="关闭">
           <IconSpan name="close" size={22} />
         </button>
       </header>
@@ -150,11 +141,11 @@ function Drawer({ open, onClose }: DrawerProps) {
           </div>
           <div className={styles.sources}>
             {SOURCE_PRESETS.map((src) => {
-              const checked = selectedSources.has(src.id);
+              const checked = selectedSources.has(src.id)
               return (
                 <label
                   key={src.id}
-                  className={`${styles.sourceCard} ${checked ? styles.sourceCardChecked : ""}`}
+                  className={`${styles.sourceCard} ${checked ? styles.sourceCardChecked : ''}`}
                 >
                   <input
                     type="checkbox"
@@ -171,7 +162,7 @@ function Drawer({ open, onClose }: DrawerProps) {
                     </span>
                   </div>
                 </label>
-              );
+              )
             })}
           </div>
         </section>
@@ -184,7 +175,7 @@ function Drawer({ open, onClose }: DrawerProps) {
             {DRAWER_FREQUENCIES.map((opt) => (
               <label
                 key={opt.value}
-                className={`${styles.freqCard} ${frequency === opt.value ? styles.freqCardChecked : ""}`}
+                className={`${styles.freqCard} ${frequency === opt.value ? styles.freqCardChecked : ''}`}
               >
                 <input
                   type="radio"
@@ -198,14 +189,12 @@ function Drawer({ open, onClose }: DrawerProps) {
                   name={opt.icon}
                   size={18}
                   className={
-                    opt.iconTone === "primary"
+                    opt.iconTone === 'primary'
                       ? `${styles.freqIcon} text-primary`
                       : `${styles.freqIcon} text-secondary`
                   }
                 />
-                <span className={`${styles.freqLabel} font-body-sm font-medium`}>
-                  {opt.label}
-                </span>
+                <span className={`${styles.freqLabel} font-body-sm font-medium`}>{opt.label}</span>
                 <span className={`${styles.freqDetail} font-label-sm text-secondary`}>
                   {opt.detail}
                 </span>
@@ -224,8 +213,8 @@ function Drawer({ open, onClose }: DrawerProps) {
               <input
                 type="radio"
                 name="policy"
-                checked={policy === "auto"}
-                onChange={() => setPolicy("auto")}
+                checked={policy === 'auto'}
+                onChange={() => setPolicy('auto')}
                 className={styles.policyRadio}
               />
               <span className={`${styles.policyLabel} font-body-sm`}>
@@ -236,8 +225,8 @@ function Drawer({ open, onClose }: DrawerProps) {
               <input
                 type="radio"
                 name="policy"
-                checked={policy === "manual"}
-                onChange={() => setPolicy("manual")}
+                checked={policy === 'manual'}
+                onChange={() => setPolicy('manual')}
                 className={styles.policyRadio}
               />
               <span className={`${styles.policyLabel} font-body-sm`}>
@@ -249,18 +238,11 @@ function Drawer({ open, onClose }: DrawerProps) {
       </form>
 
       <footer className={styles.footer}>
-        <button
-          type="button"
-          className={`${styles.cancelBtn} font-headline-sm`}
-          onClick={onClose}
-        >
+        <button type="button" className={`${styles.cancelBtn} font-headline-sm`} onClick={onClose}>
           取消
         </button>
         <div className={styles.footerRight}>
-          <button
-            type="button"
-            className={`${styles.secondaryBtn} font-headline-sm`}
-          >
+          <button type="button" className={`${styles.secondaryBtn} font-headline-sm`}>
             保存并测试信源
           </button>
           <button
@@ -273,5 +255,5 @@ function Drawer({ open, onClose }: DrawerProps) {
         </div>
       </footer>
     </aside>
-  );
+  )
 }

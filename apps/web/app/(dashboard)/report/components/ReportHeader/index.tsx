@@ -1,10 +1,10 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { cn } from "@/lib/utils";
-import { reportMeta } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { cn } from '@/lib/utils'
+import { reportMeta } from '../../mock'
+import styles from './index.module.css'
 
 /**
  * Top breadcrumb + quick action bar for the report detail page.
@@ -17,7 +17,7 @@ export function ReportHeader() {
         <a className={styles.backBtn} href="#" aria-label="返回报告列表">
           <IconSpan name="arrow_back" size={18} />
         </a>
-        <nav className={cn(styles.crumbs, "font-body-sm")}>
+        <nav className={cn(styles.crumbs, 'font-body-sm')}>
           <a className={styles.crumbLink} href="#">
             报告列表
           </a>
@@ -26,7 +26,7 @@ export function ReportHeader() {
             {reportMeta.title}
           </span>
         </nav>
-        <span className={cn(styles.idChip, "font-code")}>#{reportMeta.id}</span>
+        <span className={cn(styles.idChip, 'font-code')}>#{reportMeta.id}</span>
       </div>
 
       <div className={styles.actions}>
@@ -34,28 +34,24 @@ export function ReportHeader() {
         <ActionButton icon="picture_as_pdf" label="导出 PDF" />
         <ActionButton icon="markdown" label="复制 Markdown" />
         <ActionButton icon="account_tree" label="追踪链路" />
-        <button
-          type="button"
-          className={styles.moreBtn}
-          aria-label="更多操作"
-        >
+        <button type="button" className={styles.moreBtn} aria-label="更多操作">
           <IconSpan name="more_vert" size={18} />
         </button>
       </div>
     </div>
-  );
+  )
 }
 
 interface ActionButtonProps {
-  icon: string;
-  label: string;
+  icon: string
+  label: string
 }
 
 function ActionButton({ icon, label }: ActionButtonProps) {
   return (
-    <button type="button" className={cn(styles.actionBtn, "font-label-md")}>
+    <button type="button" className={cn(styles.actionBtn, 'font-label-md')}>
       <IconSpan name={icon} size={16} />
       <span>{label}</span>
     </button>
-  );
+  )
 }

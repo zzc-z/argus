@@ -1,18 +1,10 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import {
-  flexRender,
-  stockFeatures,
-  useTable,
-  type RowData,
-} from "@tanstack/react-table";
-import { cn } from "@/lib/utils";
-import type {
-  DataTableColumnDef,
-  DataTableProps,
-} from "./types";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { flexRender, stockFeatures, useTable, type RowData } from '@tanstack/react-table'
+import { cn } from '@/lib/utils'
+import type { DataTableColumnDef, DataTableProps } from './types'
+import styles from './index.module.css'
 
 /**
  * 通用 DataTable（TanStack v9 + flex 列布局）。
@@ -29,20 +21,20 @@ export function DataTable<TData extends RowData = RowData>({
   rowClassName,
   className,
 }: DataTableProps<TData>) {
-  const masterRef = React.useRef<HTMLInputElement>(null);
-  const sel = selection;
+  const masterRef = React.useRef<HTMLInputElement>(null)
+  const sel = selection
 
   React.useEffect(() => {
     if (masterRef.current && sel) {
-      masterRef.current.indeterminate = sel.partiallySelected && !sel.allSelected;
+      masterRef.current.indeterminate = sel.partiallySelected && !sel.allSelected
     }
-  }, [sel?.partiallySelected, sel?.allSelected]);
+  }, [sel?.partiallySelected, sel?.allSelected])
 
   // selection 模式：把内置复选框列塞到最前面
   const finalColumns = React.useMemo(() => {
-    if (!sel) return columns;
+    if (!sel) return columns
     const selectCol: DataTableColumnDef<TData> = {
-      id: "__select",
+      id: '__select',
       header: () => (
         <input
           ref={masterRef}
@@ -54,10 +46,10 @@ export function DataTable<TData extends RowData = RowData>({
         />
       ),
       cell: ({ row }) => {
-        const id = getRowId ? getRowId(row.original as TData, row.index) : String(row.index);
+        const id = getRowId ? getRowId(row.original as TData, row.index) : String(row.index)
         const checked = sel.isSelected
           ? sel.isSelected(row.original as TData)
-          : sel.selectedIds.has(id);
+          : sel.selectedIds.has(id)
         return (
           <input
             type="checkbox"
@@ -66,49 +58,49 @@ export function DataTable<TData extends RowData = RowData>({
             aria-label="选择行"
             className={styles.checkboxInput}
           />
-        );
+        )
       },
-      meta: { width: { minWidth: "2.75rem" }, align: "left" },
-    };
-    return [selectCol, ...columns];
-  }, [columns, sel, getRowId]);
+      meta: { width: { minWidth: '2.75rem' }, align: 'left' },
+    }
+    return [selectCol, ...columns]
+  }, [columns, sel, getRowId])
 
   const table = useTable({
     features: stockFeatures,
     data: data as TData[],
     columns: finalColumns as DataTableColumnDef<TData>[],
-    getRowId: getRowId
-      ? (row, index) => getRowId(row as TData, index)
-      : undefined,
-  });
+    getRowId: getRowId ? (row, index) => getRowId(row as TData, index) : undefined,
+  })
 
   const renderCell = (
     columnId: string,
-    meta: DataTableColumnDef<TData>["meta"],
+    meta: DataTableColumnDef<TData>['meta'],
     renderContent: () => React.ReactNode,
     isHeader: boolean,
   ) => {
-    const width = meta?.width ?? {};
-    const flex = width.flex !== undefined ? String(width.flex) : "0";
-    const minWidth = width.minWidth ?? "auto";
-    const basis = width.basis;
-    const maxWidth = width.maxWidth;
+    const width = meta?.width ?? {}
+    const flex = width.flex !== undefined ? String(width.flex) : '0'
+    const minWidth = width.minWidth ?? 'auto'
+    const basis = width.basis
+    const maxWidth = width.maxWidth
     const effectiveAlign = isHeader
-      ? (meta?.headerAlign ?? meta?.align ?? "left")
-      : (meta?.align ?? "left");
+      ? (meta?.headerAlign ?? meta?.align ?? 'left')
+      : (meta?.align ?? 'left')
     const alignCls =
-      effectiveAlign === "right" ? styles.alignRight
-        : effectiveAlign === "center" ? styles.alignCenter
-          : styles.alignLeft;
-    const extra = meta?.cellClassName ?? "";
-    const cellBase = isHeader ? styles.headerCell : styles.rowCell;
+      effectiveAlign === 'right'
+        ? styles.alignRight
+        : effectiveAlign === 'center'
+          ? styles.alignCenter
+          : styles.alignLeft
+    const extra = meta?.cellClassName ?? ''
+    const cellBase = isHeader ? styles.headerCell : styles.rowCell
     const style: React.CSSProperties = {
-      ["--col-flex" as string]: flex,
-      ["--col-min-w" as string]: minWidth,
+      ['--col-flex' as string]: flex,
+      ['--col-min-w' as string]: minWidth,
       ...(basis !== undefined ? { flexBasis: basis } : {}),
       ...(maxWidth !== undefined ? { maxWidth } : {}),
-    };
-    const isSelect = columnId === "__select";
+    }
+    const isSelect = columnId === '__select'
     return (
       <div
         key={columnId}
@@ -117,14 +109,14 @@ export function DataTable<TData extends RowData = RowData>({
           isHeader ? styles.headerMarker : styles.rowMarker,
           alignCls,
           extra,
-          isSelect ? styles.checkboxCell : "",
+          isSelect ? styles.checkboxCell : '',
         )}
         style={style}
       >
         {renderContent()}
       </div>
-    );
-  };
+    )
+  }
 
   return (
     <div className={cn(styles.root, className)}>
@@ -134,7 +126,7 @@ export function DataTable<TData extends RowData = RowData>({
             {hg.headers.map((header) =>
               renderCell(
                 String(header.column.id),
-                header.column.columnDef.meta as DataTableColumnDef<TData>["meta"],
+                header.column.columnDef.meta as DataTableColumnDef<TData>['meta'],
                 () =>
                   header.isPlaceholder
                     ? null
@@ -151,27 +143,26 @@ export function DataTable<TData extends RowData = RowData>({
           <div className={styles.empty}>暂无数据</div>
         ) : (
           table.getRowModel().rows.map((row, i) => {
-            const extra = rowClassName?.(row.original as TData, i) ?? "";
+            const extra = rowClassName?.(row.original as TData, i) ?? ''
             return (
-              <div
-                key={row.id}
-                className={cn(styles.row, i % 2 === 1 ? styles.banded : "", extra)}
-              >
-                {row.getAllCells().map((cell) =>
-                  renderCell(
-                    String(cell.column.id),
-                    cell.column.columnDef.meta as DataTableColumnDef<TData>["meta"],
-                    () => flexRender(cell.column.columnDef.cell, cell.getContext()),
-                    false,
-                  ),
-                )}
+              <div key={row.id} className={cn(styles.row, i % 2 === 1 ? styles.banded : '', extra)}>
+                {row
+                  .getAllCells()
+                  .map((cell) =>
+                    renderCell(
+                      String(cell.column.id),
+                      cell.column.columnDef.meta as DataTableColumnDef<TData>['meta'],
+                      () => flexRender(cell.column.columnDef.cell, cell.getContext()),
+                      false,
+                    ),
+                  )}
               </div>
-            );
+            )
           })
         )}
       </div>
     </div>
-  );
+  )
 }
 
-export type { DataTableColumnDef, DataTableProps, DataTableSelection } from "./types";
+export type { DataTableColumnDef, DataTableProps, DataTableSelection } from './types'

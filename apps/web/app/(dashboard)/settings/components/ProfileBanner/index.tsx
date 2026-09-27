@@ -1,14 +1,14 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { Button } from "@/components/ui";
-import { profileBanner } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { Button } from '@/components/ui'
+import { profileBanner } from '../../mock'
+import styles from './index.module.css'
 
 export interface ProfileBannerProps {
-  onManageProfile: () => void;
-  onSyncSso: () => void;
+  onManageProfile: () => void
+  onSyncSso: () => void
 }
 
 /**
@@ -16,8 +16,7 @@ export interface ProfileBannerProps {
  * Top of the right panel: avatar + name + role + email + 2 actions.
  */
 export function ProfileBanner({ onManageProfile, onSyncSso }: ProfileBannerProps) {
-  const { name, roleTag, email, emailVerifiedTag, primaryAction, secondaryAction } =
-    profileBanner;
+  const { name, roleTag, email, emailVerifiedTag, primaryAction, secondaryAction } = profileBanner
 
   return (
     <div className={styles.card}>
@@ -27,12 +26,10 @@ export function ProfileBanner({ onManageProfile, onSyncSso }: ProfileBannerProps
         </div>
         <div className={styles.identity}>
           <div className={styles.nameRow}>
-            <span className={`${styles.name} font-headline-sm font-medium text-on-surface`}>
+            <span className={`${styles.name} font-headline-sm text-on-surface font-medium`}>
               {name}
             </span>
-            <span
-              className={`${styles.roleTag} font-label-sm text-on-primary-fixed-variant`}
-            >
+            <span className={`${styles.roleTag} font-label-sm text-on-primary-fixed-variant`}>
               {roleTag}
             </span>
           </div>
@@ -54,16 +51,11 @@ export function ProfileBanner({ onManageProfile, onSyncSso }: ProfileBannerProps
           <IconSpan name={primaryAction.icon} size={16} />
           <span>{primaryAction.label}</span>
         </Button>
-        <Button
-          variant="default"
-          size="sm"
-          onClick={onSyncSso}
-          className={styles.actionPrimary}
-        >
+        <Button variant="default" size="sm" onClick={onSyncSso} className={styles.actionPrimary}>
           <IconSpan name={secondaryAction.icon} size={16} />
           <span>{secondaryAction.label}</span>
         </Button>
       </div>
     </div>
-  );
+  )
 }

@@ -1,22 +1,22 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { cn } from "@/lib/utils";
-import { IconSpan } from "@/components/common/IconSpan";
-import { Toggle } from "../Toggle";
-import type { MemoryRule } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { cn } from '@/lib/utils'
+import { IconSpan } from '@/components/common/IconSpan'
+import { Toggle } from '../Toggle'
+import type { MemoryRule } from '../../mock'
+import styles from './index.module.css'
 
 export interface LongTermMemorySectionProps {
-  masterEnabled: boolean;
-  crossTopicReasoning: boolean;
-  rules: MemoryRule[];
-  onMasterChange: (next: boolean) => void;
-  onCrossTopicChange: (next: boolean) => void;
-  onRuleToggle: (id: string, next: boolean) => void;
-  onRuleEdit: (id: string) => void;
-  onRuleDelete: (id: string) => void;
-  onAddRule: () => void;
+  masterEnabled: boolean
+  crossTopicReasoning: boolean
+  rules: MemoryRule[]
+  onMasterChange: (next: boolean) => void
+  onCrossTopicChange: (next: boolean) => void
+  onRuleToggle: (id: string, next: boolean) => void
+  onRuleEdit: (id: string) => void
+  onRuleDelete: (id: string) => void
+  onAddRule: () => void
 }
 
 /**
@@ -37,21 +37,19 @@ export function LongTermMemorySection({
   onAddRule,
 }: LongTermMemorySectionProps) {
   const handleDelete = (rule: MemoryRule) => {
-    if (typeof window === "undefined") return;
-    const ok = window.confirm(
-      `确认删除该准则？\n\n${rule.body}\n\n删除后智能体将不再注入该规则。`
-    );
-    if (ok) onRuleDelete(rule.id);
-  };
+    if (typeof window === 'undefined') return
+    const ok = window.confirm(`确认删除该准则？\n\n${rule.body}\n\n删除后智能体将不再注入该规则。`)
+    if (ok) onRuleDelete(rule.id)
+  }
 
   const handleAdd = () => {
-    if (typeof window === "undefined") {
-      onAddRule();
-      return;
+    if (typeof window === 'undefined') {
+      onAddRule()
+      return
     }
-    const ok = window.confirm("新建一条引导准则？\n\n（Mock：实际页面将打开规则编辑器）");
-    if (ok) onAddRule();
-  };
+    const ok = window.confirm('新建一条引导准则？\n\n（Mock：实际页面将打开规则编辑器）')
+    if (ok) onAddRule()
+  }
 
   return (
     <section className={styles.section}>
@@ -60,7 +58,7 @@ export function LongTermMemorySection({
         <div className={styles.headLeft}>
           <div className={styles.headTitleRow}>
             <IconSpan name="memory" size={22} className="text-primary-container" />
-            <h2 className={`${styles.title} font-headline-md font-semibold text-on-surface`}>
+            <h2 className={`${styles.title} font-headline-md text-on-surface font-semibold`}>
               长期自适应记忆控制
             </h2>
             <span className={`${styles.tag} font-label-sm text-secondary`}>
@@ -68,17 +66,16 @@ export function LongTermMemorySection({
             </span>
           </div>
           <p className={`${styles.desc} font-body-sm text-secondary`}>
-            Argus 智能体集群在多次研报生成与对话交互中沉淀的研究员个人偏好与事实逻辑，自动指导后续研究假设与推导风格。
+            Argus
+            智能体集群在多次研报生成与对话交互中沉淀的研究员个人偏好与事实逻辑，自动指导后续研究假设与推导风格。
           </p>
         </div>
         <div className={styles.masterToggle}>
           <div className={styles.masterText}>
-            <span className={`${styles.masterLabel} font-label-sm font-medium text-on-surface`}>
+            <span className={`${styles.masterLabel} font-label-sm text-on-surface font-medium`}>
               启用长短期记忆图谱
             </span>
-            <span className={`${styles.masterSub} font-code text-secondary`}>
-              Memory Engine
-            </span>
+            <span className={`${styles.masterSub} font-code text-secondary`}>Memory Engine</span>
           </div>
           <Toggle
             size="lg"
@@ -94,7 +91,7 @@ export function LongTermMemorySection({
         <div className={styles.subLeft}>
           <IconSpan name="schema" size={18} className="text-secondary" />
           <div className={styles.subText}>
-            <span className={`${styles.subLabel} font-body-sm font-medium text-on-surface`}>
+            <span className={`${styles.subLabel} font-body-sm text-on-surface font-medium`}>
               跨课题上下文联合推理 (Cross-topic reasoning)
             </span>
             <span className={`${styles.subHint} font-label-sm text-secondary`}>
@@ -114,7 +111,7 @@ export function LongTermMemorySection({
       {/* Rules */}
       <div className={styles.rules}>
         <div className={styles.rulesHead}>
-          <span className={`${styles.rulesHeading} font-label-sm uppercase text-secondary`}>
+          <span className={`${styles.rulesHeading} font-label-sm text-secondary uppercase`}>
             核心推导准则 · Guiding Rules ({rules.length})
           </span>
           <button type="button" className={styles.addBtn} onClick={handleAdd}>
@@ -130,18 +127,16 @@ export function LongTermMemorySection({
                 <span
                   className={cn(
                     styles.ruleTag,
-                    "font-label-sm",
-                    rule.tagTone === "primary" && styles.ruleTagPrimary,
-                    rule.tagTone === "secondary" && styles.ruleTagSecondary,
-                    rule.tagTone === "surface" && styles.ruleTagSurface
+                    'font-label-sm',
+                    rule.tagTone === 'primary' && styles.ruleTagPrimary,
+                    rule.tagTone === 'secondary' && styles.ruleTagSecondary,
+                    rule.tagTone === 'surface' && styles.ruleTagSurface,
                   )}
                 >
                   {rule.tag}
                 </span>
                 <div className={styles.ruleBody}>
-                  <p className={`${styles.ruleText} font-body-sm text-on-surface`}>
-                    {rule.body}
-                  </p>
+                  <p className={`${styles.ruleText} font-body-sm text-on-surface`}>{rule.body}</p>
                   <div className={`${styles.ruleMeta} font-code text-secondary`}>
                     <span>{rule.weightLabel}</span>
                     <span aria-hidden="true">·</span>
@@ -180,5 +175,5 @@ export function LongTermMemorySection({
         </div>
       </div>
     </section>
-  );
+  )
 }

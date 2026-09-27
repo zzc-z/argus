@@ -62,7 +62,7 @@
   padding: 0;
   cursor: pointer;
   color: var(--token-primary-container, #7039f9);
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   font-size: 12px;
 }
 

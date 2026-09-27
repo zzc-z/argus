@@ -1,4 +1,4 @@
-"use client";
+'use client'
 
 /**
  * Add Sources page — upload / URL / RSS ingestion + processing pipeline options.
@@ -10,23 +10,23 @@
  * URL/RSS tab state is local (useState); queue items are static mock.
  */
 
-import * as React from "react";
-import { useState } from "react";
-import Link from "next/link";
+import * as React from 'react'
+import { useState } from 'react'
+import Link from 'next/link'
 
-import { AddSourcesHeader } from "./components/AddSourcesHeader";
-import { UploadDropZone } from "./components/UploadDropZone";
-import { UrlRssTabs } from "./components/UrlRssTabs";
-import { ProcessingOptions } from "./components/ProcessingOptions";
-import { QueueMonitor } from "./components/QueueMonitor";
-import { IconSpan } from "@/components/common/IconSpan";
+import { AddSourcesHeader } from './components/AddSourcesHeader'
+import { UploadDropZone } from './components/UploadDropZone'
+import { UrlRssTabs } from './components/UrlRssTabs'
+import { ProcessingOptions } from './components/ProcessingOptions'
+import { QueueMonitor } from './components/QueueMonitor'
+import { IconSpan } from '@/components/common/IconSpan'
 
-import styles from "./page.module.css";
+import styles from './page.module.css'
 
-type IngestTab = "url" | "rss";
+type IngestTab = 'url' | 'rss'
 
 export default function AddSourcesPage() {
-  const [tab, setTab] = useState<IngestTab>("url");
+  const [tab, setTab] = useState<IngestTab>('url')
 
   return (
     <main className={styles.main}>
@@ -51,7 +51,7 @@ export default function AddSourcesPage() {
         </div>
       </div>
     </main>
-  );
+  )
 }
 
 /** Compact one-line badge — HNSW dense + sparse BM25 fusion engine. */
@@ -63,9 +63,7 @@ function ArchBadge() {
           <IconSpan name="account_tree" size={20} className="text-primary-container" />
         </div>
         <div>
-          <span className={`${styles.archTitle} font-body-sm`}>
-            双层拓扑向量索引模式已就绪
-          </span>
+          <span className={`${styles.archTitle} font-body-sm`}>双层拓扑向量索引模式已就绪</span>
           <span className={`${styles.archMeta} font-label-sm`}>
             HNSW Dense Index (1536d) + Sparse BM25 Fusion Engine
           </span>
@@ -76,7 +74,7 @@ function ArchBadge() {
         <span className={styles.archLive} />
       </div>
     </div>
-  );
+  )
 }
 
 /** Compact security / compliance tip card. */
@@ -91,7 +89,7 @@ function SecurityTip() {
         所有非结构化文献将通过本地隔离沙箱进行消毒与语义切片。敏感数据自动脱敏,生成出的向量索引将实时绑定至对应工作区专有推演图谱,不参与通用基础模型再训练。
       </p>
     </section>
-  );
+  )
 }
 
 /** Back link to /sources — quick return CTA for power users. */
@@ -101,5 +99,5 @@ function BackLink() {
       <IconSpan name="arrow_back" size={16} />
       <span>返回资料库</span>
     </Link>
-  );
+  )
 }

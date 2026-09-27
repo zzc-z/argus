@@ -1,17 +1,17 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { cn } from "@/lib/utils";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { cn } from '@/lib/utils'
+import styles from './index.module.css'
 
-export type ToggleSize = "lg" | "md" | "sm";
+export type ToggleSize = 'lg' | 'md' | 'sm'
 
 export interface ToggleProps {
-  checked: boolean;
-  onChange: (next: boolean) => void;
-  size?: ToggleSize;
-  ariaLabel?: string;
-  disabled?: boolean;
+  checked: boolean
+  onChange: (next: boolean) => void
+  size?: ToggleSize
+  ariaLabel?: string
+  disabled?: boolean
 }
 
 /**
@@ -22,16 +22,13 @@ export interface ToggleProps {
 export function Toggle({
   checked,
   onChange,
-  size = "lg",
+  size = 'lg',
   ariaLabel,
   disabled = false,
 }: ToggleProps) {
-  const sizeClass = size === "lg" ? styles.lg : size === "md" ? styles.md : styles.sm;
+  const sizeClass = size === 'lg' ? styles.lg : size === 'md' ? styles.md : styles.sm
   return (
-    <label
-      className={cn(styles.wrap, disabled && styles.disabled)}
-      data-on={checked || undefined}
-    >
+    <label className={cn(styles.wrap, disabled && styles.disabled)} data-on={checked || undefined}>
       <input
         type="checkbox"
         className={styles.input}
@@ -42,5 +39,5 @@ export function Toggle({
       />
       <span className={cn(styles.track, sizeClass)} />
     </label>
-  );
+  )
 }

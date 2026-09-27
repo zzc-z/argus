@@ -79,7 +79,7 @@
 
 .starred {
   color: #f59e0b;
-  font-variation-settings: "FILL" 1;
+  font-variation-settings: 'FILL' 1;
 }
 
 .runningDot {
@@ -91,8 +91,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .cardTitle {
@@ -128,7 +133,7 @@
   align-items: center;
   justify-content: space-between;
   padding-top: 0.25rem;
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 11px;
   color: var(--token-secondary, #575e70);
 }

@@ -1,16 +1,12 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import {
-  AGENT_NODES,
-  DAG_STATS,
-  type AgentNode,
-} from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { AGENT_NODES, DAG_STATS, type AgentNode } from '../../mock'
+import styles from './index.module.css'
 
 export interface AgentDAGProps {
-  onSelectNode: (node: AgentNode) => void;
+  onSelectNode: (node: AgentNode) => void
 }
 
 /**
@@ -21,11 +17,8 @@ export interface AgentDAGProps {
 export function AgentDAG({ onSelectNode }: AgentDAGProps) {
   // Highlight rail stops at the position of the active node (88px hardcoded
   // mirrors the design: rail covers nodes 1..active).
-  const activeIndex = AGENT_NODES.findIndex((n) => n.lifecycle === "active");
-  const highlightHeight =
-    activeIndex >= 0
-      ? `${activeIndex * 44 + 24}px`
-      : "0px";
+  const activeIndex = AGENT_NODES.findIndex((n) => n.lifecycle === 'active')
+  const highlightHeight = activeIndex >= 0 ? `${activeIndex * 44 + 24}px` : '0px'
 
   return (
     <section className={styles.section}>
@@ -33,9 +26,7 @@ export function AgentDAG({ onSelectNode }: AgentDAGProps) {
       <div className={styles.head}>
         <div className={styles.headLeft}>
           <span className={styles.headDot} />
-          <h2 className={styles.headTitle}>
-            {DAG_STATS.title}
-          </h2>
+          <h2 className={styles.headTitle}>{DAG_STATS.title}</h2>
           <span className={styles.headSep}>|</span>
           <span className={styles.headPipeline}>{DAG_STATS.pipeline}</span>
         </div>
@@ -55,40 +46,27 @@ export function AgentDAG({ onSelectNode }: AgentDAGProps) {
         {/* Background rail */}
         <div className={styles.rail} aria-hidden="true" />
         {/* Active highlight rail (covers nodes 1..active) */}
-        <div
-          className={styles.railActive}
-          aria-hidden="true"
-          style={{ height: highlightHeight }}
-        />
+        <div className={styles.railActive} aria-hidden="true" style={{ height: highlightHeight }} />
 
         {AGENT_NODES.map((node) => (
-          <NodeRow
-            key={node.id}
-            node={node}
-            onClick={() => onSelectNode(node)}
-          />
+          <NodeRow key={node.id} node={node} onClick={() => onSelectNode(node)} />
         ))}
       </div>
     </section>
-  );
+  )
 }
 
 interface NodeRowProps {
-  node: AgentNode;
-  onClick: () => void;
+  node: AgentNode
+  onClick: () => void
 }
 
 function NodeRow({ node, onClick }: NodeRowProps) {
-  const isCompleted = node.lifecycle === "completed";
-  const isActive = node.lifecycle === "active";
-  const isPending = node.lifecycle === "pending";
+  const isCompleted = node.lifecycle === 'completed'
+  const isActive = node.lifecycle === 'active'
+  const isPending = node.lifecycle === 'pending'
 
-  const rowClass = [
-    styles.row,
-    isActive ? styles.rowActive : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const rowClass = [styles.row, isActive ? styles.rowActive : ''].filter(Boolean).join(' ')
 
   return (
     <div className={rowClass} onClick={onClick} role="button" tabIndex={0}>
@@ -109,20 +87,12 @@ function NodeRow({ node, onClick }: NodeRowProps) {
         <div className={styles.rowText}>
           <span
             className={`${styles.rowName} ${
-              isActive
-                ? styles.rowNameActive
-                : isPending
-                ? styles.rowNamePending
-                : ""
+              isActive ? styles.rowNameActive : isPending ? styles.rowNamePending : ''
             }`}
           >
             {node.name}
           </span>
-          <span
-            className={`${styles.rowRole} ${
-              isActive ? styles.rowRoleActive : ""
-            }`}
-          >
+          <span className={`${styles.rowRole} ${isActive ? styles.rowRoleActive : ''}`}>
             {node.role}
           </span>
         </div>
@@ -140,11 +110,7 @@ function NodeRow({ node, onClick }: NodeRowProps) {
         )}
         {!isActive && (
           <>
-            <span
-              className={`${styles.rowLatency} ${
-                isPending ? styles.rowLatencyMuted : ""
-              }`}
-            >
+            <span className={`${styles.rowLatency} ${isPending ? styles.rowLatencyMuted : ''}`}>
               {node.latency}
             </span>
             <span className={styles.rowDetail}>查看详情 ↗</span>
@@ -152,5 +118,5 @@ function NodeRow({ node, onClick }: NodeRowProps) {
         )}
       </div>
     </div>
-  );
+  )
 }

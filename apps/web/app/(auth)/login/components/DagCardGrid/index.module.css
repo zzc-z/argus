@@ -17,7 +17,9 @@
   padding: 1.25rem 1.5rem;
   overflow: hidden;
 
-  @media (min-width: 640px) { padding: 1.5rem; }
+  @media (min-width: 640px) {
+    padding: 1.5rem;
+  }
 }
 
 .windowHeader {
@@ -45,9 +47,15 @@
   border-radius: 9999px;
 }
 
-.dotRose    { background-color: rgba(244, 63, 94, 0.8); }
-.dotAmber   { background-color: rgba(245, 158, 11, 0.8); }
-.dotEmerald { background-color: rgba(16, 185, 129, 0.8); }
+.dotRose {
+  background-color: rgba(244, 63, 94, 0.8);
+}
+.dotAmber {
+  background-color: rgba(245, 158, 11, 0.8);
+}
+.dotEmerald {
+  background-color: rgba(16, 185, 129, 0.8);
+}
 
 .path {
   margin-left: 0.5rem;
@@ -118,7 +126,7 @@
   background-color: rgb(147 51 234);
   border-radius: 0.25rem;
   font-size: 9px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   color: #ffffff;
 }
 
@@ -134,8 +142,12 @@
   font-size: 11px;
 }
 
-.cardIndexActive { color: rgb(192 132 252); }
-.cardIndexMuted  { color: rgb(163 163 163); }
+.cardIndexActive {
+  color: rgb(192 132 252);
+}
+.cardIndexMuted {
+  color: rgb(163 163 163);
+}
 
 .cardDesc {
   font-size: 0.75rem;
@@ -145,7 +157,9 @@
   white-space: nowrap;
 }
 
-.cardDescActive { color: #ffffff; }
+.cardDescActive {
+  color: #ffffff;
+}
 
 .cardMeta {
   font-size: 10px;
@@ -153,7 +167,9 @@
   color: rgb(163 163 163);
 }
 
-.cardMetaActive { color: rgb(233 213 255); }
+.cardMetaActive {
+  color: rgb(233 213 255);
+}
 
 .metrics {
   margin-top: 0.75rem;

@@ -1,5 +1,5 @@
-import * as React from "react";
-import styles from "./index.module.css";
+import * as React from 'react'
+import styles from './index.module.css'
 
 /**
  * Argus precise vector mark — 1:1 extracted from argus_3/code.html.
@@ -7,12 +7,12 @@ import styles from "./index.module.css";
  * can theme it via Tailwind `text-*` utilities.
  */
 export interface ArgusMarkProps extends React.SVGProps<SVGSVGElement> {
-  size?: number;
+  size?: number
 }
 
 export function ArgusMark({ size = 20, className, ...props }: ArgusMarkProps) {
   return (
-    <span className={`${styles.shell} ${className ?? ""}`}>
+    <span className={`${styles.shell} ${className ?? ''}`}>
       <svg
         className={styles.svg}
         fill="none"
@@ -36,14 +36,7 @@ export function ArgusMark({ size = 20, className, ...props }: ArgusMarkProps) {
           strokeLinecap="round"
           strokeWidth="2"
         />
-        <circle
-          cx="12"
-          cy="12"
-          r="4.25"
-          fill="#ffffff"
-          stroke="currentColor"
-          strokeWidth="1.75"
-        />
+        <circle cx="12" cy="12" r="4.25" fill="#ffffff" stroke="currentColor" strokeWidth="1.75" />
         <circle cx="12" cy="12" fill="currentColor" r="2" />
         <path
           className={styles.crosshair}
@@ -54,5 +47,5 @@ export function ArgusMark({ size = 20, className, ...props }: ArgusMarkProps) {
         />
       </svg>
     </span>
-  );
+  )
 }

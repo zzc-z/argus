@@ -1,25 +1,20 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { useState, useEffect, useRef } from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import {
-  type TypeFilterValue,
-  type ViewMode,
-  typeOptions,
-  viewModes,
-} from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { type TypeFilterValue, type ViewMode, typeOptions, viewModes } from '../../mock'
+import styles from './index.module.css'
 
 export interface FilterToolbarProps {
-  unreadCount: number;
-  totalCount: number;
-  statusFilter: "unread" | "all";
-  typeFilter: TypeFilterValue;
-  viewMode: ViewMode;
-  onStatusChange: (s: "unread" | "all") => void;
-  onTypeChange: (t: TypeFilterValue) => void;
-  onViewModeChange: (m: ViewMode) => void;
+  unreadCount: number
+  totalCount: number
+  statusFilter: 'unread' | 'all'
+  typeFilter: TypeFilterValue
+  viewMode: ViewMode
+  onStatusChange: (s: 'unread' | 'all') => void
+  onTypeChange: (t: TypeFilterValue) => void
+  onViewModeChange: (m: ViewMode) => void
 }
 
 /**
@@ -30,21 +25,21 @@ export interface FilterToolbarProps {
  * Outside-click closes the dropdown (mirrors the design's vanilla JS).
  */
 export function FilterToolbar(props: FilterToolbarProps) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) return
     const onDoc = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        setOpen(false)
       }
-    };
-    document.addEventListener("click", onDoc);
-    return () => document.removeEventListener("click", onDoc);
-  }, [open]);
+    }
+    document.addEventListener('click', onDoc)
+    return () => document.removeEventListener('click', onDoc)
+  }, [open])
 
-  const currentType = typeOptions.find((o) => o.value === props.typeFilter) ?? typeOptions[0];
+  const currentType = typeOptions.find((o) => o.value === props.typeFilter) ?? typeOptions[0]
 
   return (
     <div className={styles.bar}>
@@ -52,28 +47,24 @@ export function FilterToolbar(props: FilterToolbarProps) {
         <div className={styles.tabs}>
           <button
             type="button"
-            className={props.statusFilter === "unread" ? styles.tabActive : styles.tab}
-            onClick={() => props.onStatusChange("unread")}
+            className={props.statusFilter === 'unread' ? styles.tabActive : styles.tab}
+            onClick={() => props.onStatusChange('unread')}
           >
             <span>未读通知</span>
             <span
-              className={
-                props.statusFilter === "unread" ? styles.tabBadgeActive : styles.tabBadge
-              }
+              className={props.statusFilter === 'unread' ? styles.tabBadgeActive : styles.tabBadge}
             >
               {props.unreadCount}
             </span>
           </button>
           <button
             type="button"
-            className={props.statusFilter === "all" ? styles.tabActive : styles.tab}
-            onClick={() => props.onStatusChange("all")}
+            className={props.statusFilter === 'all' ? styles.tabActive : styles.tab}
+            onClick={() => props.onStatusChange('all')}
           >
             <span>全部历史</span>
             <span
-              className={
-                props.statusFilter === "all" ? styles.tabBadgeActive : styles.tabBadge
-              }
+              className={props.statusFilter === 'all' ? styles.tabBadgeActive : styles.tabBadge}
             >
               {props.totalCount}
             </span>
@@ -85,8 +76,8 @@ export function FilterToolbar(props: FilterToolbarProps) {
             type="button"
             className={styles.dropdownBtn}
             onClick={(e) => {
-              e.stopPropagation();
-              setOpen((v) => !v);
+              e.stopPropagation()
+              setOpen((v) => !v)
             }}
           >
             <IconSpan name="filter_list" size={16} className={styles.dropdownIcon} />
@@ -99,12 +90,10 @@ export function FilterToolbar(props: FilterToolbarProps) {
                 <button
                   key={opt.value}
                   type="button"
-                  className={
-                    opt.value === props.typeFilter ? styles.optionActive : styles.option
-                  }
+                  className={opt.value === props.typeFilter ? styles.optionActive : styles.option}
                   onClick={() => {
-                    props.onTypeChange(opt.value);
-                    setOpen(false);
+                    props.onTypeChange(opt.value)
+                    setOpen(false)
                   }}
                 >
                   {opt.label}
@@ -132,5 +121,5 @@ export function FilterToolbar(props: FilterToolbarProps) {
         </div>
       </div>
     </div>
-  );
+  )
 }

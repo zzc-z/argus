@@ -1,21 +1,17 @@
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 export interface StatusFooterProps {
-  latencyMs: number;
-  clusterHealthPct: number;
-  dataStateNote: string;
+  latencyMs: number
+  clusterHealthPct: number
+  dataStateNote: string
 }
 
 /**
  * Bottom row showing latency, cluster health, data state, and a link to the status page.
  */
-export function StatusFooter({
-  latencyMs,
-  clusterHealthPct,
-  dataStateNote,
-}: StatusFooterProps) {
+export function StatusFooter({ latencyMs, clusterHealthPct, dataStateNote }: StatusFooterProps) {
   return (
     <div className={styles.row}>
       <div className={styles.left}>
@@ -34,5 +30,5 @@ export function StatusFooter({
         </a>
       </div>
     </div>
-  );
+  )
 }

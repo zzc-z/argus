@@ -1,9 +1,9 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { processingOptions, defaultTopicOptions } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { processingOptions, defaultTopicOptions } from '../../mock'
+import styles from './index.module.css'
 
 /**
  * Pipeline processing options — 4 checkbox cards + topic classifier dropdown.
@@ -25,7 +25,7 @@ export function ProcessingOptions() {
       <div className={styles.grid}>
         {processingOptions.map((opt) => (
           <label key={opt.title} className={styles.option}>
-            <input type="checkbox" defaultChecked className="sr-only peer" />
+            <input type="checkbox" defaultChecked className="peer sr-only" />
             <span className={styles.optionBox}>
               <IconSpan name="check" size={14} className="text-on-primary" />
             </span>
@@ -40,9 +40,7 @@ export function ProcessingOptions() {
       <div className={styles.topicRow}>
         <div className={styles.topicLabel}>
           <IconSpan name="folder_special" size={18} className="text-secondary" />
-          <span className={`${styles.topicText} font-body-sm font-medium`}>
-            默认归入研究专题:
-          </span>
+          <span className={`${styles.topicText} font-body-sm font-medium`}>默认归入研究专题:</span>
         </div>
         <div className={styles.topicSelectWrap}>
           <select
@@ -58,5 +56,5 @@ export function ProcessingOptions() {
         </div>
       </div>
     </section>
-  );
+  )
 }

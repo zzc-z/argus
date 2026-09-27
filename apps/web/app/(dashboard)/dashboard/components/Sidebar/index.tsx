@@ -1,25 +1,25 @@
-import * as React from "react";
-import { ArgusMark } from "@/components/common/ArgusMark";
-import { IconSpan } from "@/components/common/IconSpan";
-import { StatusDot } from "@/components/common/StatusDot";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { ArgusMark } from '@/components/common/ArgusMark'
+import { IconSpan } from '@/components/common/IconSpan'
+import { StatusDot } from '@/components/common/StatusDot'
+import styles from './index.module.css'
 
 interface NavItem {
-  id: string;
-  icon: string;
-  label: string;
-  active: boolean;
-  badge?: string;
+  id: string
+  icon: string
+  label: string
+  active: boolean
+  badge?: string
 }
 
 const NAV: NavItem[] = [
-  { id: "dashboard", icon: "analytics", label: "看板", active: true },
-  { id: "research", icon: "biotech", label: "深度研报", active: false },
-  { id: "intel", icon: "radar", label: "实时情报", active: false, badge: "12" },
-  { id: "sources", icon: "dataset", label: "数据源", active: false },
-  { id: "agents", icon: "deployed_code", label: "智能体实验室", active: false },
-  { id: "audit", icon: "fact_check", label: "审计与导出", active: false },
-];
+  { id: 'dashboard', icon: 'analytics', label: '看板', active: true },
+  { id: 'research', icon: 'biotech', label: '深度研报', active: false },
+  { id: 'intel', icon: 'radar', label: '实时情报', active: false, badge: '12' },
+  { id: 'sources', icon: 'dataset', label: '数据源', active: false },
+  { id: 'agents', icon: 'deployed_code', label: '智能体实验室', active: false },
+  { id: 'audit', icon: 'fact_check', label: '审计与导出', active: false },
+]
 
 /** Fixed left navigation column. 1:1 extracted from argus_dashboard/code.html sidebar. */
 export function Sidebar() {
@@ -40,16 +40,13 @@ export function Sidebar() {
         <ul className={styles.navList}>
           {NAV.map((n) => (
             <li key={n.id}>
-              <a
-                href="#"
-                className={`${styles.navItem} ${n.active ? styles.navItemActive : ""}`}
-              >
+              <a href="#" className={`${styles.navItem} ${n.active ? styles.navItemActive : ''}`}>
                 <IconSpan
                   name={n.icon}
                   size={18}
-                  className={n.active ? "text-primary-container" : "text-secondary"}
+                  className={n.active ? 'text-primary-container' : 'text-secondary'}
                 />
-                <span className={`${styles.navLabel2} ${n.active ? styles.navLabelActive : ""}`}>
+                <span className={`${styles.navLabel2} ${n.active ? styles.navLabelActive : ''}`}>
                   {n.label}
                 </span>
                 {n.badge && <span className={styles.navBadge}>{n.badge}</span>}
@@ -64,7 +61,9 @@ export function Sidebar() {
           <StatusDot color="emerald" ping />
           <div className={styles.footerStatusText}>
             <p className={`${styles.footerStatusTitle} font-label-sm font-medium`}>全部系统运行</p>
-            <p className={`${styles.footerStatusMeta} font-label-sm`}>6 个节点 · 12.4 GB / 256 GB</p>
+            <p className={`${styles.footerStatusMeta} font-label-sm`}>
+              6 个节点 · 12.4 GB / 256 GB
+            </p>
           </div>
         </div>
         <button type="button" className={`${styles.footerBtn} font-label-sm`}>
@@ -73,5 +72,5 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
-  );
+  )
 }

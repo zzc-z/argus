@@ -58,7 +58,7 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "PT", "C4", "RUF", "ASYNC"]
 ignore = ["E501", "B008"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["PT"]  # allow pytest fixtures / parametrize without asserts
+"tests/**/*.py" = ["PT", "F401", "RUF002", "RUF003"]  # PT: pytest fixtures; F401: stub imports (W1->W2); RUF002/003: 中文标点 in docstrings/comments
 
 [tool.ruff.format]
 quote-style = "double"

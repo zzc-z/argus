@@ -1,12 +1,12 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import type { Report } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import type { Report } from '../../mock'
+import styles from './index.module.css'
 
 export interface ReportGridProps {
-  reports: ReadonlyArray<Report>;
+  reports: ReadonlyArray<Report>
 }
 
 /**
@@ -17,16 +17,12 @@ export function ReportGrid({ reports }: ReportGridProps) {
   return (
     <div className={styles.root}>
       {reports.map((r) => {
-        const isRunning = r.status === "running";
+        const isRunning = r.status === 'running'
         return (
           <article key={r.id} className={styles.card}>
             <div className={styles.cardHead}>
               <div className={styles.cardTopRow}>
-                <span
-                  className={`${styles.topicBadge} ${
-                    styles[`topic-${r.topic.tone}`] ?? ""
-                  }`}
-                >
+                <span className={`${styles.topicBadge} ${styles[`topic-${r.topic.tone}`] ?? ''}`}>
                   {r.topic.label}
                 </span>
                 {isRunning ? (
@@ -35,30 +31,28 @@ export function ReportGrid({ reports }: ReportGridProps) {
                   <IconSpan
                     name="star"
                     size={18}
-                    className={`${styles.star} ${r.starred ? styles.starred : ""}`}
+                    className={`${styles.star} ${r.starred ? styles.starred : ''}`}
                   />
                 )}
               </div>
-              <h3 className={`${styles.cardTitle} ${isRunning ? styles.cardTitleRunning : ""}`}>
+              <h3 className={`${styles.cardTitle} ${isRunning ? styles.cardTitleRunning : ''}`}>
                 {r.title}
               </h3>
               <p className={styles.cardSummary}>{r.summary}</p>
             </div>
-            <div className={`${styles.cardFoot} ${isRunning ? styles.cardFootRunning : ""}`}>
+            <div className={`${styles.cardFoot} ${isRunning ? styles.cardFootRunning : ''}`}>
               <span className={styles.cardMeta}>
                 {r.sourcesCount} 权威源 · {r.viewsCount} 阅
               </span>
               {isRunning ? (
-                <span className={styles.cardRunning}>
-                  ⏳ 流式生成中 {r.runningProgress ?? 0}%
-                </span>
+                <span className={styles.cardRunning}>⏳ 流式生成中 {r.runningProgress ?? 0}%</span>
               ) : (
                 <span className={styles.cardVerified}>✓ 已验证</span>
               )}
             </div>
           </article>
-        );
+        )
       })}
     </div>
-  );
+  )
 }

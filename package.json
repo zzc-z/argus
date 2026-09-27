@@ -8,9 +8,15 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "format": "turbo run format",
+    "format:check": "turbo run format:check",
+    "format:api": "cd apps/api && uv run ruff format . && uv run ruff check --fix .",
+    "format:check:api": "cd apps/api && uv run ruff format --check ."
   },
   "devDependencies": {
+    "prettier": "^3.3",
+    "prettier-plugin-tailwindcss": "^0.6",
     "turbo": "^2.0",
     "typescript": "^5.6"
   },

@@ -1,18 +1,18 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { KbdHint } from "@/components/common/KbdHint";
-import { SlashCommandPopover } from "../SlashCommandPopover";
-import type { SlashCommand } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { KbdHint } from '@/components/common/KbdHint'
+import { SlashCommandPopover } from '../SlashCommandPopover'
+import type { SlashCommand } from '../../mock'
+import styles from './index.module.css'
 
 export interface PromptInputProps {
-  value: string;
-  onChange: (next: string) => void;
-  onSubmit: (value: string) => void;
-  slashVisible: boolean;
-  onSlashSelect: (cmd: SlashCommand) => void;
+  value: string
+  onChange: (next: string) => void
+  onSubmit: (value: string) => void
+  slashVisible: boolean
+  onSlashSelect: (cmd: SlashCommand) => void
 }
 
 /**
@@ -29,25 +29,25 @@ export function PromptInput({
   slashVisible,
   onSlashSelect,
 }: PromptInputProps) {
-  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape") {
+    if (e.key === 'Escape') {
       // Always hide popover on Escape.
-      if (slashVisible) onChange("");
+      if (slashVisible) onChange('')
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      const trimmed = value.trim();
-      if (trimmed) onSubmit(trimmed);
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+      e.preventDefault()
+      const trimmed = value.trim()
+      if (trimmed) onSubmit(trimmed)
     }
-  };
+  }
 
   const handleSend = () => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    onSubmit(trimmed);
-  };
+    const trimmed = value.trim()
+    if (!trimmed) return
+    onSubmit(trimmed)
+  }
 
   return (
     <div className={styles.wrap}>
@@ -70,16 +70,12 @@ export function PromptInput({
           <div className={styles.shortcut}>
             <KbdHint tone="light">⌘+↵ 发送</KbdHint>
           </div>
-          <button
-            type="button"
-            className={styles.sendBtn}
-            onClick={handleSend}
-          >
+          <button type="button" className={styles.sendBtn} onClick={handleSend}>
             <span>发送</span>
             <IconSpan name="arrow_forward" size={13} />
           </button>
         </div>
       </div>
     </div>
-  );
+  )
 }

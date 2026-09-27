@@ -1,16 +1,16 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { useMemo, useState, useCallback } from "react";
+import * as React from 'react'
+import { useMemo, useState, useCallback } from 'react'
 
-import { PageHeader } from "./components/PageHeader";
-import { FilterToolbar } from "./components/FilterToolbar";
-import { BulkActionToolbar } from "./components/BulkActionToolbar";
-import { NotificationSection } from "./components/NotificationSection";
-import { PaginationFooter } from "./components/PaginationFooter";
-import { PushSettingsCard } from "./components/PushSettingsCard";
-import { HealthCard } from "./components/HealthCard";
-import { CtaCard } from "./components/CtaCard";
+import { PageHeader } from './components/PageHeader'
+import { FilterToolbar } from './components/FilterToolbar'
+import { BulkActionToolbar } from './components/BulkActionToolbar'
+import { NotificationSection } from './components/NotificationSection'
+import { PaginationFooter } from './components/PaginationFooter'
+import { PushSettingsCard } from './components/PushSettingsCard'
+import { HealthCard } from './components/HealthCard'
+import { CtaCard } from './components/CtaCard'
 
 import {
   allSections,
@@ -18,9 +18,9 @@ import {
   type TypeFilterValue,
   type ViewMode,
   type NotificationWithMeta,
-} from "./mock";
+} from './mock'
 
-import styles from "./page.module.css";
+import styles from './page.module.css'
 
 /**
  * /notifications — composition root for the notifications page.
@@ -31,19 +31,18 @@ import styles from "./page.module.css";
  * 1:1 extracted from argus_notifications/code.html lines 1-535.
  */
 export default function NotificationsPage() {
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(["n1", "n2"]));
-  const [markedReadIds, setMarkedReadIds] = useState<Set<string>>(new Set());
-  const [statusFilter, setStatusFilter] = useState<"unread" | "all">("unread");
-  const [typeFilter, setTypeFilter] = useState<TypeFilterValue>("all");
-  const [viewMode, setViewMode] = useState<ViewMode>("time");
-  const [earlierExpanded, setEarlierExpanded] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(['n1', 'n2']))
+  const [markedReadIds, setMarkedReadIds] = useState<Set<string>>(new Set())
+  const [statusFilter, setStatusFilter] = useState<'unread' | 'all'>('unread')
+  const [typeFilter, setTypeFilter] = useState<TypeFilterValue>('all')
+  const [viewMode, setViewMode] = useState<ViewMode>('time')
+  const [earlierExpanded, setEarlierExpanded] = useState(false)
 
   /** Per-item derived flag: `unread && not in markedReadIds`. */
   const isDerivedUnread = useCallback(
-    (item: NotificationWithMeta): boolean =>
-      item.unread && !markedReadIds.has(item.id),
-    [markedReadIds]
-  );
+    (item: NotificationWithMeta): boolean => item.unread && !markedReadIds.has(item.id),
+    [markedReadIds],
+  )
 
   /** Total items currently visible across all sections, for select-all and toolbar hint. */
   const totalVisible = useMemo(() => {
@@ -51,99 +50,98 @@ export default function NotificationsPage() {
       return (
         sum +
         s.items.filter((it) => {
-          if (statusFilter === "unread" && !isDerivedUnread(it)) return false;
-          if (typeFilter !== "all" && it.category !== typeFilter) return false;
-          return true;
+          if (statusFilter === 'unread' && !isDerivedUnread(it)) return false
+          if (typeFilter !== 'all' && it.category !== typeFilter) return false
+          return true
         }).length
-      );
-    }, 0);
-  }, [statusFilter, typeFilter, isDerivedUnread]);
+      )
+    }, 0)
+  }, [statusFilter, typeFilter, isDerivedUnread])
 
   const visibleIds = useMemo(() => {
-    const ids: string[] = [];
+    const ids: string[] = []
     for (const s of allSections) {
       for (const it of s.items) {
-        if (statusFilter === "unread" && !isDerivedUnread(it)) continue;
-        if (typeFilter !== "all" && it.category !== typeFilter) continue;
-        ids.push(it.id);
+        if (statusFilter === 'unread' && !isDerivedUnread(it)) continue
+        if (typeFilter !== 'all' && it.category !== typeFilter) continue
+        ids.push(it.id)
       }
     }
-    return ids;
-  }, [statusFilter, typeFilter, isDerivedUnread]);
+    return ids
+  }, [statusFilter, typeFilter, isDerivedUnread])
 
-  const allVisibleSelected =
-    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
 
   const derivedUnreadCount = useMemo(() => {
-    let n = 0;
+    let n = 0
     for (const s of allSections) {
       for (const it of s.items) {
-        if (isDerivedUnread(it)) n += 1;
+        if (isDerivedUnread(it)) n += 1
       }
     }
-    return n;
-  }, [isDerivedUnread]);
+    return n
+  }, [isDerivedUnread])
 
   const toggleItem = useCallback((id: string) => {
     setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   const markAll = useCallback(() => {
     setMarkedReadIds((prev) => {
-      const next = new Set(prev);
+      const next = new Set(prev)
       for (const s of allSections) {
         for (const it of s.items) {
-          if (it.unread) next.add(it.id);
+          if (it.unread) next.add(it.id)
         }
       }
-      return next;
-    });
-  }, []);
+      return next
+    })
+  }, [])
 
   const markOneAsRead = useCallback((id: string) => {
     setMarkedReadIds((prev) => {
-      if (prev.has(id)) return prev;
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  }, []);
+      if (prev.has(id)) return prev
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
+  }, [])
 
   const toggleSelectAll = useCallback(() => {
     setSelectedIds((prev) => {
-      if (allVisibleSelected) return new Set();
-      return new Set(visibleIds);
-    });
-  }, [allVisibleSelected, visibleIds]);
+      if (allVisibleSelected) return new Set()
+      return new Set(visibleIds)
+    })
+  }, [allVisibleSelected, visibleIds])
 
   const bulkMarkAsRead = useCallback(() => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0) return
     setMarkedReadIds((prev) => {
-      const next = new Set(prev);
-      selectedIds.forEach((id) => next.add(id));
-      return next;
-    });
-    setSelectedIds(new Set());
-  }, [selectedIds]);
+      const next = new Set(prev)
+      selectedIds.forEach((id) => next.add(id))
+      return next
+    })
+    setSelectedIds(new Set())
+  }, [selectedIds])
 
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
   const mute = useCallback(() => {
     /* No-op placeholder — would open mute dialog in real app. */
-  }, []);
+  }, [])
 
   const filterItem = useCallback(
     (item: NotificationWithMeta): boolean => {
-      if (statusFilter === "unread" && !isDerivedUnread(item)) return false;
-      if (typeFilter !== "all" && item.category !== typeFilter) return false;
-      return true;
+      if (statusFilter === 'unread' && !isDerivedUnread(item)) return false
+      if (typeFilter !== 'all' && item.category !== typeFilter) return false
+      return true
     },
-    [statusFilter, typeFilter, isDerivedUnread]
-  );
+    [statusFilter, typeFilter, isDerivedUnread],
+  )
 
   return (
     <div className={styles.root}>
@@ -178,9 +176,7 @@ export default function NotificationsPage() {
               section={{
                 ...section,
                 items: section.items.map((it) =>
-                  isDerivedUnread(it) === it.unread
-                    ? it
-                    : { ...it, unread: isDerivedUnread(it) }
+                  isDerivedUnread(it) === it.unread ? it : { ...it, unread: isDerivedUnread(it) },
                 ),
               }}
               expanded={earlierExpanded}
@@ -206,5 +202,5 @@ export default function NotificationsPage() {
         </aside>
       </div>
     </div>
-  );
+  )
 }

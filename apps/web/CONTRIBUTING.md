@@ -68,6 +68,7 @@ pnpm dlx shadcn@latest add <name>     # 加新 shadcn 组件到 components/ui/�
 函数 ≤50 行 / 文件 ≤800 行 / 嵌套 ≤4 层 / 不可变 mutation / 命名一致。
 
 提交前自检 5 条：
+
 1. 删除走不到的 if 分支
 2. 删除未引用的 import
 3. 删除同时存在的旧路径
@@ -85,6 +86,7 @@ pnpm dlx shadcn@latest add <name>     # 例：add dialog dropdown-menu select
 ```
 
 CLI 自动做的事：
+
 1. 下载组件源码到 `apps/web/components/ui/`
 2. 装 peer deps 到 `apps/web/package.json`
 3. 不改 `tailwind.config.ts` / `globals.css`（因为 `components.json` 设了 `cssVariables: false`）
@@ -110,6 +112,7 @@ CLI 自动做的事：
 ## 9. 字体
 
 阿里巴巴普惠体（Alibaba PuHuiTi）通过阿里妈妈 Smart Font 远程加载：
+
 - 本地路径：`apps/web/public/fonts/`（已清空，远程方案不需要 .woff2）
 - 远程加载：app/layout.tsx `<head>` 里的 `<link href="https://at.alicdn.com/t/c/font_你的ID.css">`
 - 字体声明：`globals.css` `@layer base` `html, body { font-family: 'AlibabaPuHuiTi', system-ui, ... }`
@@ -148,17 +151,17 @@ CLI 自动做的事：
 
 ## 15. 特殊配置文件作用
 
-| 文件 | 作用 | 谁维护 |
-|---|---|---|
-| `eslint.config.mjs` | ESLint 9 flat config + FlatCompat 桥接 `next/core-web-vitals` + typescript-eslint strict-type-checked + react-hooks + jsx-a11y + import + tailwindcss + prettier bridge | 改 lint 规则时 |
-| `.prettierrc.json` | Prettier 3.x 配置：printWidth 100 / semi true / singleQuote false / trailingComma all / arrowParens always / plugins 含 `prettier-plugin-tailwindcss` | 改 format 规则时 |
-| `.prettierignore` | Prettier 忽略：`.next` / `node_modules` / `out` / `dist` / `coverage` / 锁文件 | 加新忽略项时 |
-| `commitlint.config.js` | commitlint + 11 type + workspace-scopes 自动 monorepo scope | 改 commit 规范时 |
-| `.lintstagedrc.json` | lint-staged 配置：TS/TSX 跑 `eslint --fix + prettier --write`；JSON/MD 跑 `prettier --write` | 改 staged hooks 时 |
-| `.husky/pre-commit` | husky git hook：跑 `pnpm exec lint-staged` + `pnpm exec tsc --noEmit` | 改 pre-commit 行为时 |
-| `.husky/commit-msg` | husky git hook：跑 `pnpm exec commitlint --edit "$1"` | 改 commit msg 行为时 |
-| `components.json` | shadcn/ui 配置：new-york 风格 / RSC / TSX / tailwind 路径 / aliases（由 `pnpm dlx shadcn@latest init` 自动生成） | 改 shadcn 风格时 |
-| `lib/utils.ts` | `cn = twMerge(clsx(...))` helper（由 shadcn CLI 自动生成） | 改 cn helper 时 |
+| 文件                   | 作用                                                                                                                                                                    | 谁维护               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `eslint.config.mjs`    | ESLint 9 flat config + FlatCompat 桥接 `next/core-web-vitals` + typescript-eslint strict-type-checked + react-hooks + jsx-a11y + import + tailwindcss + prettier bridge | 改 lint 规则时       |
+| `.prettierrc.json`     | Prettier 3.x 配置：printWidth 100 / semi true / singleQuote false / trailingComma all / arrowParens always / plugins 含 `prettier-plugin-tailwindcss`                   | 改 format 规则时     |
+| `.prettierignore`      | Prettier 忽略：`.next` / `node_modules` / `out` / `dist` / `coverage` / 锁文件                                                                                          | 加新忽略项时         |
+| `commitlint.config.js` | commitlint + 11 type + workspace-scopes 自动 monorepo scope                                                                                                             | 改 commit 规范时     |
+| `.lintstagedrc.json`   | lint-staged 配置：TS/TSX 跑 `eslint --fix + prettier --write`；JSON/MD 跑 `prettier --write`                                                                            | 改 staged hooks 时   |
+| `.husky/pre-commit`    | husky git hook：跑 `pnpm exec lint-staged` + `pnpm exec tsc --noEmit`                                                                                                   | 改 pre-commit 行为时 |
+| `.husky/commit-msg`    | husky git hook：跑 `pnpm exec commitlint --edit "$1"`                                                                                                                   | 改 commit msg 行为时 |
+| `components.json`      | shadcn/ui 配置：new-york 风格 / RSC / TSX / tailwind 路径 / aliases（由 `pnpm dlx shadcn@latest init` 自动生成）                                                        | 改 shadcn 风格时     |
+| `lib/utils.ts`         | `cn = twMerge(clsx(...))` helper（由 shadcn CLI 自动生成）                                                                                                              | 改 cn helper 时      |
 
 ## 16. 链接
 

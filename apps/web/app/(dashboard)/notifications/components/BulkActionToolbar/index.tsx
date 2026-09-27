@@ -1,19 +1,19 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 export interface BulkActionToolbarProps {
-  selectedCount: number;
+  selectedCount: number
   /** Total items currently visible to the user (used for select-all checkbox state). */
-  totalVisible: number;
+  totalVisible: number
   /** Whether all currently-visible items are selected. */
-  allVisibleSelected: boolean;
-  onToggleSelectAll: () => void;
-  onMarkAsRead: () => void;
-  onMute: () => void;
-  onClear: () => void;
+  allVisibleSelected: boolean
+  onToggleSelectAll: () => void
+  onMarkAsRead: () => void
+  onMute: () => void
+  onClear: () => void
 }
 
 /**
@@ -31,13 +31,13 @@ export function BulkActionToolbar({
   onMute,
   onClear,
 }: BulkActionToolbarProps) {
-  const disabled = selectedCount === 0;
-  const wrapperClass = `${styles.bar} ${disabled ? styles.disabled : ""}`;
-  const checkboxState: boolean | "indeterminate" = allVisibleSelected
+  const disabled = selectedCount === 0
+  const wrapperClass = `${styles.bar} ${disabled ? styles.disabled : ''}`
+  const checkboxState: boolean | 'indeterminate' = allVisibleSelected
     ? true
     : selectedCount > 0
-    ? "indeterminate"
-    : false;
+      ? 'indeterminate'
+      : false
 
   return (
     <div className={wrapperClass}>
@@ -48,14 +48,13 @@ export function BulkActionToolbar({
             className={styles.checkbox}
             checked={checkboxState === true}
             ref={(el) => {
-              if (el) el.indeterminate = checkboxState === "indeterminate";
+              if (el) el.indeterminate = checkboxState === 'indeterminate'
             }}
             onChange={onToggleSelectAll}
             disabled={totalVisible === 0}
           />
           <span className={`${styles.label} font-headline-sm font-semibold`}>
-            已选中{" "}
-            <span className={`${styles.count} font-code`}>{selectedCount}</span> 项
+            已选中 <span className={`${styles.count} font-code`}>{selectedCount}</span> 项
           </span>
         </label>
         <span className={`${styles.sep} font-code`}>|</span>
@@ -79,5 +78,5 @@ export function BulkActionToolbar({
         </button>
       </div>
     </div>
-  );
+  )
 }

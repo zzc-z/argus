@@ -25,7 +25,7 @@
   gap: 0.25rem;
   margin-bottom: 0.25rem;
   color: var(--token-secondary, #575e70);
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   line-height: 16px;
   letter-spacing: 0.02em;
@@ -53,7 +53,7 @@
   border-radius: 0.25rem;
   background-color: var(--token-surface-container-high, #e7e8e9);
   color: var(--token-on-surface-variant, #494456);
-  font-family: "JetBrains Mono", monospace;
+  font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
   line-height: 14px;
 }
@@ -71,8 +71,13 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .titleRow {
@@ -93,7 +98,7 @@
 .desc {
   margin-top: 0.25rem;
   color: var(--token-secondary, #575e70);
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
 }
 
 .right {
@@ -119,7 +124,7 @@
   color: var(--token-on-surface, #191c1d);
   font-size: 13px;
   line-height: 20px;
-  font-family: "Geist", sans-serif;
+  font-family: 'Geist', sans-serif;
   border: 0;
   cursor: pointer;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
@@ -145,7 +150,9 @@
   border: 0;
   cursor: pointer;
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .iconBtn:hover {

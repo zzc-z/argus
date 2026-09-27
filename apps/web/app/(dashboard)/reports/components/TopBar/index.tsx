@@ -1,14 +1,14 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
 import {
   SEARCH_PLACEHOLDER,
   SEARCH_SHORTCUT,
   TOPBAR_STATUS_LABEL,
   TOPBAR_THROUGHPUT,
-} from "../../mock";
-import styles from "./index.module.css";
+} from '../../mock'
+import styles from './index.module.css'
 
 /**
  * Fixed top app bar — global search + DAG status pill + actions + user.
@@ -54,5 +54,5 @@ export function TopBar() {
         </div>
       </div>
     </header>
-  );
+  )
 }

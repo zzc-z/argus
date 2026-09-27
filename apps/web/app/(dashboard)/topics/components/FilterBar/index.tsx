@@ -1,15 +1,15 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { FILTER_TABS, TOPICS } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { FILTER_TABS, TOPICS } from '../../mock'
+import styles from './index.module.css'
 
-export type TopicsFilter = (typeof FILTER_TABS)[number]["id"];
+export type TopicsFilter = (typeof FILTER_TABS)[number]['id']
 
 export interface FilterBarProps {
   /** Available topics — used by the refresh button's "force run all" hook later. */
-  topics?: typeof TOPICS;
+  topics?: typeof TOPICS
 }
 
 /**
@@ -22,20 +22,20 @@ export interface FilterBarProps {
  * a second event to the drawer (single source of truth = the event channel).
  */
 export function FilterBar(_props: FilterBarProps) {
-  const [activeTab, setActiveTab] = React.useState<TopicsFilter>("all");
-  const [search, setSearch] = React.useState("");
-  const [refreshing, setRefreshing] = React.useState(false);
+  const [activeTab, setActiveTab] = React.useState<TopicsFilter>('all')
+  const [search, setSearch] = React.useState('')
+  const [refreshing, setRefreshing] = React.useState(false)
 
   const onRefresh = () => {
-    setRefreshing(true);
-    window.setTimeout(() => setRefreshing(false), 700);
-  };
+    setRefreshing(true)
+    window.setTimeout(() => setRefreshing(false), 700)
+  }
 
   return (
     <section className={styles.bar}>
       <div className={styles.tabs} role="tablist" aria-label="订阅状态筛选">
         {FILTER_TABS.map((tab) => {
-          const isActive = tab.id === activeTab;
+          const isActive = tab.id === activeTab
           return (
             <button
               key={tab.id}
@@ -43,14 +43,16 @@ export function FilterBar(_props: FilterBarProps) {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveTab(tab.id)}
-              className={`${styles.tab} ${isActive ? styles.tabActive : ""} font-body-sm`}
+              className={`${styles.tab} ${isActive ? styles.tabActive : ''} font-body-sm`}
             >
               <span>{tab.label}</span>
-              <span className={`${styles.tabCount} font-code ${isActive ? styles.tabCountActive : ""}`}>
+              <span
+                className={`${styles.tabCount} font-code ${isActive ? styles.tabCountActive : ''}`}
+              >
                 {tab.count}
               </span>
             </button>
-          );
+          )
         })}
       </div>
 
@@ -79,19 +81,14 @@ export function FilterBar(_props: FilterBarProps) {
           <IconSpan name="expand_more" size={16} className="text-secondary" />
         </button>
 
-        <button
-          type="button"
-          title="强制全量探测"
-          className={styles.refresh}
-          onClick={onRefresh}
-        >
+        <button type="button" title="强制全量探测" className={styles.refresh} onClick={onRefresh}>
           <IconSpan
             name="sync"
             size={20}
-            className={`text-secondary ${refreshing ? styles.refreshSpin : ""}`}
+            className={`text-secondary ${refreshing ? styles.refreshSpin : ''}`}
           />
         </button>
       </div>
     </section>
-  );
+  )
 }

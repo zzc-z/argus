@@ -1,6 +1,6 @@
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 /**
  * Right-rail card — push channel overview (Web push / Email / Slack / SMS).
@@ -20,7 +20,12 @@ export function PushSettingsCard() {
       </header>
 
       <div className={styles.channels}>
-        <ChannelRow icon="desktop_windows" label="浏览器桌面即时推送" sub="延迟 < 200ms · 全开" enabled />
+        <ChannelRow
+          icon="desktop_windows"
+          label="浏览器桌面即时推送"
+          sub="延迟 < 200ms · 全开"
+          enabled
+        />
         <ChannelRow icon="mail" label="邮件每日晨报" sub="每日 08:30 发送" enabled />
         <ChannelRow icon="tag" label="Slack Webhook 集成" sub="#ai-intel-stream" />
       </div>
@@ -33,7 +38,7 @@ export function PushSettingsCard() {
         </label>
       </div>
     </section>
-  );
+  )
 }
 
 function ChannelRow({
@@ -42,10 +47,10 @@ function ChannelRow({
   sub,
   enabled,
 }: {
-  icon: string;
-  label: string;
-  sub: string;
-  enabled?: boolean;
+  icon: string
+  label: string
+  sub: string
+  enabled?: boolean
 }) {
   return (
     <div className={styles.channel}>
@@ -66,5 +71,5 @@ function ChannelRow({
         </a>
       )}
     </div>
-  );
+  )
 }

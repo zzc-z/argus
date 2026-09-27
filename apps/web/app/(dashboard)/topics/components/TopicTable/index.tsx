@@ -1,10 +1,10 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { TopicRow } from "../TopicRow";
-import { TOPICS } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { TopicRow } from '../TopicRow'
+import { TOPICS } from '../../mock'
+import styles from './index.module.css'
 
 /**
  * Main subscription table. Owns table-wide state:
@@ -15,32 +15,32 @@ import styles from "./index.module.css";
  * here updates the count badges under "全部" tab and the row itself.
  */
 export function TopicTable() {
-  const [topics, setTopics] = React.useState(TOPICS);
-  const [selected, setSelected] = React.useState<Set<string>>(new Set());
+  const [topics, setTopics] = React.useState(TOPICS)
+  const [selected, setSelected] = React.useState<Set<string>>(new Set())
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
   const toggleSelectAll = () => {
     setSelected((prev) =>
-      prev.size === topics.length ? new Set() : new Set(topics.map((t) => t.id))
-    );
-  };
+      prev.size === topics.length ? new Set() : new Set(topics.map((t) => t.id)),
+    )
+  }
 
   const updateTopic = (id: string, patch: Partial<(typeof topics)[number]>) => {
-    setTopics((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
-  };
+    setTopics((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))
+  }
 
-  const allChecked = selected.size === topics.length && topics.length > 0;
-  const indeterminate = selected.size > 0 && selected.size < topics.length;
+  const allChecked = selected.size === topics.length && topics.length > 0
+  const indeterminate = selected.size > 0 && selected.size < topics.length
 
   // Footer summary rebuilt from topics so the count actually moves when toggles flip.
-  const activeCount = topics.filter((t) => t.active).length;
+  const activeCount = topics.filter((t) => t.active).length
 
   return (
     <div className={styles.shell}>
@@ -55,7 +55,7 @@ export function TopicTable() {
                   className={styles.checkbox}
                   checked={allChecked}
                   ref={(el) => {
-                    if (el) el.indeterminate = indeterminate;
+                    if (el) el.indeterminate = indeterminate
                   }}
                   onChange={toggleSelectAll}
                 />
@@ -136,5 +136,5 @@ export function TopicTable() {
         </div>
       </div>
     </div>
-  );
+  )
 }

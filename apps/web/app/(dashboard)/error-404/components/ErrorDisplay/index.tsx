@@ -1,9 +1,9 @@
-import * as React from "react";
-import styles from "./index.module.css";
+import * as React from 'react'
+import styles from './index.module.css'
 
 export interface ErrorDisplayProps {
-  title: string;
-  subtitle: string;
+  title: string
+  subtitle: string
 }
 
 /**
@@ -15,29 +15,25 @@ export function ErrorDisplay({ title, subtitle }: ErrorDisplayProps) {
     <section className={styles.section}>
       <div className={styles.codeRow}>
         <span
-          className={`${styles.codeLeft} font-code font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary-container via-primary to-outline-variant tracking-tighter`}
+          className={`${styles.codeLeft} from-primary-container via-primary to-outline-variant font-code bg-gradient-to-r bg-clip-text font-bold tracking-tighter text-transparent`}
         >
           404
         </span>
-        <span className={`${styles.codeSlash} font-code font-light text-outline mx-2`}>
-          /
-        </span>
+        <span className={`${styles.codeSlash} font-code text-outline mx-2 font-light`}>/</span>
         <span
-          className={`${styles.codeRight} font-code font-bold text-transparent bg-clip-text bg-gradient-to-r from-outline to-on-surface-variant tracking-tighter opacity-80`}
+          className={`${styles.codeRight} from-outline to-on-surface-variant font-code bg-gradient-to-r bg-clip-text font-bold tracking-tighter text-transparent opacity-80`}
         >
           500
         </span>
       </div>
 
       <h1
-        className={`${styles.title} font-headline-lg sm:font-headline-xl text-on-surface tracking-tight`}
+        className={`${styles.title} sm:font-headline-xl font-headline-lg text-on-surface tracking-tight`}
       >
         {title}
       </h1>
 
-      <p className={`${styles.subtitle} font-body-md text-secondary leading-relaxed`}>
-        {subtitle}
-      </p>
+      <p className={`${styles.subtitle} font-body-md text-secondary leading-relaxed`}>{subtitle}</p>
     </section>
-  );
+  )
 }

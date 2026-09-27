@@ -1,28 +1,47 @@
-import * as React from "react";
-import { LiveTerminal } from "../LiveTerminal";
-import { StatusDot } from "@/components/common/StatusDot";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { LiveTerminal } from '../LiveTerminal'
+import { StatusDot } from '@/components/common/StatusDot'
+import styles from './index.module.css'
 
 type AgentCard = {
-  index: string;
-  title: string;
-  desc: string;
-  meta: string;
-  state: "idle" | "running" | "queued";
-  highlight?: boolean;
-};
+  index: string
+  title: string
+  desc: string
+  meta: string
+  state: 'idle' | 'running' | 'queued'
+  highlight?: boolean
+}
 
 const AGENTS: AgentCard[] = [
-  { index: "01.", title: "搜索探针", desc: "ArXiv + SEC 深度检索", meta: "42 篇论文已解析", state: "idle" },
-  { index: "02.", title: "交叉验证", desc: "证据链一致性核对", meta: "置信度: 98.4%", state: "running", highlight: true },
-  { index: "03.", title: "研报生成", desc: "结论与决策矩阵拟合", meta: "排队待汇总", state: "queued" },
-];
+  {
+    index: '01.',
+    title: '搜索探针',
+    desc: 'ArXiv + SEC 深度检索',
+    meta: '42 篇论文已解析',
+    state: 'idle',
+  },
+  {
+    index: '02.',
+    title: '交叉验证',
+    desc: '证据链一致性核对',
+    meta: '置信度: 98.4%',
+    state: 'running',
+    highlight: true,
+  },
+  {
+    index: '03.',
+    title: '研报生成',
+    desc: '结论与决策矩阵拟合',
+    meta: '排队待汇总',
+    state: 'queued',
+  },
+]
 
 const METRICS = [
-  { value: "10x", label: "文献提取提速", accent: false },
-  { value: "0%", label: "外部数据外流", accent: true },
-  { value: "40k+", label: "研究员已接入", accent: false },
-] as const;
+  { value: '10x', label: '文献提取提速', accent: false },
+  { value: '0%', label: '外部数据外流', accent: true },
+  { value: '40k+', label: '研究员已接入', accent: false },
+] as const
 
 /**
  * Centerpiece of the right panel: glass card with window chrome, three
@@ -61,10 +80,10 @@ export function DagCardGrid() {
 
         <div className={styles.metrics}>
           {METRICS.map((m, i) => (
-            <div key={m.label} className={`${styles.metric} ${i === 1 ? styles.metricMiddle : ""}`}>
+            <div key={m.label} className={`${styles.metric} ${i === 1 ? styles.metricMiddle : ''}`}>
               <div
                 className={`${styles.metricValue} font-code font-semibold ${
-                  m.accent ? styles.metricValueAccent : ""
+                  m.accent ? styles.metricValueAccent : ''
                 }`}
               >
                 {m.value}
@@ -75,16 +94,15 @@ export function DagCardGrid() {
         </div>
       </div>
     </div>
-  );
+  )
 }
 
 function AgentCardItem({ agent }: { agent: AgentCard }) {
-  const dotColor = agent.state === "running" ? "purple" : agent.state === "idle" ? "emerald" : "amber";
+  const dotColor =
+    agent.state === 'running' ? 'purple' : agent.state === 'idle' ? 'emerald' : 'amber'
   return (
-    <div className={`${styles.card} ${agent.highlight ? styles.cardHighlight : ""}`}>
-      {agent.state === "running" && (
-        <span className={styles.runningBadge}>运行中</span>
-      )}
+    <div className={`${styles.card} ${agent.highlight ? styles.cardHighlight : ''}`}>
+      {agent.state === 'running' && <span className={styles.runningBadge}>运行中</span>}
       <div className={styles.cardTop}>
         <span
           className={`${styles.cardIndex} font-code font-semibold ${
@@ -93,22 +111,16 @@ function AgentCardItem({ agent }: { agent: AgentCard }) {
         >
           {agent.index} {agent.title}
         </span>
-        <StatusDot color={dotColor as any} ping={agent.state === "running"} />
+        <StatusDot color={dotColor as any} ping={agent.state === 'running'} />
       </div>
       <p
-        className={`${styles.cardDesc} font-medium ${
-          agent.highlight ? styles.cardDescActive : ""
-        }`}
+        className={`${styles.cardDesc} font-medium ${agent.highlight ? styles.cardDescActive : ''}`}
       >
         {agent.desc}
       </p>
-      <p
-        className={`${styles.cardMeta} font-code ${
-          agent.highlight ? styles.cardMetaActive : ""
-        }`}
-      >
+      <p className={`${styles.cardMeta} font-code ${agent.highlight ? styles.cardMetaActive : ''}`}>
         {agent.meta}
       </p>
     </div>
-  );
+  )
 }

@@ -95,7 +95,9 @@
   background: transparent;
   color: var(--token-secondary, #575e70);
   cursor: pointer;
-  transition: background-color 150ms, color 150ms;
+  transition:
+    background-color 150ms,
+    color 150ms;
 }
 
 .closeBtn:hover {
@@ -149,7 +151,9 @@
   color: var(--token-on-surface, #191c1d);
   border: 1px solid transparent;
   outline: none;
-  transition: background-color 150ms, box-shadow 150ms;
+  transition:
+    background-color 150ms,
+    box-shadow 150ms;
 }
 
 .fieldInput:focus {
@@ -170,7 +174,9 @@
   border: 1px solid transparent;
   outline: none;
   resize: none;
-  transition: background-color 150ms, box-shadow 150ms;
+  transition:
+    background-color 150ms,
+    box-shadow 150ms;
 }
 
 .fieldTextarea:focus {
@@ -198,7 +204,9 @@
   background-color: var(--token-surface-container-low, #f3f4f5);
   cursor: pointer;
   border: 1px solid transparent;
-  transition: background-color 150ms, border-color 150ms;
+  transition:
+    background-color 150ms,
+    border-color 150ms;
 }
 
 .sourceCard:hover {
@@ -249,7 +257,9 @@
   background-color: var(--token-surface-container-low, #f3f4f5);
   cursor: pointer;
   border: 1px solid transparent;
-  transition: background-color 150ms, border-color 150ms;
+  transition:
+    background-color 150ms,
+    border-color 150ms;
 }
 
 .freqCard:hover {
@@ -340,7 +350,9 @@
   background: transparent;
   color: var(--token-secondary, #575e70);
   cursor: pointer;
-  transition: background-color 150ms, color 150ms;
+  transition:
+    background-color 150ms,
+    color 150ms;
 }
 
 .cancelBtn:hover {
@@ -376,7 +388,9 @@
   color: var(--token-on-primary, #ffffff);
   cursor: pointer;
   box-shadow: 0 4px 12px -4px rgba(112, 57, 249, 0.4);
-  transition: opacity 150ms, transform 80ms;
+  transition:
+    opacity 150ms,
+    transform 80ms;
 }
 
 .primaryBtn:hover {

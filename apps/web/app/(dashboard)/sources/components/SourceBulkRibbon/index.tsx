@@ -1,14 +1,14 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 export interface SourceBulkRibbonProps {
-  selectedCount: number;
-  allChecked: boolean;
-  indeterminate: boolean;
-  onToggleAll: () => void;
+  selectedCount: number
+  allChecked: boolean
+  indeterminate: boolean
+  onToggleAll: () => void
 }
 
 /**
@@ -21,7 +21,7 @@ export function SourceBulkRibbon({
   indeterminate,
   onToggleAll,
 }: SourceBulkRibbonProps) {
-  const disabled = selectedCount === 0;
+  const disabled = selectedCount === 0
 
   return (
     <div className={styles.ribbon}>
@@ -32,14 +32,13 @@ export function SourceBulkRibbon({
             type="checkbox"
             checked={allChecked}
             ref={(el) => {
-              if (el) el.indeterminate = indeterminate;
+              if (el) el.indeterminate = indeterminate
             }}
             onChange={onToggleAll}
             className={`${styles.checkbox} accent-primary-container`}
           />
           <label htmlFor="select-all" className={`${styles.label} font-body-sm`}>
-            全选当前列表 (
-            <span className={`${styles.count} font-code`}>{selectedCount}</span>
+            全选当前列表 (<span className={`${styles.count} font-code`}>{selectedCount}</span>
             项)
           </label>
         </div>
@@ -68,5 +67,5 @@ export function SourceBulkRibbon({
         </button>
       </div>
     </div>
-  );
+  )
 }

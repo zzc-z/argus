@@ -53,7 +53,11 @@
 }
 
 .row:hover {
-  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 70%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 70%,
+    transparent
+  );
 }
 
 .rowHighlight {

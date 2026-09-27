@@ -1,12 +1,12 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 export interface PageHeaderProps {
-  unreadCount: number;
-  onMarkAll: () => void;
+  unreadCount: number
+  onMarkAll: () => void
 }
 
 /**
@@ -30,7 +30,7 @@ export function PageHeader({ unreadCount, onMarkAll }: PageHeaderProps) {
           <h1 className={`${styles.title} font-headline-lg font-semibold tracking-tight`}>
             通知中心 / Notifications
           </h1>
-          <span className={`${styles.subtitle} font-label-md font-code`}>
+          <span className={`${styles.subtitle} font-code font-label-md`}>
             [{unreadCount} 新事件待处理]
           </span>
         </div>
@@ -52,5 +52,5 @@ export function PageHeader({ unreadCount, onMarkAll }: PageHeaderProps) {
         </button>
       </div>
     </header>
-  );
+  )
 }

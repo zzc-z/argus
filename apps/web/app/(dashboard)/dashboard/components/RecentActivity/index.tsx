@@ -6,14 +6,14 @@
  * container; their only interactive state is hover (low-contrast surface).
  */
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { cn } from "@/lib/utils";
-import type { ActivityItem } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { cn } from '@/lib/utils'
+import type { ActivityItem } from '../../mock'
+import styles from './index.module.css'
 
 export interface RecentActivityProps {
-  items: ActivityItem[];
+  items: ActivityItem[]
 }
 
 export function RecentActivity({ items }: RecentActivityProps) {
@@ -21,16 +21,8 @@ export function RecentActivity({ items }: RecentActivityProps) {
     <section className={styles.root}>
       <header className={styles.head}>
         <div className={styles.headTitle}>
-          <IconSpan
-            name="pulse_alert"
-            size={20}
-            className={styles.headIcon}
-          />
-          <h2
-            className={`${styles.title} font-headline-sm font-semibold`}
-          >
-            最近活动动态
-          </h2>
+          <IconSpan name="pulse_alert" size={20} className={styles.headIcon} />
+          <h2 className={`${styles.title} font-headline-sm font-semibold`}>最近活动动态</h2>
           <span className={`${styles.streamChip} font-code`}>实时流</span>
         </div>
         <a href="#" className={`${styles.viewAll} font-body-sm`}>
@@ -45,7 +37,7 @@ export function RecentActivity({ items }: RecentActivityProps) {
             key={a.id}
             className={cn(
               styles.row,
-              i === 0 || a.highlight ? styles.rowHighlight : styles.rowDefault
+              i === 0 || a.highlight ? styles.rowHighlight : styles.rowDefault,
             )}
           >
             <div className={styles.left}>
@@ -54,19 +46,15 @@ export function RecentActivity({ items }: RecentActivityProps) {
                   styles.iconBox,
                   i === 0 || a.highlight
                     ? styles.iconBoxHighlight
-                    : a.iconBox === "accent"
+                    : a.iconBox === 'accent'
                       ? styles.iconBoxAccent
-                      : styles.iconBoxDefault
+                      : styles.iconBoxDefault,
                 )}
               >
                 <IconSpan name={a.icon} size={16} />
               </div>
               <div className={styles.body}>
-                <span
-                  className={`${styles.itemTitle} font-body-sm font-medium`}
-                >
-                  {a.title}
-                </span>
+                <span className={`${styles.itemTitle} font-body-sm font-medium`}>{a.title}</span>
                 <span className={`${styles.itemMeta} font-code`}>{a.meta}</span>
               </div>
             </div>
@@ -75,21 +63,19 @@ export function RecentActivity({ items }: RecentActivityProps) {
               <span
                 className={cn(
                   styles.badge,
-                  a.badgeTone === "highlight" && styles.badgeHighlight,
-                  a.badgeTone === "muted" && styles.badgeMuted,
-                  a.badgeTone === "plain" && styles.badgePlain,
-                  a.badgeTone === "warning" && styles.badgeWarning
+                  a.badgeTone === 'highlight' && styles.badgeHighlight,
+                  a.badgeTone === 'muted' && styles.badgeMuted,
+                  a.badgeTone === 'plain' && styles.badgePlain,
+                  a.badgeTone === 'warning' && styles.badgeWarning,
                 )}
               >
                 {a.badgeText}
               </span>
-              <span className={`${styles.timestamp} font-code`}>
-                {a.timestamp}
-              </span>
+              <span className={`${styles.timestamp} font-code`}>{a.timestamp}</span>
             </div>
           </div>
         ))}
       </div>
     </section>
-  );
+  )
 }

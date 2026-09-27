@@ -1,30 +1,30 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 /**
  * Drag-and-drop upload surface (visual only). Drag-over state is a single
  * useState toggle — matches the source HTML's behavior (bg swap on dragover).
  */
 export function UploadDropZone() {
-  const [dragOver, setDragOver] = React.useState(false);
+  const [dragOver, setDragOver] = React.useState(false)
 
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(true);
-  };
+    e.preventDefault()
+    setDragOver(true)
+  }
 
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(false);
-  };
+    e.preventDefault()
+    setDragOver(false)
+  }
 
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragOver(false);
-  };
+    e.preventDefault()
+    setDragOver(false)
+  }
 
   return (
     <section className={styles.section}>
@@ -37,7 +37,7 @@ export function UploadDropZone() {
       </div>
 
       <div
-        className={`${styles.dropZone} ${dragOver ? styles.dropZoneActive : ""}`}
+        className={`${styles.dropZone} ${dragOver ? styles.dropZoneActive : ''}`}
         onDragOver={onDragOver}
         onDragEnter={onDragOver}
         onDragLeave={onDragLeave}
@@ -49,20 +49,18 @@ export function UploadDropZone() {
           <IconSpan name="cloud_upload" size={24} className="text-primary-container" />
         </div>
         <p className={`${styles.dropTitle} font-body-md font-medium`}>
-          拖拽文件至此处,或{" "}
-          <span className={styles.dropLink}>点击浏览本地文件</span>
+          拖拽文件至此处,或 <span className={styles.dropLink}>点击浏览本地文件</span>
         </p>
         <p className={`${styles.dropSub} font-body-sm`}>
-          支持 PDF, DOCX, Markdown, HTML, TXT, EPUB 以及音视频录音
-          (MP3/MP4 自动 Whisper 转录)
+          支持 PDF, DOCX, Markdown, HTML, TXT, EPUB 以及音视频录音 (MP3/MP4 自动 Whisper 转录)
         </p>
         <div className={styles.chips}>
-          {["PDF (Native/Scanned)", "Whisper v3 MP3/MP4", "MDX / Jupyter", "XLSX / Parquet"].map(
+          {['PDF (Native/Scanned)', 'Whisper v3 MP3/MP4', 'MDX / Jupyter', 'XLSX / Parquet'].map(
             (label) => (
               <span key={label} className={`${styles.chip} font-code`}>
                 {label}
               </span>
-            )
+            ),
           )}
         </div>
         <div className={styles.legend}>
@@ -83,5 +81,5 @@ export function UploadDropZone() {
         </div>
       </div>
     </section>
-  );
+  )
 }

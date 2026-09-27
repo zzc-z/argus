@@ -99,7 +99,9 @@
   font-weight: 500;
   color: var(--token-secondary, #575e70);
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .timeframeBtn:hover {
@@ -163,7 +165,7 @@
 }
 
 .topicCount {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
   color: var(--token-secondary, #575e70);
 }
@@ -187,7 +189,9 @@
   background-color: var(--token-surface-container-low, #f3f4f5);
   color: var(--token-secondary, #575e70);
   cursor: pointer;
-  transition: background-color 150ms ease-out, color 150ms ease-out;
+  transition:
+    background-color 150ms ease-out,
+    color 150ms ease-out;
 }
 
 .citationPill:hover {
@@ -262,7 +266,7 @@
 }
 
 .confidenceValue {
-  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 12px;
   color: var(--token-primary, #5704e1);
   font-weight: 600;

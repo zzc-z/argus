@@ -1,10 +1,10 @@
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import { type AgentLogLine } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import { type AgentLogLine } from '../../mock'
+import styles from './index.module.css'
 
 export interface AgentLogCardProps {
-  log: AgentLogLine[];
+  log: AgentLogLine[]
 }
 
 /**
@@ -15,17 +15,17 @@ export interface AgentLogCardProps {
  * "00:14:48" figure cycles over time and feels alive (no real backend).
  */
 export function AgentLogCard({ log }: AgentLogCardProps) {
-  const [seconds, setSeconds] = React.useState(14 * 60 + 48);
+  const [seconds, setSeconds] = React.useState(14 * 60 + 48)
 
   React.useEffect(() => {
     const id = window.setInterval(() => {
-      setSeconds((s) => (s <= 0 ? 14 * 60 + 48 : s - 1));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, []);
+      setSeconds((s) => (s <= 0 ? 14 * 60 + 48 : s - 1))
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [])
 
-  const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const ss = String(seconds % 60).padStart(2, "0");
+  const mm = String(Math.floor(seconds / 60)).padStart(2, '0')
+  const ss = String(seconds % 60).padStart(2, '0')
 
   return (
     <article className={styles.card}>
@@ -42,14 +42,14 @@ export function AgentLogCard({ log }: AgentLogCardProps) {
         <div className={styles.log}>
           {log.map((entry, i) => (
             <div key={i} className={styles.logLine}>
-              <span className={styles.logTime}>[{entry.time}]</span>{" "}
+              <span className={styles.logTime}>[{entry.time}]</span>{' '}
               <span
                 className={`${styles.logTag} ${
-                  entry.tone === "primary" ? styles.logTagPrimary : styles.logTagSecondary
+                  entry.tone === 'primary' ? styles.logTagPrimary : styles.logTagSecondary
                 }`}
               >
                 {entry.tag}
-              </span>{" "}
+              </span>{' '}
               <span className={styles.logMsg}>{entry.message}</span>
             </div>
           ))}
@@ -57,16 +57,19 @@ export function AgentLogCard({ log }: AgentLogCardProps) {
       </div>
       <footer className={styles.foot}>
         <span className={`${styles.footMeta} font-label-sm`}>
-          下次全局巡检周期: <span className={`${styles.footTimer} font-code`}>{mm}:{ss}</span>
+          下次全局巡检周期:{' '}
+          <span className={`${styles.footTimer} font-code`}>
+            {mm}:{ss}
+          </span>
         </span>
         <span className={`${styles.footQueue} font-code`}>集群队列: 空闲</span>
       </footer>
     </article>
-  );
+  )
 }
 
 /* (Unused symbol retained only to keep import surface stable in case future
     iterations add an agent action footer button.) */
 function _importedIconSpanIsUsed() {
-  return <IconSpan name="smart_toy" size={14} />;
+  return <IconSpan name="smart_toy" size={14} />
 }

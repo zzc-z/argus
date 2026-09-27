@@ -1,8 +1,8 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import { IconSpan } from "@/components/common/IconSpan";
-import styles from "./index.module.css";
+import * as React from 'react'
+import { IconSpan } from '@/components/common/IconSpan'
+import styles from './index.module.css'
 
 /**
  * Left filter sidebar — type / indexing status / timeline / tags / storage quota.
@@ -21,11 +21,11 @@ export function SourceFilterSidebar() {
         </div>
         <div className={styles.checkList}>
           {[
-            { label: "PDF 文档", count: 310, checked: true },
-            { label: "网页 URL", count: 287, checked: true },
-            { label: "RSS 实时流", count: 148, checked: false },
-            { label: "技术论文 Arxiv", count: 102, checked: false },
-            { label: "音视频转录", count: 32, checked: false },
+            { label: 'PDF 文档', count: 310, checked: true },
+            { label: '网页 URL', count: 287, checked: true },
+            { label: 'RSS 实时流', count: 148, checked: false },
+            { label: '技术论文 Arxiv', count: 102, checked: false },
+            { label: '音视频转录', count: 32, checked: false },
           ].map((row) => (
             <label key={row.label} className={styles.checkRow}>
               <div className={styles.checkText}>
@@ -78,10 +78,7 @@ export function SourceFilterSidebar() {
           </label>
           <label className={styles.checkRow}>
             <div className={styles.checkText}>
-              <input
-                type="checkbox"
-                className={`${styles.checkbox} accent-primary-container`}
-              />
+              <input type="checkbox" className={`${styles.checkbox} accent-primary-container`} />
               <span className={`${styles.checkLabel} font-body-sm`}>
                 <span className={styles.dotError} /> 索引告警 Failed
               </span>
@@ -133,20 +130,20 @@ export function SourceFilterSidebar() {
         </div>
         <div className={styles.tags}>
           {[
-            { label: "#AI硬件架构", count: 142, active: false },
-            { label: "#大模型推理", count: 98, active: true },
-            { label: "#合规审计", count: 64, active: false },
-            { label: "#财报数据", count: 53, active: false },
-            { label: "#具身智能", count: 37, active: false },
+            { label: '#AI硬件架构', count: 142, active: false },
+            { label: '#大模型推理', count: 98, active: true },
+            { label: '#合规审计', count: 64, active: false },
+            { label: '#财报数据', count: 53, active: false },
+            { label: '#具身智能', count: 37, active: false },
           ].map((t) => (
             <button
               key={t.label}
               type="button"
-              className={`${styles.tag} ${t.active ? styles.tagActive : ""} font-body-sm`}
+              className={`${styles.tag} ${t.active ? styles.tagActive : ''} font-body-sm`}
             >
               <span className="text-[12px]">{t.label}</span>
               <span
-                className={`${styles.tagCount} font-code text-[11px] ${t.active ? styles.tagCountActive : ""}`}
+                className={`${styles.tagCount} font-code text-[11px] ${t.active ? styles.tagCountActive : ''}`}
               >
                 {t.count}
               </span>
@@ -167,7 +164,7 @@ export function SourceFilterSidebar() {
           <span className={`${styles.quotaPercent} font-code`}>24.8% 已用</span>
         </div>
         <div className={styles.quotaBar}>
-          <div className={styles.quotaFill} style={{ width: "24.8%" }} />
+          <div className={styles.quotaFill} style={{ width: '24.8%' }} />
         </div>
         <div className={`${styles.quotaFooter} font-code`}>
           <span>12.4 GB 已用</span>
@@ -175,5 +172,5 @@ export function SourceFilterSidebar() {
         </div>
       </section>
     </aside>
-  );
+  )
 }

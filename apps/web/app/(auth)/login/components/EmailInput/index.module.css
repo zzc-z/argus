@@ -20,13 +20,21 @@
 
 .input {
   width: 100%;
-  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 60%, transparent);
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 60%,
+    transparent
+  );
   color: var(--token-on-surface, #191c1d);
   border: 1px solid var(--token-surface-container-highest, #e1e3e4);
   border-radius: 0.5rem;
   padding: 0.625rem 7rem 0.625rem 2.25rem;
   font-size: 0.875rem;
-  font-family: var(--font-geist), -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family:
+    var(--font-geist),
+    -apple-system,
+    BlinkMacSystemFont,
+    sans-serif;
   transition: all 150ms ease-out;
 
   &::placeholder {
@@ -41,7 +49,8 @@
     outline: none;
     background-color: #ffffff;
     border-color: var(--token-primary-container, #7039f9);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--token-primary-container, #7039f9) 20%, transparent);
+    box-shadow: 0 0 0 2px
+      color-mix(in srgb, var(--token-primary-container, #7039f9) 20%, transparent);
   }
 }
 

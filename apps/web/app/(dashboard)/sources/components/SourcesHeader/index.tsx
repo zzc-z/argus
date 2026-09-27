@@ -1,10 +1,10 @@
-"use client";
+'use client'
 
-import * as React from "react";
-import Link from "next/link";
-import { IconSpan } from "@/components/common/IconSpan";
-import { sourceStats } from "../../mock";
-import styles from "./index.module.css";
+import * as React from 'react'
+import Link from 'next/link'
+import { IconSpan } from '@/components/common/IconSpan'
+import { sourceStats } from '../../mock'
+import styles from './index.module.css'
 
 /**
  * Top command & header tier — title + stats + bulk reindex + upload CTA.
@@ -32,11 +32,7 @@ export function SourcesHeader() {
 
       <div className={styles.actions}>
         <button type="button" className={`${styles.reindexBtn} font-headline-sm`}>
-          <IconSpan
-            name="sync"
-            size={18}
-            className={`${styles.syncIcon} text-secondary`}
-          />
+          <IconSpan name="sync" size={18} className={`${styles.syncIcon} text-secondary`} />
           <span className="text-[13px]">批量重新索引</span>
         </button>
         <Link href="/add-sources" className={`${styles.uploadBtn} font-headline-sm`}>
@@ -45,5 +41,5 @@ export function SourcesHeader() {
         </Link>
       </div>
     </header>
-  );
+  )
 }
