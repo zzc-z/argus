@@ -115,11 +115,17 @@
   min-width: 2.75rem;
   padding-left: 1rem;
   padding-right: 0;
+  align-items: flex-start;
+}
+
+.row .checkboxCell {
+  padding-top: 1rem;
 }
 
 .header .checkboxCell {
   padding-top: 0;
   padding-bottom: 0;
+  align-items: center;
 }
 
 .checkboxInput {
