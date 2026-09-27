@@ -66,4 +66,7 @@ Thumbs.db
 # /Users/zjp/Projects/stitch_argus_ai_research_session/
 
 # IDE workspace
-*.code-workspace
+*.code-workspace.claude/worktrees/
+
+# Local Claude Code git worktrees (prunable /private/tmp worktrees)
+.claude/worktrees/
