@@ -66,7 +66,16 @@ export default function SourcesPage() {
             indeterminate={indeterminate}
             onToggleAll={toggleAll}
           />
-          <SourceTable selectedIds={selectedIds} onToggleRow={toggleRow} />
+          <SourceTable
+            data={sourceRows}
+            selection={{
+              selectedIds,
+              onToggle: toggleRow,
+              onToggleAll: toggleAll,
+              allSelected: allChecked,
+              partiallySelected: indeterminate,
+            }}
+          />
           <SourcePagination />
         </div>
       </div>

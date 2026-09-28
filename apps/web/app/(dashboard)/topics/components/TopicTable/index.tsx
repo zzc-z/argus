@@ -2,8 +2,13 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
+import {
+  PlainTable,
+  type PlainTableColumnDef,
+  type PlainTableSelection,
+} from '@/components/common/PlainTable'
 import { TopicRow } from '../TopicRow'
-import { TOPICS } from '../../mock'
+import { TOPICS, type Topic } from '../../mock'
 import styles from './index.module.css'
 
 /**
@@ -32,7 +37,7 @@ export function TopicTable() {
     )
   }
 
-  const updateTopic = (id: string, patch: Partial<(typeof topics)[number]>) => {
+  const updateTopic = (id: string, patch: Partial<Topic>) => {
     setTopics((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)))
   }
 
@@ -42,47 +47,123 @@ export function TopicTable() {
   // Footer summary rebuilt from topics so the count actually moves when toggles flip.
   const activeCount = topics.filter((t) => t.active).length
 
+  const columns = React.useMemo<ReadonlyArray<PlainTableColumnDef<Topic>>>(
+    () => [
+      {
+        id: 'title',
+        cell: (topic) => (
+          <TopicRow
+            topic={topic}
+            cellKind="title"
+            onFrequencyChange={(value) => updateTopic(topic.id, { frequency: value })}
+            onActiveChange={(active) => updateTopic(topic.id, { active })}
+          />
+        ),
+        header: '课题名称与描述',
+        width: '320px',
+      },
+      {
+        id: 'sources',
+        cell: (topic) => (
+          <TopicRow
+            topic={topic}
+            cellKind="sources"
+            onFrequencyChange={(value) => updateTopic(topic.id, { frequency: value })}
+            onActiveChange={(active) => updateTopic(topic.id, { active })}
+          />
+        ),
+        header: '监控信源配置',
+        width: '210px',
+      },
+      {
+        id: 'updated',
+        cell: (topic) => (
+          <TopicRow
+            topic={topic}
+            cellKind="updated"
+            onFrequencyChange={(value) => updateTopic(topic.id, { frequency: value })}
+            onActiveChange={(active) => updateTopic(topic.id, { active })}
+          />
+        ),
+        header: '最近更新时间',
+        width: '130px',
+      },
+      {
+        id: 'unread',
+        cell: (topic) => (
+          <TopicRow
+            topic={topic}
+            cellKind="unread"
+            onFrequencyChange={(value) => updateTopic(topic.id, { frequency: value })}
+            onActiveChange={(active) => updateTopic(topic.id, { active })}
+          />
+        ),
+        header: '新捕获情报',
+        width: '130px',
+      },
+      {
+        id: 'frequency',
+        cell: (topic) => (
+          <TopicRow
+            topic={topic}
+            cellKind="frequency"
+            onFrequencyChange={(value) => updateTopic(topic.id, { frequency: value })}
+            onActiveChange={(active) => updateTopic(topic.id, { active })}
+          />
+        ),
+        header: '巡检更新频率',
+        width: '150px',
+      },
+      {
+        id: 'status',
+        cell: (topic) => (
+          <TopicRow
+            topic={topic}
+            cellKind="status"
+            onFrequencyChange={(value) => updateTopic(topic.id, { frequency: value })}
+            onActiveChange={(active) => updateTopic(topic.id, { active })}
+          />
+        ),
+        header: '运行状态',
+        width: '110px',
+      },
+      {
+        id: 'actions',
+        cell: (topic) => (
+          <TopicRow
+            topic={topic}
+            cellKind="actions"
+            onFrequencyChange={(value) => updateTopic(topic.id, { frequency: value })}
+            onActiveChange={(active) => updateTopic(topic.id, { active })}
+          />
+        ),
+        header: '操作',
+        align: 'right',
+        width: '80px',
+      },
+    ],
+    [],
+  )
+
+  const selection: PlainTableSelection<Topic> = React.useMemo(
+    () => ({
+      selectedIds: selected,
+      onToggle: toggleSelect,
+      onToggleAll: toggleSelectAll,
+      allSelected: allChecked,
+      partiallySelected: indeterminate,
+    }),
+    [selected, allChecked, indeterminate],
+  )
+
   return (
     <div className={styles.shell}>
-      <div className={styles.scroll}>
-        <table className={styles.table}>
-          <thead>
-            <tr className={styles.theadRow}>
-              <th className={styles.thCheck}>
-                <input
-                  type="checkbox"
-                  aria-label="全选"
-                  className={styles.checkbox}
-                  checked={allChecked}
-                  ref={(el) => {
-                    if (el) el.indeterminate = indeterminate
-                  }}
-                  onChange={toggleSelectAll}
-                />
-              </th>
-              <th className={styles.thTitle}>课题名称与描述</th>
-              <th className={styles.thSources}>监控信源配置</th>
-              <th className={styles.thUpdated}>最近更新时间</th>
-              <th className={styles.thUnread}>新捕获情报</th>
-              <th className={styles.thFreq}>巡检更新频率</th>
-              <th className={styles.thStatus}>运行状态</th>
-              <th className={styles.thActions}>操作</th>
-            </tr>
-          </thead>
-          <tbody className={styles.tbody}>
-            {topics.map((topic) => (
-              <TopicRow
-                key={topic.id}
-                topic={topic}
-                checked={selected.has(topic.id)}
-                onCheck={() => toggleSelect(topic.id)}
-                onFrequencyChange={(value) => updateTopic(topic.id, { frequency: value })}
-                onActiveChange={(active) => updateTopic(topic.id, { active })}
-              />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <PlainTable<Topic>
+        columns={columns}
+        data={topics}
+        getRowId={(t) => t.id}
+        selection={selection}
+      />
 
       <div className={styles.footer}>
         <div className={styles.footerLeft}>
@@ -138,3 +219,5 @@ export function TopicTable() {
     </div>
   )
 }
+
+// Topic 类型已从 '../../mock' 顶部导入

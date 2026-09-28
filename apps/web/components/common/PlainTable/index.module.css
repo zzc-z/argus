@@ -1,0 +1,84 @@
+/* PlainTable 通用骨架 ── 裸 <table> 形态。
+ *  视觉对齐设计稿（argus_topics / argus_sources / argus_report_detail）：
+ *    - 裸 table 平铺，无外层圆角 / 阴影 / 容器
+ *    - thead 浅灰底（surface-container-low）+ secondary 字色 + JetBrains Mono
+ *    - row hover surface-container-low/60
+ *    - row 间 divide-y surface-container 边框
+ */
+
+.scroll {
+  overflow-x: auto;
+  width: 100%;
+}
+
+.table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  font-family: var(--font-family-sans);
+  font-size: 0.8125rem;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.theadRow {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-secondary, #575e70);
+  font-family: var(--font-family-mono);
+  font-size: 0.8125rem;
+  letter-spacing: -0.01em;
+  font-weight: 500;
+}
+
+.th {
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+}
+
+.thCheck {
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+  vertical-align: middle;
+}
+
+.td {
+  padding: 1rem;
+  vertical-align: top;
+}
+
+.tdCheck {
+  padding: 1rem;
+  vertical-align: top;
+}
+
+.row {
+  transition: background-color 150ms;
+}
+
+/* row 之间的分隔线（除了首行） */
+.row + .row {
+  border-top: 1px solid var(--token-surface-container, #edeeef);
+}
+
+.row:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--token-surface-container-low, #f3f4f5) 60%,
+    transparent
+  );
+}
+
+.checkbox {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 0.25rem;
+  accent-color: var(--token-primary, #5704e1);
+  cursor: pointer;
+}
+
+.alignRight {
+  text-align: right;
+}
+
+.alignCenter {
+  text-align: center;
+}

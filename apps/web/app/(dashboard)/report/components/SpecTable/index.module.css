@@ -1,3 +1,8 @@
+/* SpecTable 业务样式 ── 表格骨架由 PlainTable 接管。
+ * 设计稿里 SpecTable 用 surface-container-low 实色背景 + 0.25rem 内 padding，
+ * 与 PlainTable 默认白底不一致，所以这里保留 tableWrap 容器；
+ * 列高亮 / 行高亮（数据驱动）也走业务 CSS。 */
+
 .tableWrap {
   width: 100%;
   overflow-x: auto;
@@ -7,50 +12,26 @@
   margin-bottom: 1rem;
 }
 
-.table {
-  width: 100%;
-  text-align: left;
-  border-collapse: separate;
-  border-spacing: 0;
-}
-
-.thead {
-  color: var(--token-on-surface-variant, #494456);
+/* PlainTable 的 .table 是 w-full + text-left + border-collapse + 0.8125rem
+ * 设计稿 SpecTable 用 font-body-sm + thead uppercase；用 .table 覆盖 thead 字号 */
+.table thead tr {
   font-size: 13px;
   text-transform: uppercase;
 }
 
-.th {
-  padding: 0.75rem 1rem;
+.table thead th {
+  padding-block: 0.75rem;
+  padding-inline: 1rem;
   font-weight: 500;
+  color: var(--token-on-surface-variant, #494456);
 }
 
-.thTinted {
+.table thead th:nth-child(3) {
+  /* B200 列 thead 染色 */
   background-color: var(--token-surface-container, #edeeef);
 }
 
-.thPrimary {
-  color: var(--token-primary, #5704e1);
-  font-weight: 700;
-}
-
-.tbody {
-  color: var(--token-on-surface, #191c1d);
-}
-
-.row {
-  transition: background-color 150ms ease-out;
-}
-
-.row:hover {
-  background-color: color-mix(
-    in srgb,
-    var(--token-surface-container-lowest, #ffffff) 60%,
-    transparent
-  );
-}
-
-.td {
+.table tbody td {
   padding: 0.75rem 1rem;
   border-top: 1px solid var(--token-surface-container, #edeeef);
 }

@@ -1,3 +1,6 @@
+/* TopicTable 业务样式 ── 表格骨架（裸 table / thead / row hover / divide-y / checkbox）
+ * 全部由 PlainTable 接管。这里只剩 shell 容器 + footer / pager 业务。 */
+
 .shell {
   width: 100%;
   background-color: var(--token-surface-container-lowest, #ffffff);
@@ -6,75 +9,6 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-.scroll {
-  overflow-x: auto;
-  width: 100%;
-}
-
-.table {
-  width: 100%;
-  text-align: left;
-  border-collapse: collapse;
-}
-
-.theadRow {
-  background-color: var(--token-surface-container-low, #f3f4f5);
-  color: var(--token-secondary, #575e70);
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
-  letter-spacing: -0.01em;
-  font-weight: 500;
-}
-
-.theadRow th {
-  padding-block: 0.75rem;
-  padding-inline: 1rem;
-}
-
-.thCheck {
-  width: 2.5rem;
-}
-.thTitle {
-  min-width: 320px;
-}
-.thSources {
-  min-width: 210px;
-}
-.thUpdated {
-  min-width: 130px;
-}
-.thUnread {
-  min-width: 130px;
-}
-.thFreq {
-  min-width: 150px;
-}
-.thStatus {
-  min-width: 110px;
-}
-.thActions {
-  width: 5rem;
-  text-align: right;
-}
-
-.tbody {
-  font-family: 'Geist', sans-serif;
-  font-size: 13px;
-  color: var(--token-on-surface, #191c1d);
-}
-
-.tbody tr + tr {
-  border-top: 1px solid var(--token-surface-container, #edeeef);
-}
-
-.checkbox {
-  width: 1rem;
-  height: 1rem;
-  border-radius: 0.25rem;
-  accent-color: var(--token-primary, #5704e1);
-  cursor: pointer;
 }
 
 /* ── Footer / pagination row ─────────────────────────────────────── */
@@ -87,7 +21,7 @@
   padding: 0.75rem 1rem;
   background-color: var(--token-surface-container-low, #f3f4f5);
   color: var(--token-secondary, #575e70);
-  font-family: 'Geist', sans-serif;
+  font-family: var(--font-family-sans);
   font-size: 13px;
 }
 
