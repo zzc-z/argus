@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
+import { PageHeader } from '@/components/common/PageHeader'
 import styles from './index.module.css'
 
 export interface TopicsHeaderProps {
@@ -14,8 +15,8 @@ export interface TopicsHeaderProps {
 }
 
 /**
- * Top banner: eyebrow tag + H1 + subtitle + CTA / success-rate pill.
- * Owns the right-aligned "新建研究订阅" button — it dispatches a custom event
+ * Page header for the topic subscriptions page — eyebrow tag + title +
+ * subtitle + Cmd-N CTA + success rate pill. The CTA dispatches a custom event
  * that `FilterBar` and `NewSubscriptionDrawer` listen for to open the drawer
  * (lets multiple triggers share one modal without prop-drilling).
  */
@@ -43,42 +44,31 @@ export function TopicsHeader({
   }, [openDrawer])
 
   return (
-    <section className={styles.root}>
-      <div className={styles.copy}>
-        <div className={styles.eyebrow}>
-          <span className={`${styles.eyebrowTag} font-code`}>AGENT WORKSPACE // DAEMON-SUBS</span>
-          <span className={styles.eyebrowSep}>·</span>
-          <span className={styles.eyebrowNote}>DAG Cluster 巡检引擎已联机</span>
-        </div>
-        <h1 className={`${styles.title} font-headline-xl text-on-surface tracking-tight`}>
-          主题订阅管理 (Topic Subscriptions)
-        </h1>
-        <p className={`${styles.subtitle} font-body-md text-secondary`}>
-          当前已配置 <span className="font-code text-on-surface font-semibold">{totalTopics}</span>{' '}
-          个研究课题监控，已接入{' '}
-          <span className="font-code text-on-surface font-semibold">{totalSources}</span>{' '}
-          个全网权威数据源与 RSS 高置信度流
-        </p>
-      </div>
-
-      <div className={styles.actions}>
+    <PageHeader
+      eyebrow={{ tag: 'AGENT WORKSPACE // DAEMON-SUBS', note: 'DAG Cluster 巡检引擎已联机' }}
+      title="主题订阅管理 (Topic Subscriptions)"
+      subtitle={`当前已配置 ${totalTopics} 个研究课题监控，已接入 ${totalSources} 个全网权威数据源与 RSS 高置信度流`}
+      actions={[
+        {
+          label: '新建研究订阅',
+          icon: 'add',
+          variant: 'primary',
+          shortcut: '⌘N',
+          onClick: openDrawer,
+          className: styles.cta,
+        },
+      ]}
+      extra={
         <div className={styles.successPill}>
           <div className={styles.successText}>
-            <span className="font-label-sm text-secondary uppercase tracking-wider">
-              巡检成功率
-            </span>
-            <span className={`${styles.successValue} font-code`}>{successRate}</span>
+            <span className={styles.successLabel}>巡检成功率</span>
+            <span className={styles.successValue}>{successRate}</span>
           </div>
           <div className={styles.successIcon}>
-            <IconSpan name="verified" size={18} className="text-primary" />
+            <IconSpan name="verified" size={18} />
           </div>
         </div>
-        <button type="button" className={styles.cta} onClick={openDrawer}>
-          <IconSpan name="add" size={18} />
-          <span>新建研究订阅</span>
-          <kbd className={`${styles.ctaKbd} font-code`}>⌘N</kbd>
-        </button>
-      </div>
-    </section>
+      }
+    />
   )
 }

@@ -35,9 +35,11 @@
 }
 
 .thCheck {
-  padding: 0.75rem 1rem;
+  padding: 0.75rem 0.5rem;
   font-weight: 500;
   vertical-align: middle;
+  text-align: center;
+  width: 2.25rem;
 }
 
 .td {
@@ -46,7 +48,7 @@
 }
 
 .tdCheck {
-  padding: 1rem;
+  padding: 1.25rem 0.5rem 1rem;
   vertical-align: top;
 }
 
@@ -73,6 +75,8 @@
   border-radius: 0.25rem;
   accent-color: var(--token-primary, #5704e1);
   cursor: pointer;
+  display: block;
+  margin: 0 auto;
 }
 
 .alignRight {
