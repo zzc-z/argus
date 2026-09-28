@@ -1,10 +1,10 @@
 import * as React from 'react'
-import Link from 'next/link'
 
 import { IconSpan } from '@/components/common/IconSpan'
 import { ArgusMark } from '@/components/common/ArgusMark'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 
+import { NavLink } from './NavLink'
 import styles from './layout.module.css'
 
 /**
@@ -124,22 +124,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
-  )
-}
-
-interface NavLinkProps {
-  href: string
-  icon: string
-  label: string
-}
-
-function NavLink({ href, icon, label }: NavLinkProps) {
-  return (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    <Link href={href as any} className={styles.navLink}>
-      <IconSpan name={icon} size={18} />
-      <span className="font-body-sm">{label}</span>
-    </Link>
   )
 }
 
