@@ -8,6 +8,8 @@ import type {
   PageHeaderBreadcrumb,
   PageHeaderConfig,
   PageHeaderEyebrow,
+  PageHeaderMetaItem,
+  PageHeaderStat,
 } from './types'
 import styles from './index.module.css'
 
@@ -17,6 +19,7 @@ export type {
   PageHeaderBreadcrumb,
   PageHeaderConfig,
   PageHeaderEyebrow,
+  PageHeaderMetaItem,
   PageHeaderStat,
 } from './types'
 
@@ -68,7 +71,12 @@ function Action({
         <span className={styles.actionLabel}>{action.label}</span>
       ) : null}
       {action.shortcut ? (
-        <kbd className={variant === 'primary' ? styles.shortcut : styles.shortcutSecondary}>
+        <kbd
+          className={cn(
+            variant === 'primary' ? styles.shortcut : styles.shortcutSecondary,
+            action.shortcutTone === 'dark' && variant === 'primary' && styles.shortcutDark,
+          )}
+        >
           {action.shortcut}
         </kbd>
       ) : null}
@@ -124,6 +132,7 @@ export function PageHeader({
   eyebrow,
   subtitle,
   stats,
+  meta,
   actions,
   extra,
   className,
@@ -167,20 +176,55 @@ export function PageHeader({
 
         {stats && stats.length > 0 ? (
           <div className={styles.stats}>
-            {stats.map((stat, i) => (
-              <span key={`${stat.label}-${i}`} className={styles.breadcrumbItem}>
-                {stat.value !== undefined ? (
+            {stats.map((stat, i) => {
+              if (stat.pill) {
+                return (
+                  <span key={`pill-${i}`} className={styles.statPill}>
+                    <span
+                      className={cn(
+                        styles.statPillDot,
+                        stat.pillTone === 'success' && styles.statPillDotSuccess,
+                      )}
+                    />
+                    {stat.value !== undefined ? <span>{stat.value}</span> : null}
+                    <span>{stat.label}</span>
+                  </span>
+                )
+              }
+              return (
+                <span key={`${stat.label}-${i}`} className={styles.breadcrumbItem}>
+                  {stat.value !== undefined ? (
+                    <span
+                      className={cn(
+                        styles.statValue,
+                        stat.tone === 'highlight' && styles.statValueHighlight,
+                      )}
+                    >
+                      {stat.value}
+                    </span>
+                  ) : null}
+                  <span>{stat.label}</span>
+                  {i < stats.length - 1 ? <span className={styles.statSep}>·</span> : null}
+                </span>
+              )
+            })}
+          </div>
+        ) : null}
+
+        {meta && meta.length > 0 ? (
+          <div className={styles.meta}>
+            {meta.map((item, i) => (
+              <span key={`meta-${i}`} className={cn(styles.metaItem, item.className)}>
+                {item.dot ? (
                   <span
                     className={cn(
-                      styles.statValue,
-                      stat.tone === 'highlight' && styles.statValueHighlight,
+                      styles.statPillDot,
+                      item.dot === 'success' && styles.statPillDotSuccess,
                     )}
-                  >
-                    {stat.value}
-                  </span>
+                  />
                 ) : null}
-                <span>{stat.label}</span>
-                {i < stats.length - 1 ? <span className={styles.statSep}>·</span> : null}
+                <span className={item.mono ? styles.metaItemMono : undefined}>{item.text}</span>
+                {i < meta.length - 1 ? <span className={styles.metaSep}>/</span> : null}
               </span>
             ))}
           </div>

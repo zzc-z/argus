@@ -3,21 +3,22 @@
 /**
  * /reports — research repository list view.
  *
- * 1:1 with argus_reports/code.html: top app bar, left sidebar, page title +
- * CTAs, 4 KPI tiles, filter tabs + search + sort + view switcher, filter
- * drawer (timeframe / topics / citation / status / confidence), main view
- * stage (table default, grid toggle), pagination footer, floating bulk
- * action bar.
+ * Layout (top → bottom):
+ *   - PageLayout header (title + en chip + subtitle + 2 CTAs)
+ *   - MetricStrip (4 KPI tiles)
+ *   - FilterBar (tabs + search + sort + view switcher)
+ *   - Stage: FilterDrawer (collapsible) + viewStage (table or grid + pagination)
+ *   - BulkActionBar (floating, controlled by selection)
  *
  * State ownership:
- *   - selection set, view mode, active tab, search, sort, drawer toggle,
- *     pagination, all topic / status / timeframe / citation filter state —
- *     lives here in page.tsx. Sub-components are fully controlled.
+ *   selection set, view mode, active tab, search, sort, drawer toggle,
+ *   pagination, all topic / status / timeframe / citation filter state —
+ *   lives here in page.tsx. Sub-components are fully controlled.
  */
 
 import * as React from 'react'
 
-import { ReportsHeader } from './components/ReportsHeader'
+import { PageLayout } from '@/components/common/PageLayout'
 import { MetricStrip } from './components/MetricStrip'
 import { FilterBar, type SortId, type ViewMode } from './components/FilterBar'
 import { FilterDrawer } from './components/FilterDrawer'
@@ -110,7 +111,6 @@ export default function ReportsPage() {
 
   const onBulkAction = React.useCallback(
     (actionId: string) => {
-      // Mock-only — log intent, leave selection intact for follow-up.
       if (typeof window !== 'undefined') {
         // eslint-disable-next-line no-console
         console.info('[bulk-action]', actionId, Array.from(selectedIds))
@@ -126,70 +126,79 @@ export default function ReportsPage() {
     }
   }, [])
 
-  // ── Render ──────────────────────────────────────────────────────
   return (
-    <div className={styles.shell}>
-      <div className={styles.main}>
-        <div className={styles.content}>
-          <ReportsHeader
-            filterBadgeVisible={filterBadgeVisible}
-            onToggleFilters={() => setShowFilters((v) => !v)}
-            onNewResearch={onNewResearch}
+    <PageLayout
+      header={{
+        title: '研究报告库',
+        enLabel: 'Research Repository',
+        subtitle: '本季度已生成 142 篇研究报告 · 监控 38 个研究赛道 · 推理拓扑已就绪',
+        actions: [
+          {
+            label: '多维筛选',
+            icon: 'tune',
+            variant: 'secondary',
+            badge: filterBadgeVisible,
+            onClick: () => setShowFilters((v) => !v),
+          },
+          {
+            label: '发起新研究',
+            icon: 'add',
+            variant: 'primary',
+            shortcut: '⌘N',
+            onClick: onNewResearch,
+          },
+        ],
+      }}
+    >
+      <MetricStrip />
+      <FilterBar
+        activeTabId={activeTabId}
+        onTabChange={setActiveTabId}
+        search={search}
+        onSearchChange={setSearch}
+        sortId={sortId}
+        onSortChange={setSortId}
+        view={view}
+        onViewChange={setView}
+      />
+      <div className={styles.stage}>
+        {showFilters && (
+          <FilterDrawer
+            activeTimeframeId={activeTimeframeId}
+            onTimeframeChange={setActiveTimeframeId}
+            checkedTopicIds={checkedTopicIds}
+            onTopicToggle={toggleTopic}
+            activeCitationId={activeCitationId}
+            onCitationChange={setActiveCitationId}
+            checkedStatusIds={checkedStatusIds}
+            onStatusToggle={toggleStatus}
+            onReset={resetDrawer}
           />
+        )}
 
-          <MetricStrip />
+        <div className={styles.viewStage}>
+          {view === 'table' ? (
+            <ReportTable
+              reports={REPORTS}
+              selectedIds={selectedIds}
+              onToggle={toggleOne}
+              onToggleAll={toggleAll}
+              allSelected={allSelected}
+              partiallySelected={partiallySelected}
+            />
+          ) : (
+            <ReportGrid reports={REPORTS} />
+          )}
 
-          <FilterBar
-            activeTabId={activeTabId}
-            onTabChange={setActiveTabId}
-            search={search}
-            onSearchChange={setSearch}
-            sortId={sortId}
-            onSortChange={setSortId}
-            view={view}
-            onViewChange={setView}
+          <Pagination
+            currentPage={currentPage}
+            totalPages={TOTAL_PAGES}
+            totalItems={TOTAL_REPORTS}
+            rangeFrom={(currentPage - 1) * PAGE_SIZE + 1}
+            rangeTo={Math.min(currentPage * PAGE_SIZE, TOTAL_REPORTS)}
+            pageSize={PAGE_SIZE}
+            onPageChange={setCurrentPage}
           />
-
-          <div className={styles.stage}>
-            {showFilters && (
-              <FilterDrawer
-                activeTimeframeId={activeTimeframeId}
-                onTimeframeChange={setActiveTimeframeId}
-                checkedTopicIds={checkedTopicIds}
-                onTopicToggle={toggleTopic}
-                activeCitationId={activeCitationId}
-                onCitationChange={setActiveCitationId}
-                checkedStatusIds={checkedStatusIds}
-                onStatusToggle={toggleStatus}
-                onReset={resetDrawer}
-              />
-            )}
-
-            <div className={styles.viewStage}>
-              {view === 'table' ? (
-                <ReportTable
-                  reports={REPORTS}
-                  selectedIds={selectedIds}
-                  onToggle={toggleOne}
-                  onToggleAll={toggleAll}
-                  allSelected={allSelected}
-                  partiallySelected={partiallySelected}
-                />
-              ) : (
-                <ReportGrid reports={REPORTS} />
-              )}
-
-              <Pagination
-                currentPage={currentPage}
-                totalPages={TOTAL_PAGES}
-                totalItems={TOTAL_REPORTS}
-                rangeFrom={(currentPage - 1) * PAGE_SIZE + 1}
-                rangeTo={Math.min(currentPage * PAGE_SIZE, TOTAL_REPORTS)}
-                pageSize={PAGE_SIZE}
-                onPageChange={setCurrentPage}
-              />
-            </div>
-          </div>
         </div>
       </div>
 
@@ -199,6 +208,6 @@ export default function ReportsPage() {
         onCancel={cancelSelection}
         onAction={onBulkAction}
       />
-    </div>
+    </PageLayout>
   )
 }

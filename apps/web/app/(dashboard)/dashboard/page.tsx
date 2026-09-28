@@ -1,16 +1,16 @@
 /**
- * Dashboard page — body only. Sidebar + TopBar are owned by
- * (dashboard)/layout.tsx, so this page renders only the inner content
- * (1:1 with argus_dashboard/code.html).
+ * Dashboard page (Research Dashboard) — body only.
+ * Sidebar + TopBar are owned by (dashboard)/layout.tsx; this page renders
+ * only the inner content via the shared PageLayout.
  *
  * Composition:
- *   1. PageHeader      — title + chip + greeting + 3 right actions
- *   2. KPI grid (4)    — each card: uppercase label + value + sub + footer
- *   3. Dual panel      — RecentActivity (7 cols) | Subscriptions (5 cols)
- *   4. Explore grid    — 3 report cards with cover image + CTA
+ *   1. PageLayout header — title + DAG Cluster chip + greeting + 3 actions
+ *   2. KPI grid (4 cards) — KpiCard
+ *   3. Dual panel — RecentActivity (7 cols) | Subscriptions (5 cols)
+ *   4. Explore grid — 3 report cards with cover image + CTA
  */
 
-import { PageHeader } from './components/PageHeader'
+import { PageLayout } from '@/components/common/PageLayout'
 import { KpiCard } from './components/KpiCard'
 import { RecentActivity } from './components/RecentActivity'
 import { Subscriptions } from './components/Subscriptions'
@@ -20,16 +20,28 @@ import styles from './page.module.css'
 
 export default function DashboardPage() {
   return (
-    <>
-      <PageHeader
-        title="研究看板 (Research Dashboard)"
-        titleChip="DAG Cluster v2.4"
-        greeting="早上好，Tony"
-        date="2026年9月19日 · 星期六"
-        notifications={3}
-        activeSubscriptions={SUBSCRIPTIONS.filter((s) => !s.paused).length}
-      />
-
+    <PageLayout
+      header={{
+        title: '研究看板 (Research Dashboard)',
+        enLabel: 'DAG Cluster v2.4',
+        meta: [
+          { text: '早上好，Tony', mono: true },
+          { text: '2026年9月19日 · 星期六' },
+          { text: '推理拓扑已就绪', dot: 'success' },
+        ],
+        actions: [
+          { icon: 'notifications', ariaLabel: '通知中心', badgeCount: 3 },
+          { label: '偏好配置', icon: 'tune', variant: 'secondary' },
+          {
+            label: '发起新研究',
+            icon: 'add',
+            variant: 'primary',
+            shortcut: '⌘N',
+            shortcutTone: 'dark',
+          },
+        ],
+      }}
+    >
       <section className={styles.kpiGrid}>
         {KPIS.map((k) => (
           <KpiCard key={k.id} kpi={k} />
@@ -42,6 +54,6 @@ export default function DashboardPage() {
       </section>
 
       <ExploreGrid reports={REPORTS} />
-    </>
+    </PageLayout>
   )
 }

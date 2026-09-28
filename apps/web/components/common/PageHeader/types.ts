@@ -22,6 +22,8 @@ export interface PageHeaderAction {
   variant?: PageHeaderActionVariant
   /** Keyboard shortcut chip rendered after the label (e.g. ⌘N). */
   shortcut?: string
+  /** Shortcut chip bg: 'light' (white overlay on primary) or 'dark' (black overlay). */
+  shortcutTone?: 'light' | 'dark'
   /** Small purple dot overlay (right-top of button). */
   badge?: boolean
   /** Numeric badge text overlay (e.g. notification count). */
@@ -41,6 +43,10 @@ export interface PageHeaderStat {
   value?: string | number
   /** 'highlight' tints value with primary color; default = on-surface black. */
   tone?: 'default' | 'highlight'
+  /** When true, render as a mono pill with leading pulse dot. */
+  pill?: boolean
+  /** Pill dot color when pill=true: 'primary' (purple) or 'success' (green). */
+  pillTone?: 'primary' | 'success'
 }
 
 export interface PageHeaderBreadcrumb {
@@ -61,6 +67,17 @@ export interface PageHeaderEyebrow {
   note?: string
 }
 
+export interface PageHeaderMetaItem {
+  /** Text content. */
+  text: string
+  /** Mono emphasis (bold + mono font). Default = regular sans. */
+  mono?: boolean
+  /** Custom className for fine-grained color overrides. */
+  className?: string
+  /** Optional leading pulse dot (status indicator). */
+  dot?: 'primary' | 'success'
+}
+
 export interface PageHeaderConfig {
   /** Page title (headline-lg 24/32/600). */
   title: string
@@ -71,12 +88,15 @@ export interface PageHeaderConfig {
   /** Optional eyebrow tag + note rendered above the title (e.g. "AGENT WORKSPACE"). */
   eyebrow?: PageHeaderEyebrow
   /**
-   * Subtitle / stats row below the title.
+   * Subtitle / stats / meta row below the title.
    * - `subtitle` = single string → rendered as plain body-sm paragraph.
    * - `stats` = array → rendered as a flex row of mono-emphasised numbers.
+   * - `meta` = array → rendered as flex row with mixed mono/sans + status dots
+   *   (e.g. dashboard greeting + date + status block).
    */
   subtitle?: string
   stats?: PageHeaderStat[]
+  meta?: PageHeaderMetaItem[]
   /** Right-side actions. Up to ~4 supported; collapses on small screens. */
   actions?: PageHeaderAction[]
   /** Optional custom DOM node rendered after actions (e.g. live status pill). */

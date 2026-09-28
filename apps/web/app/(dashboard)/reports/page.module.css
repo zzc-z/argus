@@ -1,24 +1,5 @@
-.shell {
-  /* (dashboard)/layout.tsx owns the chrome (sidebar + topbar) and the outer
-     `padding-left: 16rem` / `padding-top: 3.5rem` reservation. This root is
-     a transparent flex container; the page content extends edge-to-edge
-     within the layout's main column. */
-  color: var(--token-on-surface, #191c1d);
-  display: flex;
-  flex-direction: column;
-}
-
-.main {
-  min-height: 100vh;
-}
-
-.content {
-  /* (dashboard)/layout.tsx's .mainInner already provides padding-inline + padding-bottom;
-     this page is edge-to-edge inside that container. */
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-}
+/* Reports page layout — filter drawer + view stage flex.
+ * PageLayout / layout.tsx own the outer chrome + padding. */
 
 .stage {
   display: flex;
@@ -34,6 +15,3 @@
   flex-direction: column;
   gap: 0.5rem;
 }
-
-/* Override (dashboard)/layout.module.css .mainInner { padding-bottom: 7rem }
-   was removed: layout now ships 2rem (pb-space-xl) by default. */

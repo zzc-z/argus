@@ -1,18 +1,10 @@
-.root {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  padding-left: 16rem;
-  padding-top: 3.5rem;
-  padding-inline: 1.5rem;
-  padding-bottom: 4rem;
-}
+/* Notifications page — stream column + side rail grid.
+ * PageLayout / layout.tsx own the outer chrome + padding. */
 
 .grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
-  margin-top: 0.25rem;
 }
 
 @media (min-width: 1280px) {

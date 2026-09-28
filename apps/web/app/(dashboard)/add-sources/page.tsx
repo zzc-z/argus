@@ -1,20 +1,10 @@
 'use client'
 
-/**
- * Add Sources page — upload / URL / RSS ingestion + processing pipeline options.
- *
- * Two-column layout:
- *   - Left (7/12):  UploadDropZone + UrlRssTabs + ProcessingOptions + arch badge
- *   - Right (5/12): QueueMonitor (4 tasks) + security tip card
- *
- * URL/RSS tab state is local (useState); queue items are static mock.
- */
-
 import * as React from 'react'
 import { useState } from 'react'
 import Link from 'next/link'
 
-import { AddSourcesHeader } from './components/AddSourcesHeader'
+import { PageLayout } from '@/components/common/PageLayout'
 import { UploadDropZone } from './components/UploadDropZone'
 import { UrlRssTabs } from './components/UrlRssTabs'
 import { ProcessingOptions } from './components/ProcessingOptions'
@@ -29,32 +19,39 @@ export default function AddSourcesPage() {
   const [tab, setTab] = useState<IngestTab>('url')
 
   return (
-    <main className={styles.main}>
-      <div className={styles.body}>
-        <AddSourcesHeader />
+    <PageLayout
+      header={{
+        breadcrumb: [
+          { label: '资料库', href: '/sources', icon: 'database' },
+          { label: '添加新数据源', current: true },
+        ],
+        title: '添加研究资料 Add Sources',
+        subtitle:
+          '上传离线研究文档、输入网页链接或订阅专业 RSS 数据流以扩充 Argus 知识库与推演图谱',
+        stats: [
+          { label: 'INGEST_V2', pill: true, pillTone: 'primary' },
+          { label: '端到端加密通道 · 零留存模式' },
+        ],
+      }}
+    >
+      <div className={styles.grid}>
+        <div className={styles.left}>
+          <UploadDropZone />
+          <UrlRssTabs tab={tab} onTabChange={setTab} />
+          <ProcessingOptions />
+          <ArchBadge />
+        </div>
 
-        <div className={styles.grid}>
-          {/* LEFT — ingestion inputs */}
-          <div className={styles.left}>
-            <UploadDropZone />
-            <UrlRssTabs tab={tab} onTabChange={setTab} />
-            <ProcessingOptions />
-            <ArchBadge />
-          </div>
-
-          {/* RIGHT — ingestion queue */}
-          <div className={styles.right}>
-            <QueueMonitor />
-            <SecurityTip />
-            <BackLink />
-          </div>
+        <div className={styles.right}>
+          <QueueMonitor />
+          <SecurityTip />
+          <BackLink />
         </div>
       </div>
-    </main>
+    </PageLayout>
   )
 }
 
-/** Compact one-line badge — HNSW dense + sparse BM25 fusion engine. */
 function ArchBadge() {
   return (
     <div className={styles.arch}>
@@ -77,7 +74,6 @@ function ArchBadge() {
   )
 }
 
-/** Compact security / compliance tip card. */
 function SecurityTip() {
   return (
     <section className={styles.tip}>
@@ -92,7 +88,6 @@ function SecurityTip() {
   )
 }
 
-/** Back link to /sources — quick return CTA for power users. */
 function BackLink() {
   return (
     <Link href="/sources" className={`${styles.backLink} font-body-sm`}>

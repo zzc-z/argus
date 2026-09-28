@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { useMemo, useState, useCallback } from 'react'
 
-import { PageHeader } from './components/PageHeader'
+import { PageLayout } from '@/components/common/PageLayout'
 import { FilterToolbar } from './components/FilterToolbar'
 import { BulkActionToolbar } from './components/BulkActionToolbar'
 import { NotificationSection } from './components/NotificationSection'
@@ -27,8 +27,6 @@ import styles from './page.module.css'
  *
  * Owns:  selection / marked-read / status & type filter / view-mode / earlier-expand.
  * Passes derived data and handlers down to leaf components.
- *
- * 1:1 extracted from argus_notifications/code.html lines 1-535.
  */
 export default function NotificationsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(['n1', 'n2']))
@@ -38,13 +36,11 @@ export default function NotificationsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('time')
   const [earlierExpanded, setEarlierExpanded] = useState(false)
 
-  /** Per-item derived flag: `unread && not in markedReadIds`. */
   const isDerivedUnread = useCallback(
     (item: NotificationWithMeta): boolean => item.unread && !markedReadIds.has(item.id),
     [markedReadIds],
   )
 
-  /** Total items currently visible across all sections, for select-all and toolbar hint. */
   const totalVisible = useMemo(() => {
     return allSections.reduce((sum, s) => {
       return (
@@ -130,9 +126,7 @@ export default function NotificationsPage() {
   }, [selectedIds])
 
   const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
-  const mute = useCallback(() => {
-    /* No-op placeholder — would open mute dialog in real app. */
-  }, [])
+  const mute = useCallback(() => {}, [])
 
   const filterItem = useCallback(
     (item: NotificationWithMeta): boolean => {
@@ -143,10 +137,29 @@ export default function NotificationsPage() {
     [statusFilter, typeFilter, isDerivedUnread],
   )
 
-  return (
-    <div className={styles.root}>
-      <PageHeader unreadCount={derivedUnreadCount} onMarkAll={markAll} />
+  const markAllAction = useCallback(() => markAll(), [markAll])
 
+  return (
+    <PageLayout
+      header={{
+        breadcrumb: [
+          { label: '控制台' },
+          { label: '/notifications', current: true },
+        ],
+        title: '通知中心 / Notifications',
+        subtitle: `[${derivedUnreadCount} 新事件待处理]`,
+        actions: [
+          {
+            label: '全部标为已读',
+            icon: 'done_all',
+            variant: 'secondary',
+            onClick: markAllAction,
+          },
+          { icon: 'tune', ariaLabel: '通知设置' },
+          { icon: 'download', ariaLabel: '导出日志' },
+        ],
+      }}
+    >
       <FilterToolbar
         unreadCount={derivedUnreadCount}
         totalCount={totalCount}
@@ -201,6 +214,6 @@ export default function NotificationsPage() {
           <CtaCard />
         </aside>
       </div>
-    </div>
+    </PageLayout>
   )
 }
