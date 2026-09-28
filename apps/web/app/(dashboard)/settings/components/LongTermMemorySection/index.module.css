@@ -55,7 +55,9 @@
 
 .desc {
   max-width: 42rem;
-  line-height: 1.625;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--token-secondary, #575e70);
 }
 
 .masterToggle {
@@ -120,6 +122,9 @@
 .subHint {
   font-size: 11px;
   line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--token-secondary, #575e70);
 }
 
 .rules {
@@ -138,7 +143,11 @@
 
 .rulesHeading {
   font-size: 11px;
-  letter-spacing: 0.05em;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--token-secondary, #575e70);
 }
 
 .addBtn {
@@ -158,6 +167,10 @@
 
 .addLabel {
   font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--token-primary, #5704e1);
 }
 
 .rulesList {

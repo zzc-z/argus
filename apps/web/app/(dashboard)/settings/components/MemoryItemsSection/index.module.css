@@ -45,6 +45,9 @@
   padding: 0.125rem 0.5rem;
   border-radius: 0.25rem;
   background-color: var(--token-surface-container, #edeeef);
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--token-secondary, #575e70);
 }
 
 .addBtn {
@@ -73,6 +76,9 @@
 
 .addLabel {
   font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
+  color: var(--token-on-primary, #ffffff);
 }
 
 .filterBar {
@@ -115,6 +121,10 @@
     background-color 150ms ease-out,
     color 150ms ease-out;
   font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--token-secondary, #575e70);
 }
 
 .tabActive {
@@ -225,6 +235,9 @@
   padding: 0.125rem 0.5rem;
   border-radius: 0.25rem;
   font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
 }
 
 .itemTagPrimary {
@@ -258,6 +271,9 @@
   border: none;
   cursor: pointer;
   font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   padding: 0.125rem 0.25rem;
   border-radius: 0.25rem;
   transition:
@@ -279,7 +295,8 @@
 
 .itemBody {
   font-size: 14px;
-  line-height: 1.625;
+  line-height: 22px;
+  color: var(--token-on-surface, #191c1d);
 }
 
 .itemMeta {
@@ -355,4 +372,6 @@
 
 .bottomBtnLabel {
   font-size: 13px;
+  line-height: 20px;
+  font-weight: 500;
 }

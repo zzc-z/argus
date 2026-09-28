@@ -11,6 +11,7 @@ import {
   type ProviderStatus,
   type SettingsNavId,
 } from './mock'
+import { PageLayout } from '@/components/common/PageLayout'
 import { SettingsSidebar } from './components/SettingsSidebar'
 import { ProfileBanner } from './components/ProfileBanner'
 import { LongTermMemorySection } from './components/LongTermMemorySection'
@@ -127,20 +128,13 @@ export default function SettingsPage() {
   }, [])
 
   return (
-    <div className={styles.root}>
-      {/* Page header (design §7-15) */}
-      <header className={styles.pageHeader}>
-        <div className={styles.pageTitleRow}>
-          <h1 className={`${styles.pageTitle} font-headline-lg text-on-surface font-semibold`}>
-            系统设置
-          </h1>
-          <span className={`${styles.pageTitleMeta} font-code text-secondary`}>/ Settings</span>
-        </div>
-        <p className={`${styles.pageDesc} font-body-sm text-secondary`}>
-          管理研究员个人偏好、长短期记忆图谱、多模型协同 API 及系统集成
-        </p>
-      </header>
-
+    <PageLayout
+      header={{
+        title: '系统设置',
+        enLabel: '/ Settings',
+        subtitle: '管理研究员个人偏好、长短期记忆图谱、多模型协同 API 及系统集成',
+      }}
+    >
       {/* Main grid: left nav + right panels (design §17) */}
       <div className={styles.grid}>
         <aside className={styles.left}>
@@ -177,6 +171,6 @@ export default function SettingsPage() {
           <ProviderStatusSection providers={providers} onConfigure={handleConfigureProviders} />
         </div>
       </div>
-    </div>
+    </PageLayout>
   )
 }
