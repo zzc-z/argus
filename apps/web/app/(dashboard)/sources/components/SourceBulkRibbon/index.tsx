@@ -1,6 +1,5 @@
 'use client'
 
-import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
 import styles from './index.module.css'
 
@@ -42,8 +41,8 @@ export function SourceBulkRibbon({
             项)
           </label>
         </div>
-        <div className={`${styles.sep} hidden sm:block`} />
-        <span className={`${styles.hint} font-label-sm hidden sm:inline-block`}>
+        <div className={`${styles.sep} ${styles.showFromSmBlock}`} />
+        <span className={`${styles.hint} ${styles.showFromSm}`}>
           批量操作工具箱
         </span>
       </div>

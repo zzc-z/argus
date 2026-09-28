@@ -129,7 +129,7 @@ export default function ReportsPage() {
   // ── Render ──────────────────────────────────────────────────────
   return (
     <div className={styles.shell}>
-      <div className={`${styles.main} ${styles.collapseMainInnerPadding}`}>
+      <div className={styles.main}>
         <div className={styles.content}>
           <ReportsHeader
             filterBadgeVisible={filterBadgeVisible}

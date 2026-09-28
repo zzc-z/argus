@@ -16,7 +16,6 @@
  *   - SourcePagination    (page numbers)
  */
 
-import * as React from 'react'
 import { useState } from 'react'
 
 import { SourcesHeader } from './components/SourcesHeader'

@@ -45,8 +45,10 @@
 
 .value {
   color: var(--token-on-surface, #191c1d);
-  font-size: 28px;
-  line-height: 36px;
+  font-size: 36px; /* align to design argus_dashboard/code.html font-headline-xl token */
+  line-height: 44px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
 }
 
 .sub {

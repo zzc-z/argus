@@ -49,7 +49,23 @@
 
 .hint {
   font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   color: var(--token-secondary, #575e70);
+}
+
+.showFromSm {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .showFromSm {
+    display: inline-block;
+  }
+  .showFromSmBlock {
+    display: block;
+  }
 }
 
 .actions {

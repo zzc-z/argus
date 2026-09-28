@@ -190,6 +190,10 @@ export interface MetricCard {
     kind: 'delta' | 'footer' | 'progress'
     text?: string
     /** ratio for progress kind */ ratio?: number
+    /** Material icon name for `footer-icon` kind. */
+    icon?: string
+    /** Multiple text fragments with optional tone for `footer-parts` kind. */
+    parts?: ReadonlyArray<{ text: string; tone?: 'primary' | 'secondary' }>
   }
 }
 
@@ -209,7 +213,11 @@ export const METRICS: MetricCard[] = [
     icon: 'stream',
     value: '1,429',
     caption: '+18.4%',
-    accent: { kind: 'footer', text: '平均置信度 score ≥ 0.88' },
+    accent: {
+      kind: 'footer',
+      icon: 'sensors',
+      text: '平均置信度 score ≥ 0.88',
+    },
   },
   {
     id: 'review',
@@ -226,7 +234,13 @@ export const METRICS: MetricCard[] = [
     icon: 'hub',
     value: '14/14',
     caption: '节点满载巡检',
-    accent: { kind: 'footer', text: 'HTTP 200 · 平均响应: 240ms' },
+    accent: {
+      kind: 'footer',
+      parts: [
+        { text: '平均响应: 240ms' },
+        { text: 'HTTP 200', tone: 'primary' },
+      ],
+    },
   },
 ]
 

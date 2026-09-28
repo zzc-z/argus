@@ -32,6 +32,9 @@
 
 .label {
   color: var(--token-secondary, #575e70);
+  font-size: 11px; /* align to design font-label-sm */
+  line-height: 16px;
+  font-weight: 500;
 }
 
 .cardValue {
@@ -43,10 +46,16 @@
 
 .value {
   color: var(--token-on-surface, #191c1d);
+  font-size: 24px; /* align to design font-headline-lg */
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
 
 .caption {
-  font-size: 11px;
+  font-size: 11px; /* align to design font-label-sm */
+  line-height: 16px;
+  font-weight: 500;
   letter-spacing: 0.02em;
 }
 
@@ -71,9 +80,19 @@
   display: flex;
   align-items: center;
   gap: 0.25rem;
+  font-size: 12px; /* align to design font-code (argus_topics/code.html line 60, 89) */
+  line-height: 18px;
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.accentFooterParts {
+  justify-content: space-between;
 }
 
 .accentPrimary {
+  font-size: 11px; /* align to design font-label-sm (argus_topics/code.html line 77) */
+  line-height: 16px;
+  font-weight: 500;
   color: var(--token-primary, #5704e1);
 }
 
@@ -86,7 +105,8 @@
 }
 
 .delta {
-  font-size: 12px;
+  font-size: 12px; /* align to design font-code */
+  line-height: 18px;
   margin-top: 0.25rem;
 }
 

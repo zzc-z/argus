@@ -10,7 +10,11 @@
   border-radius: 0.25rem;
   background-color: var(--token-surface-container, #edeeef);
   color: var(--token-secondary, #575e70);
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
   font-size: 11px;
+  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
@@ -24,6 +28,8 @@
 
 .sizePrimary {
   font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
   color: var(--token-on-surface, #191c1d);
 }
 
@@ -34,6 +40,7 @@
 
 .sizeMeta {
   font-size: 11px;
+  line-height: 16px;
   color: var(--token-secondary, #575e70);
 }
 
@@ -41,6 +48,7 @@
 
 .time {
   font-size: 12px;
+  line-height: 18px;
   color: var(--token-secondary, #575e70);
   white-space: nowrap;
 }

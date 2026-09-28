@@ -42,14 +42,37 @@ export function MetricsGrid() {
               />
             </div>
           )}
-          {m.accent?.kind === 'footer' && (
-            <div
-              className={`${styles.accentFooter} ${m.iconTone === 'error' ? styles.accentPrimary : ''} font-label-sm text-secondary`}
-            >
-              {m.iconTone === 'error' && <span className={styles.accentDot} />}
-              {m.accent.text}
-            </div>
-          )}
+          {m.accent?.kind === 'footer' &&
+            (m.accent.parts ? (
+              <div className={`${styles.accentFooter} ${styles.accentFooterParts} font-code`}>
+                {m.accent.parts.map((p, i) => (
+                  <span
+                    key={i}
+                    className={p.tone === 'primary' ? 'text-primary' : undefined}
+                  >
+                    {p.text}
+                  </span>
+                ))}
+              </div>
+            ) : m.iconTone === 'error' ? (
+              <div
+                className={`${styles.accentFooter} ${styles.accentPrimary} font-label-sm text-primary`}
+              >
+                <span className={styles.accentDot} />
+                {m.accent.text}
+              </div>
+            ) : (
+              <div className={`${styles.accentFooter} font-code`}>
+                {m.accent.icon && (
+                  <IconSpan
+                    name={m.accent.icon}
+                    size={14}
+                    className="text-secondary"
+                  />
+                )}
+                {m.accent.text}
+              </div>
+            ))}
           {m.accent?.kind === 'delta' && (
             <span className={`${styles.delta} font-code text-primary`}>{m.accent.text}</span>
           )}
