@@ -10,8 +10,6 @@
   background-color: var(--token-surface-container-lowest, #ffffff);
   border-radius: 0.75rem;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
-  overflow-x: auto;
-  overflow-y: hidden;
   font-size: 0.8125rem;
   color: var(--token-on-surface, #191c1d);
 }
@@ -42,11 +40,12 @@
     var(--token-surface-container-low, #f3f4f5) 60%,
     transparent
   );
-  font-size: 0.8125rem;
-  font-weight: 500;
+  /* 设计稿 token 13/20/400/-0.005em（font-body-sm / text-body-sm） */
+  font-size: var(--text-body-sm-size, 13px);
+  line-height: var(--text-body-sm-line-height, 20px);
+  font-weight: var(--text-body-sm-weight, 400);
   color: var(--token-secondary, #575e70);
-  font-family: var(--font-family-mono);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--text-body-sm-letter-spacing, -0.005em);
   user-select: none;
 }
 

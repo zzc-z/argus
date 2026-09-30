@@ -11,14 +11,15 @@ body {
 }
 
 body {
-  background-color: #f8f9fa;
+  background-color: #f8f8f9;
   color: #191c1d;
   font-family:
     'Geist',
     -apple-system,
     BlinkMacSystemFont,
     sans-serif;
-  overflow-x: hidden;
+  /* 视口 < 内容最小宽时，body 不横向滚；由 (dashboard)/layout 的 .main 接管 */
+  overflow-x: clip;
 }
 
 /* ── Material Symbols Outlined base (font-family + ligature) ── */
@@ -142,6 +143,14 @@ body {
      token family, so the verified badge is the first consumer. */
   --token-success-container: #ecfdf5;
   --token-on-success-container: #047857;
+
+  /* success / error / on-primary — Round 2 token 化补齐 (2026-09-29) */
+  --token-success: #059669;
+  --token-on-success: #ffffff;
+  --token-on-primary: #ffffff;
+  --token-error: #fca5a5;
+  --token-error-container: #fee2e2;
+  --token-on-error: #ffffff;
 }
 
 /* Typography tokens live in :root above. Component CSS modules consume

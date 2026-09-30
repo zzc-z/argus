@@ -237,6 +237,9 @@
 
 /* meta row (dashboard greeting + date + status block) */
 
+/* design reference: `flex items-center gap-2 text-secondary font-body-sm
+   text-body-sm`. Container colors the separator + date as secondary; the
+   leading name and trailing status get their own emphasis / dot styles. */
 .meta {
   display: flex;
   flex-wrap: wrap;
@@ -245,6 +248,7 @@
   font-family: var(--font-family-sans);
   font-size: var(--text-body-sm-size);
   line-height: var(--text-body-sm-line-height);
+  letter-spacing: var(--text-body-sm-letter-spacing);
   font-weight: var(--text-body-sm-weight);
   color: var(--token-secondary, #575e70);
 }
@@ -255,6 +259,17 @@
   gap: 0.375rem;
 }
 
+/* leading name — sans body-sm medium on-surface (e.g. "早上好，Tony") */
+.metaItemEmphasis {
+  font-family: var(--font-family-sans);
+  font-size: var(--text-body-sm-size);
+  line-height: var(--text-body-sm-line-height);
+  letter-spacing: var(--text-body-sm-letter-spacing);
+  font-weight: 500;
+  color: var(--token-on-surface, #191c1d);
+}
+
+/* @deprecated — kept for callers still using `mono` on metaItems */
 .metaItemMono {
   font-family: var(--font-family-mono);
   font-size: var(--text-label-sm-size);
@@ -265,6 +280,33 @@
 
 .metaSep {
   color: var(--token-surface-container-high, #e7e8e9);
+}
+
+/* status dot inside the trailing meta item (e.g. "推理拓扑已就绪").
+   design: w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse; the dot
+   sits inside an inline-flex row with the text via .metaItem. */
+.metaItemDot {
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary-container, #7039f9);
+  flex-shrink: 0;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.metaItemDotSuccess {
+  background-color: rgb(16 185 129);
+}
+
+/* text inside a dot item (e.g. "推理拓扑已就绪") — design:
+   `text-on-surface font-label-sm text-label-sm` (11/16/500). */
+.metaItemDotText {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-label-sm-size);
+  line-height: var(--text-label-sm-line-height);
+  letter-spacing: var(--text-label-sm-letter-spacing);
+  font-weight: var(--text-label-sm-weight);
+  color: var(--token-on-surface, #191c1d);
 }
 
 .metaStatusBlock {

@@ -1,12 +1,13 @@
 /* Dashboard page body — chrome (sidebar + topbar) is owned by (dashboard)/layout.tsx.
    Container classes mirror argus_dashboard/code.html. */
 
-/* KPI strip — 1 → 2 → 4 columns, with bottom margin separating from dual panel. */
+/* KPI strip — 1 → 2 → 4 columns. title→card = 24px via PageHeader
+ * padding-bottom alone (no negative-margin hack); PageLayout's gap
+ * (1.5rem) handles the KPI ↔ dual panel spacing. */
 .kpiGrid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
-  margin-bottom: 1.5rem; /* mb-space-lg */
 }
 
 @media (min-width: 640px) {
@@ -21,13 +22,14 @@
   }
 }
 
-/* Dual panel — RecentActivity (col-span-7) + Subscriptions (col-span-5). */
+/* Dual panel — RecentActivity (col-span-7) + Subscriptions (col-span-5).
+ * No margin-bottom: PageLayout's gap (24px = mb-space-lg) already separates
+ * from ExploreGrid, matching argus_dashboard/code.html. */
 .dualGrid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
   align-items: start;
-  margin-bottom: 1.5rem; /* mb-space-lg */
 }
 
 @media (min-width: 1024px) {

@@ -1,6 +1,45 @@
 /* SourceTable 业务样式 ── 表格骨架 / thead / row hover / divide-y / checkbox
  * 全部由 PlainTable 接管。这里只剩列宽/对齐微调 + 原语未覆盖的小部件（kind badge / 时间）。 */
 
+/* ── 外层圆角白底卡片（参考 /topics TopicTable.shell）────────
+ * shell 自然宽；tableInner 替代 PlainTable 默认 .scroll 职责（横向滚） */
+.shell {
+  width: 100%;
+  min-width: 0;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+
+.tableInner {
+  width: 100%;
+  /* 列 minWidth 总和 ~972px；窄视口下 wrapper 接管横向滚动，外层 main 不再撑宽 */
+  overflow-x: auto;
+}
+
+/* ── 资料名称列：max-width 限定最大宽 + ellipsis 防撑列 ───── */
+
+.titleCell {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* ── 操作列：保证可见最小宽度（按钮组如暂停/查看切片/更多）── */
+
+.actionsCell {
+  white-space: nowrap;
+}
+
+/* ── 对齐 argus_sources 设计稿 ──────────────────────────────
+ * 通过 PlainTable density props（tdPadding=tight / thPadding=tight /
+ * thFontSize=md / rowDivide=light）在本页生效；不影响其他页。
+ */
+
 /* ── 类型列 kind badge ─────────────────────────────────────── */
 
 .kindBadge {

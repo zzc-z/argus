@@ -70,11 +70,26 @@ export interface PageHeaderEyebrow {
 export interface PageHeaderMetaItem {
   /** Text content. */
   text: string
-  /** Mono emphasis (bold + mono font). Default = regular sans. */
+  /**
+   * Sans body-sm emphasis (font-medium 500 + on-surface color). Use for
+   * the personal-greeting-style item (e.g. "早上好，Tony") that needs to
+   * stand out from the surrounding secondary line without going mono.
+   */
+  emphasis?: boolean
+  /**
+   * @deprecated Prefer `emphasis` for sans bold-on-surface styling. `mono`
+   * still renders as JetBrains Mono 500, kept for callers that rely on the
+   * older mono treatment.
+   */
   mono?: boolean
   /** Custom className for fine-grained color overrides. */
   className?: string
-  /** Optional leading pulse dot (status indicator). */
+  /**
+   * Optional leading pulse dot (status indicator). `success` maps to the
+   * emerald 500 dot (animate-pulse, w-1.5 h-1.5) used by design; the dot is
+   * rendered inside an inline-flex wrapper so the indicator and text align
+   * on the same baseline.
+   */
   dot?: 'primary' | 'success'
 }
 

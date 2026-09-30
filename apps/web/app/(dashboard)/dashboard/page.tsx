@@ -25,7 +25,7 @@ export default function DashboardPage() {
         title: '研究看板 (Research Dashboard)',
         enLabel: 'DAG Cluster v2.4',
         meta: [
-          { text: '早上好，Tony', mono: true },
+          { text: '早上好，Tony', emphasis: true },
           { text: '2026年9月19日 · 星期六' },
           { text: '推理拓扑已就绪', dot: 'success' },
         ],

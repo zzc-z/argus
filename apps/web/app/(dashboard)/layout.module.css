@@ -458,6 +458,9 @@
   padding-top: 3.5rem;
   background-color: var(--token-surface, #f8f9fa);
   min-height: 100vh;
+  /* 视口 < 1396 时 .mainInner 撑出 main，由 main 横向滚；body 不参与 */
+  overflow-x: auto;
+  min-width: 0;
 }
 
 .mainInner {
@@ -465,7 +468,10 @@
   flex-direction: column;
   width: 100%;
   padding-inline: 1.5rem;
-  padding-bottom: 2rem; /* align to design argus_dashboard/code.html pb-space-xl */
+  padding-bottom: 2rem;
+  /* dashboard layout 最小宽：sidebar 338 + 列表最小 1010 + padding-inline 48 = 1396
+     视口 < 1396 时由 .main 横向滚；视口 ≥ 1396 时 layout 自然 fill */
+  min-width: 1396px;
 }
 
 @keyframes pulse {

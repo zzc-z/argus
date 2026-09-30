@@ -213,20 +213,30 @@ export function PageHeader({
 
         {meta && meta.length > 0 ? (
           <div className={styles.meta}>
-            {meta.map((item, i) => (
-              <span key={`meta-${i}`} className={cn(styles.metaItem, item.className)}>
-                {item.dot ? (
-                  <span
-                    className={cn(
-                      styles.statPillDot,
-                      item.dot === 'success' && styles.statPillDotSuccess,
-                    )}
-                  />
-                ) : null}
-                <span className={item.mono ? styles.metaItemMono : undefined}>{item.text}</span>
-                {i < meta.length - 1 ? <span className={styles.metaSep}>/</span> : null}
-              </span>
-            ))}
+            {meta.map((item, i) => {
+              const textClass = item.emphasis
+                ? styles.metaItemEmphasis
+                : item.mono
+                  ? styles.metaItemMono
+                  : item.dot
+                    ? styles.metaItemDotText
+                    : undefined
+              return (
+                <span key={`meta-${i}`} className={cn(styles.metaItem, item.className)}>
+                  {item.dot ? (
+                    <span
+                      className={cn(
+                        styles.metaItemDot,
+                        item.dot === 'success' && styles.metaItemDotSuccess,
+                      )}
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                  <span className={textClass}>{item.text}</span>
+                  {i < meta.length - 1 ? <span className={styles.metaSep}>/</span> : null}
+                </span>
+              )
+            })}
           </div>
         ) : null}
       </div>
