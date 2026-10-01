@@ -70,3 +70,13 @@ Thumbs.db
 
 # Local Claude Code git worktrees (prunable /private/tmp worktrees)
 .claude/worktrees/
+
+# Playwright MCP — local browser session caches (不在仓)
+.playwright-mcp/
+
+# 视觉自检截图（不留仓；dev / 自检临时产物）
+*-icons.png
+reports-*.png
+dashboard-*.png
+topics-*.png
+sources-*.png
