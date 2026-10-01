@@ -22,9 +22,19 @@ body {
   overflow-x: clip;
 }
 
-/* ── Material Symbols Outlined base (font-family + ligature) ── */
+/* ── Material Symbols Outlined base (font-family + ligature) ──
+   Local woff2 (apps/web/public/fonts/material-symbols-outlined.woff2) —
+   self-hosted so the icon font is reachable without the Google CDN. */
+@font-face {
+  font-family: 'Material Symbols Outlined Local';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url('/fonts/material-symbols-outlined.woff2') format('woff2');
+}
+
 .material-symbols-outlined {
-  font-family: 'Material Symbols Outlined';
+  font-family: 'Material Symbols Outlined Local', sans-serif;
   font-weight: normal;
   font-style: normal;
   /* font-size & line-height: inherit so the IconSpan's inline style wins */
