@@ -23,7 +23,7 @@ description: argus 项目的编码规范、Hard Gate、设计 token 与约定。
 ### 2.1 技术栈（锁版本，禁止升级/降级）
 
 - 包管理：pnpm + Turborepo（monorepo）
-- 前端：Next.js 14.2.18 + React 19 + Tailwind v3.4.19
+- 前端：Next.js 16.3.7 + React 19.3 + Tailwind v3.4.19
 - shadcn/ui：**new-york 风格**（CLI 装包到 `apps/web/components/ui/`）
 - 设计 token：47 color + 11 fontFamily + 11 fontSize（**precision_technical_light**，锁定不可改）
 - 后端（W2）：Python 3.12 + uv + FastAPI + LangGraph + Supabase + pgvector

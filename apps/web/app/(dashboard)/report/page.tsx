@@ -21,7 +21,6 @@
 import * as React from 'react'
 import { useMemo, useState } from 'react'
 
-import { ReportHeader } from './components/ReportHeader'
 import { TitleHero } from './components/TitleHero'
 import { ViewSwitcher } from './components/ViewSwitcher'
 import { ChapterSection } from './components/ChapterSection'
@@ -157,7 +156,3 @@ export default function ReportPage() {
     </div>
   )
 }
-
-// Re-export the breadcrumb so the layout can mount it above the page body
-// (kept as a named export in case future work wants to share it).
-export { ReportHeader }
