@@ -2,8 +2,6 @@
 
 > 本文档独立于 [CONVENTIONS.md](./CONVENTIONS.md)——只谈**工具链 + 自动化拦截**，
 > 不谈命名 / 嵌套 / 状态等代码风格（那些在 CONVENTIONS.md）。
->
-> 维护者参考 ECC plugin 的 `coding-standards` / `react-review` / `frontend-patterns` / `security-review` skill。
 
 ## 1. 设计目标
 

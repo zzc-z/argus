@@ -110,7 +110,7 @@ repos:
 - auth：FastAPI Depends + JWT / OAuth2 bearer token
 - OpenAPI：自动生成 `@app.get("/api/v1/...")`
 
-## 9. 安全（ECC `security-review`）
+## 9. 安全
 
 - **依赖审计**：`pip-audit` / `uv pip audit` CI 阻断（待 W2 配）
 - **密钥**：用环境变量，绝不 hardcode

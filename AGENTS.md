@@ -1,6 +1,5 @@
 # AGENTS.md — Argus 项目 AI Agent 协作指南
 
-> 本文档适配自 [ECC plugin](https://github.com/...) 的 agents / skills / commands 体系。  
 > 适用于在 argus 项目上工作的所有 AI 编程助手（Claude Code / Cursor / Cline 等）。
 
 ## 1. 项目快速画像
@@ -32,49 +31,6 @@ argus/
     ├── CONVENTIONS.md     # 代码规范（命名 / 嵌套 / 状态 / a11y / 性能）
     └── CODE-QUALITY.md    # 前后端代码质量控制（工具链 + 自动化拦截）
 ```
-
-## 3. ECC Agents 速查（按需调用）
-
-argus 常用 ECC agents（不在 `plugins/marketplaces/ecc/.agents/skills/` 而在 `/Users/ext.zhangjianpeng11/.claude/plugins/marketplaces/ecc/.agents/skills/`）：
-
-| Agent                  | 用途               | 何时调用                         |
-| ---------------------- | ------------------ | -------------------------------- |
-| `planner`              | 任务分解与依赖分析 | 大型任务（W2+ 启动）             |
-| `tdd-guide`            | TDD 测试驱动       | 写新功能 / 修 bug                |
-| `code-reviewer`        | 代码 review        | PR 提交前                        |
-| `security-reviewer`    | 安全审查           | OAuth / API / 数据库改动         |
-| `build-error-resolver` | 编译错误排查       | `pnpm tsc` / `pnpm build` 失败时 |
-| `e2e-runner`           | Playwright E2E     | 端到端验证                       |
-| `refactor-cleaner`     | 死代码清理         | 阶段性重构                       |
-| `doc-updater`          | 文档同步           | 功能变更后                       |
-
-## 4. ECC Skills 速查（按需调阅）
-
-| Skill               | 用途                                               |
-| ------------------- | -------------------------------------------------- |
-| `frontend-design`   | 设计美学守则                                       |
-| `react-patterns`    | React 组件 / Hooks / State 决策                    |
-| `react-testing`     | RTL + Vitest + Playwright                          |
-| `react-performance` | 70+ 性能规则（waterfalls / bundle / re-render）    |
-| `accessibility`     | WCAG 2.2 AA + 24×24px touch target                 |
-| `coding-standards`  | 代码质量守则（KISS / DRY / YAGNI / 不可变 / 命名） |
-| `tdd-workflow`      | 80% coverage + 单元/集成/E2E                       |
-| `security-review`   | Secrets / 注入 / Auth / XSS / CSRF / Rate Limit    |
-
-## 5. ECC Commands 速查（argus 常用）
-
-| Command         | 用途              |
-| --------------- | ----------------- |
-| `/tdd`          | TDD 流程          |
-| `/plan`         | 任务规划          |
-| `/e2e`          | E2E 测试          |
-| `/code-review`  | 代码 review       |
-| `/react-review` | React 专项 review |
-| `/build-fix`    | 编译错误排查      |
-| `/learn`        | 提取经验          |
-| `/skill-create` | 创建新 skill      |
-| `/feature-dev`  | 功能开发完整流程  |
-| `/project-init` | 项目初始化        |
 
 ## 6. 项目硬配置（Hard Gate）
 
@@ -151,7 +107,6 @@ uv run pre-commit install                 # 装 pre-commit hooks
 5. **修改 git hooks / husky 配置** → 更新 `docs/CODE-QUALITY.md §2 前端` + `AGENTS.md §6 硬配置`
 6. **修改设计 token（Tailwind config）** → 更新 `apps/web/CONTRIBUTING.md § 设计 token` + `AGENTS.md §8`
 7. **修改 commit message 规范** → 更新 `docs/CODE-QUALITY.md §4 commit` + `AGENTS.md §6 Conventional Commits`
-8. **新增 ECC agent / skill / command** → 更新 `AGENTS.md §3-5`
 
 **检查清单**（提交前自检）：
 

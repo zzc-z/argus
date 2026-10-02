@@ -140,7 +140,6 @@ button / card / input / label / badge / sheet / dialog / select / switch / tabs 
 ## 13. 全局规则速查
 
 - 本文档范围之外 → `~/.claude/rules/{core,coding,tools}.md`
-- ECC agents 速查 → `AGENTS.md`
 - 前端开发流程 → `apps/web/CONTRIBUTING.md`
 - 后端开发流程 → `apps/api/CONTRIBUTING.md`
 - 前端 / 后端工具链 → `docs/CODE-QUALITY.md`
