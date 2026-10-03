@@ -29,9 +29,9 @@ export function ErrorHeader({ clusterStatus }: ErrorHeaderProps) {
             >
               Argus
             </span>
-            <span className={`${styles.versionChip} font-label-sm`}>v2.4.1-rc3</span>
+            <span className={`${styles.versionChip} font-label-sm text-label-sm`}>v2.4.1-rc3</span>
           </div>
-          <span className={`${styles.brandTagline} font-label-sm text-secondary`}>
+          <span className={`${styles.brandTagline} font-label-sm text-label-sm text-secondary`}>
             Precision Intelligence Workspace
           </span>
         </div>
@@ -40,7 +40,7 @@ export function ErrorHeader({ clusterStatus }: ErrorHeaderProps) {
       <div className={styles.right}>
         <div className={styles.statusPill}>
           <StatusDot color="purple" ping />
-          <span className={`${styles.statusText} font-label-sm text-on-surface-variant`}>
+          <span className={`${styles.statusText} font-label-sm text-label-sm text-on-surface-variant`}>
             {clusterStatus}
           </span>
         </div>

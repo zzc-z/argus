@@ -1,21 +1,18 @@
-.main {
-  width: 100%;
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 3.5rem 1.5rem 4rem 17.5rem;
-  background-color: var(--token-surface, #f8f9fa);
-}
+/* error-404 root — fills (dashboard)/layout.tsx's <main class="mainInner">.
+ * The dashboard layout provides padding-inline (1.5rem) and padding-bottom (2rem);
+ * .main gives padding-top: 3.5rem so content clears the fixed topbar.
+ * We add extra padding-top here so the page header has visual breathing room
+ * below the topbar (design uses ~2rem between topbar and header). */
 
 .shell {
   display: flex;
   flex-direction: column;
+  align-items: center;
   width: 100%;
   max-width: 72rem; /* max-w-6xl */
   margin-left: auto;
   margin-right: auto;
-  padding: 1.5rem;
+  padding-top: 2rem;
 }
 
 .center {

@@ -42,25 +42,23 @@ export default function ErrorPage() {
   }, [])
 
   return (
-    <main className={styles.main}>
-      <div className={styles.shell}>
-        <ErrorHeader clusterStatus={clusterStatus} />
+    <div className={styles.shell}>
+      <ErrorHeader clusterStatus={clusterStatus} />
 
-        <div className={styles.center}>
-          <TopologyDiagram />
-          <ErrorDisplay title={reportTitle} subtitle={reportSubtitle} />
-          <TraceIdBar traceId={traceId} clusterNode={clusterNode} />
-          <ActionGroup />
-        </div>
-
-        <TelemetryDrawer snapshot={telemetrySnapshot} />
-
-        <StatusFooter
-          latencyMs={telemetrySnapshot.summary.latencyMs}
-          clusterHealthPct={telemetrySnapshot.summary.clusterHealthPct}
-          dataStateNote={telemetrySnapshot.summary.dataStateNote}
-        />
+      <div className={styles.center}>
+        <TopologyDiagram />
+        <ErrorDisplay title={reportTitle} subtitle={reportSubtitle} />
+        <TraceIdBar traceId={traceId} clusterNode={clusterNode} />
+        <ActionGroup />
       </div>
-    </main>
+
+      <TelemetryDrawer snapshot={telemetrySnapshot} />
+
+      <StatusFooter
+        latencyMs={telemetrySnapshot.summary.latencyMs}
+        clusterHealthPct={telemetrySnapshot.summary.clusterHealthPct}
+        dataStateNote={telemetrySnapshot.summary.dataStateNote}
+      />
+    </div>
   )
 }

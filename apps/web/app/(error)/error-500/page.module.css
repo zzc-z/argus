@@ -1,0 +1,27 @@
+/* error-500 root — fills (dashboard)/layout.tsx's <main class="mainInner">.
+ * The dashboard layout provides padding-inline (1.5rem) and padding-bottom (2rem);
+ * .main gives padding-top: 3.5rem so content clears the fixed topbar.
+ * We add extra padding-top here so the page header has visual breathing room
+ * below the topbar (design uses ~2rem between topbar and header). */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 72rem; /* max-w-6xl */
+  margin-left: auto;
+  margin-right: auto;
+  padding-top: 2rem;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  max-width: 48rem; /* max-w-3xl */
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
