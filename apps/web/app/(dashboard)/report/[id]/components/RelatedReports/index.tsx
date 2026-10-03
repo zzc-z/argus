@@ -24,7 +24,7 @@ export function RelatedReports({ reports, onViewAll }: RelatedReportsProps) {
           <span className={cn(styles.title, 'font-headline-sm')}>关联研报 (Related)</span>
         </div>
         <a
-          href="#"
+          href="/reports"
           className={cn(styles.viewAll, 'font-label-sm')}
           onClick={(e) => {
             e.preventDefault()
@@ -37,7 +37,7 @@ export function RelatedReports({ reports, onViewAll }: RelatedReportsProps) {
 
       <div className={styles.list}>
         {reports.map((r) => (
-          <a key={r.id} href="#" className={styles.item}>
+          <a key={r.id} href={`/report/${r.id}`} className={styles.item}>
             <div className={cn(styles.itemTop, 'font-label-sm')}>
               <span>
                 {r.category} · {r.recency}

@@ -14,11 +14,11 @@ export function ReportHeader() {
   return (
     <div className={styles.row}>
       <div className={styles.left}>
-        <a className={styles.backBtn} href="#" aria-label="返回报告列表">
+        <a className={styles.backBtn} href="/reports" aria-label="返回报告列表">
           <IconSpan name="arrow_back" size={18} />
         </a>
         <nav className={cn(styles.crumbs, 'font-body-sm')}>
-          <a className={styles.crumbLink} href="#">
+          <a className={styles.crumbLink} href="/reports">
             报告列表
           </a>
           <span className={styles.crumbSep}>/</span>

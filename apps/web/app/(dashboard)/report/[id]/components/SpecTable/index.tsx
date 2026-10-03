@@ -8,6 +8,8 @@ import styles from './index.module.css'
 
 export interface SpecTableProps {
   rows: SpecRow[]
+  /** Comparison view — tints the matching column. undefined = no highlight. */
+  scope?: 'h100' | 'b200' | 'rack'
 }
 
 const columns: ReadonlyArray<PlainTableColumnDef<SpecRow>> = [
@@ -53,12 +55,26 @@ const columns: ReadonlyArray<PlainTableColumnDef<SpecRow>> = [
  * SECTION 02 hardware spec matrix (H100 / B200 / GB200 NVL72).
  * Pure presentation; rows come from mock. No selection.
  */
-export function SpecTable({ rows }: SpecTableProps) {
+export function SpecTable({ rows, scope }: SpecTableProps) {
+  // scope-aware column tinting — applied via wrapper row className.
+  const scopedColumns = columns.map((c) => {
+    if (!scope) return c
+    const scopeMatch = c.id === scope
+    const extra = scopeMatch ? styles.colScoped : ''
+    return {
+      ...c,
+      cell: (row: SpecRow) => {
+        const rendered = c.cell(row) as React.ReactElement<{ className?: string }>
+        const merged = extra ? `${rendered.props.className ?? ''} ${extra}` : rendered.props.className
+        return React.cloneElement(rendered, { className: merged })
+      },
+    } as PlainTableColumnDef<SpecRow>
+  })
   return (
     <>
       <div className={styles.tableWrap}>
         <PlainTable<SpecRow>
-          columns={columns}
+          columns={scopedColumns}
           data={rows}
           getRowId={(r) => r.metric}
           className={`${styles.table} font-body-sm`}

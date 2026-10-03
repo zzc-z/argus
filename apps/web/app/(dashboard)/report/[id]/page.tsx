@@ -1,19 +1,20 @@
 'use client'
 
 /**
- * Report detail page — `/report`.
+ * Report detail page — `/report/[id]`.
  *
  * Layout (1:1 from argus_report_detail/code.html):
- *   ┌─ Title hero (full-width)
- *   ├─ View switcher (4 tabs)
- *   ├─ Main grid (xl:12-col):
- *   │    ├─ Left col (xl:8) — Chapter 1 → 4 + ChapterSection generic
- *   │    └─ Right drawer (xl:4) — SourcesPanel + AgentLogPanel + RelatedReports
+ *   ┌─ ReportHeader (breadcrumb + share/export/... actions)
+ *   ├─ Title hero (full-width)
+ *   ├─ View switcher (4 tabs: report / comparison / timeline / decision)
+ *   ├─ Active view body — each view owns a 12-col grid (xl:8 main + xl:4 drawer)
+ *   │    └─ Right drawer — SourcesPanel + (report-only) AgentLogPanel + RelatedReports
  *   └─ ResearchDock (fixed bottom, floating)
  *
  * Interaction state owned here:
- *   - active view tab (4 tabs, only "report" is fully wired)
+ *   - active view tab (4 tabs, all wired)
  *   - highlighted source id (click a citation mark → highlight source row)
+ *   - comparison scope (H100 / B200 / Rack)
  *
  * Note: layout.tsx in `(dashboard)` owns the sidebar + top header chrome.
  */
@@ -23,6 +24,7 @@ import { useMemo, useState } from 'react'
 
 import { TitleHero } from './components/TitleHero'
 import { ViewSwitcher } from './components/ViewSwitcher'
+import { ReportHeader } from './components/ReportHeader'
 import { ChapterSection } from './components/ChapterSection'
 import { SpecTable } from './components/SpecTable'
 import { BenchmarkBars } from './components/BenchmarkBars'
@@ -32,21 +34,30 @@ import { AgentLogPanel } from './components/AgentLogPanel'
 import { RelatedReports } from './components/RelatedReports'
 import { ResearchDock } from './components/ResearchDock'
 
+import { ComparisonTabs } from './components/ComparisonTabs'
+import { TimelineTrack } from './components/TimelineTrack'
+import { DecisionList } from './components/DecisionList'
+
 import {
   agents,
   benchmarks,
   chapter1,
   citations,
+  decisionItems,
   relatedReports,
   sources,
   specRows,
   tcoCards,
+  timelineEvents,
   type ViewKey,
 } from './mock'
 
 import styles from './page.module.css'
 
-export default function ReportPage() {
+export default function ReportPage({ params }: { params: { id: string } }) {
+  // 当前 mock：声明所有 id 都映射到同一份详情。后续接 API 时改成按 id 选 mock。
+  void params
+
   const [activeView, setActiveView] = useState<ViewKey>('report')
   const [highlightedSourceId, setHighlightedSourceId] = useState<string | undefined>()
 
@@ -67,17 +78,28 @@ export default function ReportPage() {
     if (src) setHighlightedSourceId(src.id)
   }
 
+  // Right drawer — SourcesPanel + RelatedReports always shown; AgentLogPanel
+  // only on the long-form report view.
+  const drawer = (
+    <aside className={styles.drawer}>
+      <SourcesPanel sources={sources} totalCount={23} highlightedId={highlightedSourceId} />
+      {activeView === 'report' && <AgentLogPanel agents={agents} />}
+      <RelatedReports reports={relatedReports} />
+    </aside>
+  )
+
   return (
     <div className={styles.body}>
+      <ReportHeader />
       <TitleHero />
       <ViewSwitcher value={activeView} onChange={setActiveView} />
 
-      {activeView === 'report' ? (
+      {activeView === 'report' && (
         <div className={styles.grid}>
           <div className={styles.mainCol}>
             <ChapterSection
               chapter={chapter1}
-              citationSurface={(id) => citationSurfaceMap.get(id)}
+              citationSurface={(id: string) => citationSurfaceMap.get(id)}
               onCitationClick={handleCitationClick}
             />
 
@@ -94,7 +116,7 @@ export default function ReportPage() {
                   },
                 ],
               }}
-              citationSurface={(id) => citationSurfaceMap.get(id)}
+              citationSurface={(id: string) => citationSurfaceMap.get(id)}
               onCitationClick={handleCitationClick}
             >
               <SpecTable rows={specRows} />
@@ -113,7 +135,7 @@ export default function ReportPage() {
                   },
                 ],
               }}
-              citationSurface={(id) => citationSurfaceMap.get(id)}
+              citationSurface={(id: string) => citationSurfaceMap.get(id)}
               onCitationClick={handleCitationClick}
             >
               <BenchmarkBars cards={benchmarks} />
@@ -133,22 +155,40 @@ export default function ReportPage() {
                   },
                 ],
               }}
-              citationSurface={(id) => citationSurfaceMap.get(id)}
+              citationSurface={(id: string) => citationSurfaceMap.get(id)}
               onCitationClick={handleCitationClick}
             >
               <TcoCards cards={tcoCards} />
             </ChapterSection>
           </div>
-
-          <aside className={styles.drawer}>
-            <SourcesPanel sources={sources} totalCount={23} highlightedId={highlightedSourceId} />
-            <AgentLogPanel agents={agents} />
-            <RelatedReports reports={relatedReports} />
-          </aside>
+          {drawer}
         </div>
-      ) : (
-        <div className={styles.placeholder}>
-          <p>视图「{activeView}」尚未在本里程碑内实现，仅保留切换入口以便后续接入。</p>
+      )}
+
+      {activeView === 'comparison' && (
+        <div className={styles.grid}>
+          <div className={styles.mainCol}>
+            <ComparisonTabs specRows={specRows} benchmarks={benchmarks} />
+          </div>
+          {drawer}
+        </div>
+      )}
+
+      {activeView === 'timeline' && (
+        <div className={styles.grid}>
+          <div className={styles.mainCol}>
+            <TimelineTrack events={timelineEvents} />
+          </div>
+          {drawer}
+        </div>
+      )}
+
+      {activeView === 'decision' && (
+        <div className={styles.grid}>
+          <div className={styles.mainCol}>
+            <DecisionList items={decisionItems} tcoCards={tcoCards} />
+          </div>
+          {drawer}
         </div>
       )}
 

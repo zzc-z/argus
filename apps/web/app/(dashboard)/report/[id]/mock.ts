@@ -420,3 +420,167 @@ export const relatedReports: RelatedReport[] = [
     meta: '6 个智能体 · 31 篇引用',
   },
 ]
+
+/* ──────────────────────────────────────────────────────────────────────
+ * Phase 2 additions — Comparison / Timeline / Decision view data
+ * Pre-Next 16 typedRoutes-safe export shape; consumed by page.tsx switch.
+ * ────────────────────────────────────────────────────────────────────── */
+
+export interface TimelineEvent {
+  id: string
+  date: string // 'YYYY.MM' or 'YYYY'
+  category: 'architecture' | 'process' | 'interconnect' | 'ecosystem' | 'regulatory'
+  title: string
+  summary: string
+  citationIds: string[]
+}
+
+export const timelineEvents: TimelineEvent[] = [
+  {
+    id: 'tl-1',
+    date: '2022.10',
+    category: 'architecture',
+    title: 'Hopper H100 SXM 全面投产',
+    summary: 'TSMC 4N 单 Die、800 亿晶体管、FP8 首次原生支持；NVLink Gen 4 900 GB/s 互联落地。',
+    citationIds: ['1'],
+  },
+  {
+    id: 'tl-2',
+    date: '2023.07',
+    category: 'interconnect',
+    title: 'NVLink Switch 1 代外置化',
+    summary: '跨节点 NVLink 域扩张为 64 颗 GPU；InfiniBand 在多轮对话系统中仍占主导。',
+    citationIds: [],
+  },
+  {
+    id: 'tl-3',
+    date: '2024.03',
+    category: 'process',
+    title: 'Blackwell 双 Die CoWoS-L 量产',
+    summary: 'TSMC 4NP 双芯缝合封装，2,080 亿晶体管；首次原生 FP4 Microscaling 张量核心。',
+    citationIds: ['1'],
+  },
+  {
+    id: 'tl-4',
+    date: '2024.09',
+    category: 'architecture',
+    title: 'B200 / GB200 NVL72 整机架发布',
+    summary: '72 颗 GPU + 36 颗 Grace CPU；1.8 TB/s NVLink Gen 5；整机架 130 TB/s 全域交换。',
+    citationIds: ['1', '2'],
+  },
+  {
+    id: 'tl-5',
+    date: '2024.12',
+    category: 'ecosystem',
+    title: 'MLPerf Inference v4.1 Blackwell 端到端领先',
+    summary: 'Llama 3 70B / Mixtral 8x22B 单卡等效吞吐刷新记录；液冷机架整体 TCO 拐点显现。',
+    citationIds: ['3'],
+  },
+  {
+    id: 'tl-6',
+    date: '2025.03',
+    category: 'regulatory',
+    title: '美国 BIS 出口管制清单再升级',
+    summary: 'H100/B200 在中国区新增许可要求；客户向 Hopper SXM 旧库存回流 12%。',
+    citationIds: [],
+  },
+  {
+    id: 'tl-7',
+    date: '2025.06',
+    category: 'architecture',
+    title: 'GB300 / NVL72 第二代 Blackwell Ultra',
+    summary: 'FP4 算力再 +50%、HBM3e 升级至 288GB；机架功耗维持 120kW 液冷范围。',
+    citationIds: ['1'],
+  },
+  {
+    id: 'tl-8',
+    date: '2026.01',
+    category: 'architecture',
+    title: 'Rubin / Rubin Ultra (预期)',
+    summary: '下一代架构（基于公开 roadmap）：HBM4、第三代 Transformer Engine；预计 2026H2 量产。',
+    citationIds: [],
+  },
+]
+
+export type DecisionPriority = 'critical' | 'high' | 'medium' | 'low'
+export type DecisionStatus = 'pending' | 'in_progress' | 'shipped' | 'blocked'
+
+export interface DecisionItem {
+  id: string
+  priority: DecisionPriority
+  status: DecisionStatus
+  action: string
+  owner: string
+  confidencePct: number
+  impact: string
+  rollbackCost: string
+  citeIds: string[]
+}
+
+export const decisionItems: DecisionItem[] = [
+  {
+    id: 'dec-1',
+    priority: 'critical',
+    status: 'in_progress',
+    action: '优先采购 GB200 NVL72 整机架',
+    owner: '基础设施组 / 林涛',
+    confidencePct: 92,
+    impact: '单位推理成本 ↓ 42.6%；机柜功耗 ↑ 至 120kW 需液冷改造',
+    rollbackCost: '高（机柜与冷却一次性投入 380 万）',
+    citeIds: ['4'],
+  },
+  {
+    id: 'dec-2',
+    priority: 'high',
+    status: 'pending',
+    action: '对 Hopper H100 集群实施 MoE Serving 优化',
+    owner: '平台组 / 张敏',
+    confidencePct: 78,
+    impact: '等效吞吐 ↑ 1.8x，无需新硬件投入',
+    rollbackCost: '极低（仅配置回滚）',
+    citeIds: ['3'],
+  },
+  {
+    id: 'dec-3',
+    priority: 'high',
+    status: 'pending',
+    action: '建立液冷机房容量预算 30 天前 commit 机制',
+    owner: '运维组 / 陈航',
+    confidencePct: 85,
+    impact: '规避液冷改造排队（通常 8-12 周）',
+    rollbackCost: '无（流程变更）',
+    citeIds: [],
+  },
+  {
+    id: 'dec-4',
+    priority: 'medium',
+    status: 'shipped',
+    action: '引入 AMD MI300X 作为二级推理备选',
+    owner: '采购组 / 周欣',
+    confidencePct: 71,
+    impact: '高优先级租户冗余方案；ROCm 6.2 兼容度约 65%',
+    rollbackCost: '中（备选组件化）',
+    citeIds: [],
+  },
+  {
+    id: 'dec-5',
+    priority: 'low',
+    status: 'blocked',
+    action: '评估 Rubin / Rubin Ultra 升级路径',
+    owner: '架构组 / Thomas Lin',
+    confidencePct: 54,
+    impact: '2026H2 后增量 ~25% 单位成本',
+    rollbackCost: '无（暂不行动）',
+    citeIds: [],
+  },
+]
+
+/** 提供按 id 解析的详情 mock。当前只有一个真实报告，所有 rpt-* 与外部
+ *  ID 都映射到 REP-2025-084B（避免列表点击 404）。 */
+export function provideReportById(id: string): {
+  meta: ReportMeta
+} {
+  // 简单策略：未知 id 一律回落到默认。后续接 API 时改成 fetch + cache。
+  void id
+  return { meta: reportMeta }
+}
