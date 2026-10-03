@@ -1,12 +1,17 @@
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
+import type { PushSettings } from '../../mock'
 import styles from './index.module.css'
+
+export interface PushSettingsCardProps {
+  push: PushSettings
+}
 
 /**
  * Right-rail card — push channel overview (Web push / Email / Slack / SMS).
  * 1:1 extracted from argus_notifications/code.html lines 421-478.
  */
-export function PushSettingsCard() {
+export function PushSettingsCard({ push }: PushSettingsCardProps) {
   return (
     <section className={styles.card}>
       <header className={styles.header}>
@@ -20,20 +25,25 @@ export function PushSettingsCard() {
       </header>
 
       <div className={styles.channels}>
-        <ChannelRow
-          icon="desktop_windows"
-          label="浏览器桌面即时推送"
-          sub="延迟 < 200ms · 全开"
-          enabled
-        />
-        <ChannelRow icon="mail" label="邮件每日晨报" sub="每日 08:30 发送" enabled />
-        <ChannelRow icon="tag" label="Slack Webhook 集成" sub="#ai-intel-stream" />
+        {push.channels.map((ch) => (
+          <ChannelRow
+            key={ch.id}
+            icon={ch.icon}
+            label={ch.label}
+            sub={ch.sub}
+            enabled={ch.enabled}
+          />
+        ))}
       </div>
 
       <div className={styles.smsRow}>
         <span className={styles.smsLabel}>紧急告警短信通知</span>
         <label className={styles.toggle}>
-          <input type="checkbox" defaultChecked className={styles.toggleInput} />
+          <input
+            type="checkbox"
+            defaultChecked={push.smsAlertEnabled}
+            className={styles.toggleInput}
+          />
           <span className={styles.toggleTrack} />
         </label>
       </div>
@@ -50,7 +60,7 @@ function ChannelRow({
   icon: string
   label: string
   sub: string
-  enabled?: boolean
+  enabled: boolean
 }) {
   return (
     <div className={styles.channel}>

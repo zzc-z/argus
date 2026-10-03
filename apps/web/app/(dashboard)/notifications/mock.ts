@@ -197,6 +197,9 @@ export const typeOptions = [
   { value: 'subscriptions', label: '主题订阅 (Subscriptions)' },
   { value: 'reports', label: '研报交付 (Reports)' },
   { value: 'system', label: '系统事件 (System)' },
+  { value: 'memory', label: '记忆演化 (Memory)' },
+  { value: 'weekly', label: '每周周报 (Weekly)' },
+  { value: 'ingestion', label: '向量化入库 (Ingestion)' },
 ] as const
 
 export type TypeFilterValue = (typeof typeOptions)[number]['value']
@@ -207,3 +210,96 @@ export const viewModes = [
 ] as const
 
 export type ViewMode = (typeof viewModes)[number]['value']
+
+/* ──────────────────────────────────────────────────────────────────
+ * Sidebar mocks — 1:1 from argus_notifications/code.html
+ * ────────────────────────────────────────────────────────────────── */
+
+export interface PushChannel {
+  id: string
+  icon: string
+  label: string
+  sub: string
+  /** true → green dot shown; false → "去绑定" link shown */
+  enabled: boolean
+}
+
+export interface PushSettings {
+  channels: PushChannel[]
+  /** 紧急告警 SMS 推送开关 */
+  smsAlertEnabled: boolean
+}
+
+export const pushSettings: PushSettings = {
+  smsAlertEnabled: true,
+  channels: [
+    {
+      id: 'browser',
+      icon: 'desktop_windows',
+      label: '浏览器桌面即时推送',
+      sub: '延迟 < 200ms · 全开',
+      enabled: true,
+    },
+    {
+      id: 'email',
+      icon: 'mail',
+      label: '邮件每日晨报',
+      sub: '每日 08:30 发送',
+      enabled: true,
+    },
+    {
+      id: 'slack',
+      icon: 'tag',
+      label: 'Slack Webhook 集成',
+      sub: '#ai-intel-stream',
+      enabled: false,
+    },
+  ],
+}
+
+export type HealthTone = 'ok' | 'warn' | 'error'
+
+export interface HealthSource {
+  id: string
+  label: string
+  value: string
+  tone: HealthTone
+  /** 0-100 进度条宽度 */
+  fillPercent: number
+}
+
+export interface HealthSnapshot {
+  totalScoreLabel: string
+  sources: HealthSource[]
+  autoRecoveryEnabled: boolean
+  recoveryButtonLabel: string
+}
+
+export const healthSnapshot: HealthSnapshot = {
+  totalScoreLabel: '99.8%',
+  autoRecoveryEnabled: true,
+  recoveryButtonLabel: '手动全量轮询',
+  sources: [
+    {
+      id: 'arxiv',
+      label: 'arXiv CS / AI 监听器',
+      value: '正常 (12/12)',
+      tone: 'ok',
+      fillPercent: 100,
+    },
+    {
+      id: 'sec',
+      label: 'SEC Edgar 财务披露流',
+      value: '正常 (实时)',
+      tone: 'ok',
+      fillPercent: 100,
+    },
+    {
+      id: 'blogs',
+      label: '行业科技博客 & 播客速记',
+      value: '1 个源异常',
+      tone: 'warn',
+      fillPercent: 80,
+    },
+  ],
+}

@@ -42,12 +42,12 @@ export function NotificationItem({ item, selected, onToggle, onMarkRead }: Notif
               {item.tag}
             </span>
             <span
-              className={`${styles.title} font-headline-sm ${item.unread ? 'font-semibold' : 'font-medium'} truncate`}
+              className={`${styles.title} font-body-sm ${item.unread ? 'font-semibold' : 'font-medium'} truncate`}
             >
               {item.title}
             </span>
           </div>
-          <span className={`${styles.time} font-code font-label-sm`}>
+          <span className={`${styles.time}`}>
             {item.time}
             {item.timeDetail && <span className={styles.timeDetail}> · {item.timeDetail}</span>}
           </span>
