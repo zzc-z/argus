@@ -48,12 +48,12 @@ export const sourceColumns: ReadonlyArray<PlainTableColumnDef<SourceRow>> = [
     ),
     header: '资料名称与来源描述',
     width: '280px',
+    cellClassName: styles.titleCell,
   },
   {
     id: 'kind',
     cell: (row) => <span className={`${styles.kindBadge} font-code`}>{row.kind}</span>,
     header: '类型',
-    width: '90px',
   },
   {
     id: 'size',
@@ -71,7 +71,7 @@ export const sourceColumns: ReadonlyArray<PlainTableColumnDef<SourceRow>> = [
       </div>
     ),
     header: '切片状态 / 规模',
-    width: '180px',
+    cellClassName: styles.sizeCell,
   },
   {
     id: 'citations',
@@ -85,26 +85,24 @@ export const sourceColumns: ReadonlyArray<PlainTableColumnDef<SourceRow>> = [
       />
     ),
     header: '关联报告',
-    width: '110px',
   },
   {
     id: 'status',
     cell: (row) => <StatusBadgeCell row={row} />,
     header: '索引状态',
-    width: '110px',
+    cellClassName: styles.statusCell,
   },
   {
     id: 'time',
     cell: (row) => <span className={`${styles.time} font-code`}>{row.timeLabel}</span>,
     header: '时间',
-    width: '90px',
   },
   {
     id: 'actions',
     cell: (row) => <SourceRowActions row={row} />,
     header: '操作',
     align: 'right',
-    width: '160px',
+    width: '132px',
   },
 ]
 

@@ -3,7 +3,8 @@
   flex-direction: column;
   gap: 1.5rem;
   padding: 1rem;
-  width: 390px;
+  min-width: 330px;
+  max-width: 330px;
   flex-shrink: 0;
   background-color: var(--token-surface-container-lowest, #ffffff);
   border-radius: 0.75rem;

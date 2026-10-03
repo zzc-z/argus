@@ -22,11 +22,19 @@
 /* ── 资料名称列：max-width 限定最大宽 + ellipsis 防撑列 ───── */
 
 .titleCell {
-  max-width: 100%;
+  max-width: 280px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
+}
+
+.sizeCell {
+  min-width: 175px;
+}
+
+.statusCell {
+  min-width: 108px;
 }
 
 /* ── 操作列：保证可见最小宽度（按钮组如暂停/查看切片/更多）── */
