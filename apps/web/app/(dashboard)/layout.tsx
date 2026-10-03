@@ -49,6 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <NavLink href="/reports" icon="article" label="报告列表" />
               <NavLink href="/topics" icon="rss_feed" label="主题订阅" />
               <NavLink href="/sources" icon="database" label="资料库" />
+              <NavLink href="/notifications" icon="notifications" label="通知中心" />
               <NavLink href="/settings" icon="tune" label="设置" />
             </nav>
           </div>

@@ -469,9 +469,9 @@
   width: 100%;
   padding-inline: 1.5rem;
   padding-bottom: 2rem;
-  /* dashboard layout 最小宽：sidebar 338 + 列表最小 1010 + padding-inline 48 = 1396
-     视口 < 1396 时由 .main 横向滚；视口 ≥ 1396 时 layout 自然 fill */
-  min-width: 1396px;
+  /* dashboard layout 最小宽：sidebar 330 + 列表最小 1010 + padding-inline 48 = 1388
+     视口 < 1388 时由 .main 横向滚；视口 ≥ 1388 时 layout 自然 fill */
+  min-width: 1388px;
 }
 
 @keyframes pulse {
