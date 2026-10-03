@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Link from 'next/link'
 import { IconSpan } from '@/components/common/IconSpan'
 import type { Report } from '../../mock'
 import styles from './index.module.css'
@@ -19,7 +20,8 @@ export function ReportGrid({ reports }: ReportGridProps) {
       {reports.map((r) => {
         const isRunning = r.status === 'running'
         return (
-          <article key={r.id} className={styles.card}>
+          <Link key={r.id} href={`/report/${r.id}` as any} className={styles.cardLink}>
+            <article className={styles.card}>
             <div className={styles.cardHead}>
               <div className={styles.cardTopRow}>
                 <span className={`${styles.topicBadge} ${styles[`topic-${r.topic.tone}`] ?? ''}`}>
@@ -51,6 +53,7 @@ export function ReportGrid({ reports }: ReportGridProps) {
               )}
             </div>
           </article>
+          </Link>
         )
       })}
     </div>

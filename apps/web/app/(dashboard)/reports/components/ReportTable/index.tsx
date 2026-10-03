@@ -33,7 +33,7 @@ export const reportColumns: ReadonlyArray<DataTableColumnDef<Report>> = [
         <div className={styles.titleWrap}>
           <div className={styles.titleLine}>
             {isRunning && <span className={styles.runningDot} aria-hidden="true" />}
-            <a className={styles.title} href="#">
+            <a className={styles.title} href={`/report/${r.id}`}>
               {r.title}
             </a>
             <button
