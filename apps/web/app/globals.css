@@ -11,8 +11,8 @@ body {
 }
 
 body {
-  background-color: #f8f8f9;
-  color: #191c1d;
+  background-color: var(--token-background, #f8f8f9);
+  color: var(--token-on-background, #191c1d);
   font-family:
     'Geist',
     -apple-system,
@@ -81,6 +81,12 @@ body {
   /* families */
   --font-family-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-family-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* background — referenced by body via var(--token-background);
+     also feeds Tailwind's bg-background but raw var() needs an explicit
+     CSS variable. Mirrors tailwind.config.ts colors.background / on-background. */
+  --token-background: #f8f9fa;
+  --token-on-background: #191c1d;
 
   /* headline-xl — 36/44/-0.03em/600 Geist */
   --text-headline-xl-size: 36px;
@@ -161,6 +167,86 @@ body {
   --token-error: #fca5a5;
   --token-error-container: #fee2e2;
   --token-on-error: #ffffff;
+}
+
+/* ── Dark theme tokens (Material 3 dark palette) ──
+   Activated by `html[data-theme="dark"]`; ThemeToggle writes this attr.
+   Values mirror the light palette above via Material 3 standard
+   inversion (light surfaces become dark, on-* colors flip contrast).
+   Login page lives outside (dashboard) layout so it inherits the html
+   attribute and these tokens without any extra wiring. */
+html[data-theme='dark'] {
+  color-scheme: dark;
+
+  /* surfaces — dark backgrounds, scale from darkest (lowest) to lightest (bright) */
+  --token-surface: #111418;
+  --token-surface-dim: #111418;
+  --token-surface-bright: #37393b;
+  --token-surface-container-lowest: #0c0e11;
+  --token-surface-container-low: #191c1d;
+  --token-surface-container: #1d2024;
+  --token-surface-container-high: #272a2d;
+  --token-surface-container-highest: #323537;
+  --token-surface-variant: #494456;
+  --token-surface-tint: #b8a4ff;
+
+  /* background of body — slightly cooler than surface */
+  --token-background: #111418;
+
+  /* on-surface text — light on dark */
+  --token-on-surface: #e2e2e6;
+  --token-on-surface-variant: #c5c4d1;
+  --token-on-background: #e2e2e6;
+
+  /* primary — Material 3 dark keeps the same hue but lighter */
+  --token-primary: #cdbdff;
+  --token-on-primary: #37138c;
+  --token-primary-container: #4f00d0;
+  --token-on-primary-container: #e8deff;
+  --token-primary-fixed: #e8deff;
+  --token-primary-fixed-dim: #cdbdff;
+  --token-on-primary-fixed: #20005f;
+  --token-on-primary-fixed-variant: #b8a4ff;
+
+  --token-inverse-primary: #5704e1;
+  --token-inverse-surface: #e2e2e6;
+  --token-inverse-on-surface: #2e3132;
+
+  /* secondary — cool blue-grey, dark variant */
+  --token-secondary: #bfc7dc;
+  --token-on-secondary: #293041;
+  --token-secondary-container: #404758;
+  --token-on-secondary-container: #dce2f7;
+  --token-secondary-fixed: #dce2f7;
+  --token-secondary-fixed-dim: #c0c6db;
+  --token-on-secondary-fixed: #141b2b;
+  --token-on-secondary-fixed-variant: #c0c6db;
+
+  /* tertiary — neutral dark */
+  --token-tertiary: #c5c6c8;
+  --token-on-tertiary: #2e3132;
+  --token-tertiary-container: #444749;
+  --token-on-tertiary-container: #e3e4e6;
+  --token-tertiary-fixed: #e1e2e4;
+  --token-tertiary-fixed-dim: #c5c6c8;
+  --token-on-tertiary-fixed: #191c1e;
+  --token-on-tertiary-fixed-variant: #c5c6c8;
+
+  /* outline */
+  --token-outline: #928f9f;
+  --token-outline-variant: #494456;
+
+  /* error */
+  --token-error: #ffb4ab;
+  --token-on-error: #690005;
+  --token-error-container: #93000a;
+  --token-on-error-container: #ffdad6;
+
+  /* success — brighter green in dark for AA contrast on dark surfaces */
+  --token-success: #34d399;
+  --token-on-success: #022c1f;
+  --token-success-container: #064e3b;
+  --token-on-success-container: #a7f3d0;
 }
 
 /* Typography tokens live in :root above. Component CSS modules consume
