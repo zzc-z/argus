@@ -1,10 +1,11 @@
 /* PageLayout — wraps page header + main body.
  * Lives inside the (dashboard) layout's <main class="mainInner">, which
  * already provides padding-inline (1.5rem) + padding-bottom (2rem).
- * We add only the inter-block vertical gap. */
+ * Per-page gap is controlled at the page body itself — we don't force a
+ * vertical rhythm here (so pages can opt in to dashboard / reports /
+ * notifications spacing choices). */
 
 .body {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
 }

@@ -505,3 +505,9 @@
   justify-content: center;
   pointer-events: none;
 }
+
+.breadcrumbTrailing {
+  margin-left: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+}

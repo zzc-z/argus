@@ -30,8 +30,10 @@
 }
 
 .titleLink {
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--text-headline-sm-size);
+  line-height: var(--text-headline-sm-line-height, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
   color: var(--token-on-surface, #191c1d);
   text-decoration: none;
   white-space: nowrap;
@@ -46,8 +48,10 @@
 
 .titlePlain {
   /* 不带 hover 颜色变化（如不是链接） */
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--text-headline-sm-size);
+  line-height: var(--text-headline-sm-line-height, 1.5rem);
+  font-weight: 600;
+  letter-spacing: -0.025em;
   color: var(--token-on-surface, #191c1d);
   white-space: nowrap;
   overflow: hidden;
@@ -56,7 +60,10 @@
 }
 
 .meta {
-  font-size: 11px;
+  font-size: var(--text-body-sm-size);
+  line-height: var(--text-body-sm-line-height);
+  letter-spacing: var(--text-body-sm-letter-spacing);
+  font-weight: var(--text-body-sm-weight);
   color: var(--token-secondary, #575e70);
   white-space: nowrap;
   overflow: hidden;

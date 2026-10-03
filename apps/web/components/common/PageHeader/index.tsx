@@ -31,6 +31,9 @@ function Crumb({ item }: { item: PageHeaderBreadcrumb }) {
         <span className={styles.breadcrumbCurrent} title={item.label}>
           {item.label}
         </span>
+        {item.trailing ? (
+          <span className={styles.breadcrumbTrailing}>{item.trailing}</span>
+        ) : null}
       </span>
     )
   }
@@ -40,6 +43,9 @@ function Crumb({ item }: { item: PageHeaderBreadcrumb }) {
       <Link href={item.href} className={styles.breadcrumbLink}>
         {item.label}
       </Link>
+      {item.trailing ? (
+        <span className={styles.breadcrumbTrailing}>{item.trailing}</span>
+      ) : null}
     </span>
   )
 }
@@ -129,6 +135,7 @@ export function PageHeader({
   title,
   enLabel,
   breadcrumb,
+  breadcrumbSeparator,
   eyebrow,
   subtitle,
   stats,
@@ -160,7 +167,11 @@ export function PageHeader({
               <span key={`${item.label}-${i}`} className={styles.breadcrumbItem}>
                 <Crumb item={item} />
                 {i < breadcrumb.length - 1 ? (
-                  <span className={styles.breadcrumbSep}>/</span>
+                  breadcrumbSeparator ? (
+                    <span className={styles.breadcrumbSep}>{breadcrumbSeparator}</span>
+                  ) : (
+                    <span className={styles.breadcrumbSep}>/</span>
+                  )
                 ) : null}
               </span>
             ))}

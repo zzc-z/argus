@@ -58,6 +58,10 @@ export interface PageHeaderBreadcrumb {
   icon?: string
   /** Marks current page (renders as plain text, no link). */
   current?: boolean
+  /** Optional trailing node rendered at the end of this crumb row (chip / dot /
+   *  status pill). Useful for per-page chrome like REALTIME_STREAM indicators.
+   *  Rendered with ml-2 spacing — no separator injected by the header. */
+  trailing?: ReactNode
 }
 
 export interface PageHeaderEyebrow {
@@ -65,6 +69,10 @@ export interface PageHeaderEyebrow {
   tag?: string
   /** Plain note rendered after the tag, separated by '·'. */
   note?: string
+  /** Optional custom ReactNode rendered in place of the default tag/note chip.
+   *  When set, completely replaces the default eyebrow render — useful for
+   *  per-page chrome that wants to inject icons, dots, separators, etc. */
+  node?: ReactNode
 }
 
 export interface PageHeaderMetaItem {
@@ -100,6 +108,10 @@ export interface PageHeaderConfig {
   enLabel?: string
   /** Optional breadcrumb row above the title block. */
   breadcrumb?: PageHeaderBreadcrumb[]
+  /** Custom breadcrumb separator rendered between crumbs. Defaults to "/"
+   *  for backwards compatibility with the existing 5 dashboard pages.
+   *  Pass <IconSpan name="chevron_right" /> for the Material chevron look. */
+  breadcrumbSeparator?: ReactNode
   /** Optional eyebrow tag + note rendered above the title (e.g. "AGENT WORKSPACE"). */
   eyebrow?: PageHeaderEyebrow
   /**
