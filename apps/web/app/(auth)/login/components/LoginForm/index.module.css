@@ -12,6 +12,7 @@
 
 .title {
   font-size: 28px;
+  color: var(--token-primary, #5704e1);
 
   @media (max-width: 640px) {
     font-size: 24px;

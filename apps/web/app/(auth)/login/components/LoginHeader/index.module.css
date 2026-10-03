@@ -19,6 +19,7 @@
 
 .brandName {
   font-weight: 600;
+  color: var(--token-primary, #5704e1);
 }
 
 .versionChip {

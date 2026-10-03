@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { ArgusMark } from '@/components/common/ArgusMark'
 import { IconSpan } from '@/components/common/IconSpan'
+import { ThemeToggle } from '@/components/common/ThemeToggle'
 import styles from './index.module.css'
 
 /**
@@ -16,7 +17,7 @@ export function LoginHeader() {
         <ArgusMark size={20} />
         <div className={styles.brandText}>
           <span
-            className={`${styles.brandName} font-headline-md text-on-surface font-semibold tracking-tight`}
+            className={`${styles.brandName} font-headline-md font-semibold tracking-tight`}
           >
             Argus
           </span>
@@ -36,6 +37,8 @@ export function LoginHeader() {
           <IconSpan name="translate" size={14} />
           <span>简中</span>
         </button>
+        <span className={`${styles.utilitySep} font-code hidden text-xs sm:inline`}>/</span>
+        <ThemeToggle />
       </nav>
     </header>
   )

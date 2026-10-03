@@ -16,7 +16,7 @@ export function LoginForm() {
     <div className={styles.root}>
       <div className={styles.welcome}>
         <h1
-          className={`${styles.title} font-headline-lg text-on-surface font-semibold tracking-tight`}
+          className={`${styles.title} font-headline-lg font-semibold tracking-tight`}
         >
           登录您的研究工作台
         </h1>
