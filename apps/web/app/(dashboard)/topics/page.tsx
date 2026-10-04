@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { PageLayout } from '@/components/common/PageLayout'
+import { useNotifications, type NewNotificationInput } from '@/lib/notifications'
 import { MetricsGrid } from './components/MetricsGrid'
 import { FilterBar } from './components/FilterBar'
 import { TopicTable } from './components/TopicTable'
@@ -21,9 +22,13 @@ const CLOSE_DRAWER_EVENT = 'argus:topics:close-drawer'
  *   - PageLayout header: eyebrow + title + subtitle + Cmd-N CTA + success pill
  *   - MetricsGrid, FilterBar, TopicTable, recommendSection (templates + agent log)
  *   - NewSubscriptionDrawer (mounted always, controlled via custom events)
+ *
+ * On drawer submit, pushes a subscription notification into the cross-page
+ * Notifications store so /notifications shows it as a fresh unread item.
  */
 export default function TopicsPage() {
   const [drawerOpen, setDrawerOpen] = React.useState(false)
+  const { pushNotification } = useNotifications()
 
   const openDrawer = React.useCallback(() => {
     window.dispatchEvent(new CustomEvent(OPEN_DRAWER_EVENT))
@@ -51,6 +56,14 @@ export default function TopicsPage() {
       window.removeEventListener('keydown', onKey)
     }
   }, [openDrawer])
+
+  const handleActivate = React.useCallback(
+    (input: NewNotificationInput) => {
+      pushNotification(input)
+      setDrawerOpen(false)
+    },
+    [pushNotification],
+  )
 
   return (
     <PageLayout
@@ -86,7 +99,11 @@ export default function TopicsPage() {
         <AgentLogCard log={AGENT_LOG} />
       </section>
 
-      <NewSubscriptionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <NewSubscriptionDrawer
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        onActivate={handleActivate}
+      />
     </PageLayout>
   )
 }

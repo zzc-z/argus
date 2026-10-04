@@ -1,18 +1,21 @@
 'use client'
 
 import * as React from 'react'
+import { useState } from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
+import type { NewNotificationInput } from '@/lib/notifications'
 import styles from './index.module.css'
 
 /**
  * Right-side slide-over drawer for creating a new subscription.
- * Static markup-only port of argus_topics/code.html line 641-779 —
- * controlled open/close is owned by FilterBar / TopicsHeader via the
- * `argus:topics:open-drawer` CustomEvent already wired through the page.
+ * Form fields are controlled; on submit, calls `onActivate(input)` so the
+ * page can push a notification into the cross-page store.
  */
 export interface NewSubscriptionDrawerProps {
   open: boolean
   onClose: () => void
+  /** Called with the assembled payload when the user clicks 确认并激活订阅. */
+  onActivate?: (input: NewNotificationInput) => void
 }
 
 const SOURCE_OPTIONS = [
@@ -29,7 +32,47 @@ const FREQUENCY_OPTIONS = [
   { id: 'weekly', icon: 'calendar_view_week', title: '每周汇总', meta: '周一全量', checked: false, accent: false },
 ] as const
 
-export function NewSubscriptionDrawer({ open, onClose }: NewSubscriptionDrawerProps) {
+const FREQUENCY_LABEL: Record<string, string> = {
+  realtime: '实时推送',
+  '6h': '每 6 小时',
+  daily: '每日晨报',
+  weekly: '每周汇总',
+}
+
+export function NewSubscriptionDrawer({ open, onClose, onActivate }: NewSubscriptionDrawerProps) {
+  const [topicName, setTopicName] = useState('')
+  const [intent, setIntent] = useState('')
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(
+    () => new Set(SOURCE_OPTIONS.filter((s) => s.checked).map((s) => s.id)),
+  )
+  const [frequency, setFrequency] = useState<string>('realtime')
+
+  const toggleSource = (id: string) => {
+    setSelectedSources((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const handleActivate = () => {
+    const name = topicName.trim() || '新研究课题'
+    const freq = FREQUENCY_LABEL[frequency] ?? frequency
+    const sourceList = SOURCE_OPTIONS.filter((s) => selectedSources.has(s.id))
+      .map((s) => s.title)
+      .join('、')
+    onActivate?.({
+      category: 'subscriptions',
+      severity: 'info',
+      icon: 'radar',
+      tag: '【主题动态】',
+      title: `${name} 已激活`,
+      body: `${freq} 巡检 · ${sourceList || '暂未配置信源'} · ${intent.trim() || '尚未填写研究意图'}`,
+      chips: { topic: name, source: sourceList || '—', sentiment: '监控中' },
+    })
+  }
+
   return (
     <div
       className={`${styles.root} ${open ? styles.rootOpen : ''}`}
@@ -71,8 +114,11 @@ export function NewSubscriptionDrawer({ open, onClose }: NewSubscriptionDrawerPr
               </label>
               <input
                 type="text"
+                value={topicName}
+                onChange={(e) => setTopicName(e.target.value)}
                 placeholder="例如：自回归视频生成大模型架构与算力成本"
                 className={`${styles.input} ${styles.inputMd}`}
+                data-testid="topic-name"
               />
             </div>
 
@@ -82,6 +128,8 @@ export function NewSubscriptionDrawer({ open, onClose }: NewSubscriptionDrawerPr
               </label>
               <textarea
                 rows={3}
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
                 placeholder="明确该课题需核心捕获的关键事件、论文类型、技术突破点，用于引导 Agent 进行语义相关度评分..."
                 className={`${styles.input} ${styles.textarea}`}
               />
@@ -90,14 +138,15 @@ export function NewSubscriptionDrawer({ open, onClose }: NewSubscriptionDrawerPr
             <div className={styles.section}>
               <div className={styles.sectionHead}>
                 <label className={styles.sectionLabel}>信源配置 (Multi-Source Connectors)</label>
-                <span className={styles.sectionMeta}>已勾选 3 类</span>
+                <span className={styles.sectionMeta}>已勾选 {selectedSources.size} 类</span>
               </div>
               <div className={styles.sourceGrid}>
                 {SOURCE_OPTIONS.map((s) => (
                   <label key={s.id} className={styles.sourceCard}>
                     <input
                       type="checkbox"
-                      defaultChecked={s.checked}
+                      checked={selectedSources.has(s.id)}
+                      onChange={() => toggleSource(s.id)}
                       className={styles.sourceCheckbox}
                     />
                     <div className={styles.sourceCopy}>
@@ -119,7 +168,9 @@ export function NewSubscriptionDrawer({ open, onClose }: NewSubscriptionDrawerPr
                     <input
                       type="radio"
                       name="frequency"
-                      defaultChecked={f.checked}
+                      value={f.id}
+                      checked={frequency === f.id}
+                      onChange={() => setFrequency(f.id)}
                       className={styles.frequencyRadio}
                     />
                     <IconSpan
@@ -165,7 +216,12 @@ export function NewSubscriptionDrawer({ open, onClose }: NewSubscriptionDrawerPr
               <button type="button" className={styles.secondaryBtn}>
                 保存并测试信源
               </button>
-              <button type="button" className={styles.primaryBtn}>
+              <button
+                type="button"
+                className={styles.primaryBtn}
+                onClick={handleActivate}
+                data-testid="activate-btn"
+              >
                 确认并激活订阅
               </button>
             </div>
