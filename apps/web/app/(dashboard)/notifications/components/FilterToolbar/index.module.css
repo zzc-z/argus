@@ -4,7 +4,6 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
-  padding-block: 0.5rem;
 }
 
 @media (min-width: 1024px) {
