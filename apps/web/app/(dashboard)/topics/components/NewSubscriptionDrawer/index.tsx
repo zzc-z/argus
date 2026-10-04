@@ -7,9 +7,8 @@ import type { NewNotificationInput } from '@/lib/notifications'
 import styles from './index.module.css'
 
 /**
- * Right-side slide-over drawer for creating a new subscription.
- * Form fields are controlled; on submit, calls `onActivate(input)` so the
- * page can push a notification into the cross-page store.
+ * 右侧滑出抽屉：用于创建新订阅。
+ * 表单字段全部受控；提交时调 `onActivate(input)`，让 page 把通知 push 到跨页 store。
  */
 export interface NewSubscriptionDrawerProps {
   open: boolean

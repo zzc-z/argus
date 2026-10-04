@@ -1,15 +1,13 @@
 'use client'
 
 /**
- * /explore — Argus multi-agent deep research console.
+ * /explore — Argus 多智能体深度研究控制台。
  *
- * Restoration of argus_2/code.html. This page intentionally diverges from
- * the project's Material 3 token system: argus_2 has its own dark surface
- * palette (#0a0a0a bg + #4f7cff brand + #7039f9 accent) and Inter as the
- * primary UI font, which we load per-page via next/font/google so other
- * routes (Geist) are unaffected.
+ * 设计稿是 argus_2/code.html 的还原。本页刻意与项目 Material 3 token 体系不同：
+ * argus_2 自带一套深色面板调色（#0a0a0a 背景 + #4f7cff 品牌色 + #7039f9 强调色），
+ * UI 主字体用 Inter。通过 next/font/google 按页面加载，不影响其他路由（其他路由用 Geist）。
  *
- * Layout (1440px wrapper, sticky 56px TopBar):
+ * 布局（1440px 容器，sticky 56px TopBar）：
  *   ┌──────────────────────────────────────────────┐
  *   │ TopBar (brand, search, live, toggle, avatar) │
  *   ├─────────────────────────────────┬────────────┤
@@ -52,25 +50,25 @@ const inter = Inter({
   weight: ['400', '500', '600'],
 })
 
-/** Full target text for the trailing streaming paragraph. */
+/** 尾段打字机要追到的完整目标文本。 */
 const STREAM_TARGET =
   '更为关键的是,总体拥有成本 (TCO) 为大规模智算中心运营方带来了革命性的结构优化。以支撑 100,000 QPS 推理负载的集群规模测算,Blackwell 较同等吞吐 吞吐量的 Hopper 集群将数据中心综合电力消耗锐减 75%。目前主要的落地摩擦点集中于机房 二次液冷系统改建,因为 GB200 机柜强制要求采用单机柜高达 120kW 换热 密度的芯片级直触液冷回路...'
 
-/** Reset all agent nodes to "pending" — the run starts from zero. */
+/** 把所有 agent 节点重置为 pending —— 每次提问都从 0 重新跑。 */
 const INITIAL_NODES: AgentNode[] = AGENT_NODES.map((n) => ({ ...n, lifecycle: 'pending' }))
 
-/** Promote one pending node to active and mark all earlier nodes completed. */
+/** 把下一个 pending 节点提为 active，并把之前的节点标为 completed。 */
 function advance(nodes: AgentNode[]): AgentNode[] {
   const next: NodeLifecycle[] = nodes.map((n) => n.lifecycle)
   const firstPending = next.findIndex((s) => s === 'pending')
   if (firstPending < 0) return nodes
-  // Mark everything up to firstPending-1 as completed.
+  // 把 firstPending 之前的全部标为 completed。
   for (let i = 0; i < firstPending; i++) next[i] = 'completed'
   next[firstPending] = 'active'
   return nodes.map((n, i) => ({ ...n, lifecycle: next[i] as NodeLifecycle }))
 }
 
-/** Final pass: mark the remaining active node as completed. */
+/** 最后一步：把剩下的 active 节点也标为 completed。 */
 function finalize(nodes: AgentNode[]): AgentNode[] {
   return nodes.map((n) =>
     n.lifecycle === 'active' ? { ...n, lifecycle: 'completed' as NodeLifecycle } : n,
@@ -86,16 +84,15 @@ export default function ExplorePage() {
   )
 
   const [promptValue, setPromptValue] = useState('')
-  // Popover is visible when value starts with "/" (and is exactly "/", per
-  // design — typing more characters hides it again).
+  // Popover 仅在输入恰好是单个 '/' 时显示（设计稿要求）；输入更多字符即隐藏。
   const slashVisible = promptValue === '/'
 
-  // Run state — drives DAG animation + StreamingReport tail typewriter.
+  // 运行态：驱动 DAG 节点推进 + StreamingReport 尾段打字机。
   const [runState, setRunState] = useState<RunState>('idle')
   const [nodes, setNodes] = useState<AgentNode[]>(INITIAL_NODES)
   const [streamedText, setStreamedText] = useState('')
 
-  // Refs to keep cleanup centralized in the effect below.
+  // 用 ref 保存 timer，cleanup 集中在下面的 effect 里统一清。
   const nodeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const typeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -134,16 +131,16 @@ export default function ExplorePage() {
     setPromptValue(`${cmd.cmd} `)
   }, [])
 
-  /** Effect that owns the run timers. Cleans up on unmount or when runState changes. */
+  /** 持有运行期 timer 的 effect：unmount 或 runState 变化时统一 cleanup。 */
   useEffect(() => {
     if (runState !== 'running') return
 
-    // Node promotion: every 800ms advance one pending → active → completed.
+    // 节点推进：每 800ms 把下一个 pending 提为 active。
     const nodeTimer = setInterval(() => {
       setNodes((prev) => {
         const stillPending = prev.some((n) => n.lifecycle === 'pending')
         if (!stillPending) {
-          // All done: mark last active as completed and stop the node timer.
+          // 全部跑完：把最后 active 标 completed，等下个 tick 退出循环。
           return finalize(prev)
         }
         return advance(prev)
@@ -151,7 +148,7 @@ export default function ExplorePage() {
     }, 800)
     nodeTimerRef.current = nodeTimer
 
-    // Typewriter: every 30ms append the next character to streamedText.
+    // 打字机：每 30ms 追加 streamedText 的下一个字符。
     const typeTimer = setInterval(() => {
       setStreamedText((prev) => {
         if (prev.length >= STREAM_TARGET.length) return prev
@@ -168,7 +165,7 @@ export default function ExplorePage() {
     }
   }, [runState])
 
-  // Once the typewriter catches up AND every node is completed, mark the run done.
+  // 当打字机追平 + 所有节点都 completed 时，把 runState 切到 completed。
   useEffect(() => {
     if (runState !== 'running') return
     const allCompleted = nodes.every((n) => n.lifecycle === 'completed')

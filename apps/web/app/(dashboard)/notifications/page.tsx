@@ -28,10 +28,10 @@ import {
 import styles from './page.module.css'
 
 /**
- * /notifications — composition root for the notifications page.
+ * /notifications — 通知页面组合根。
  *
- * Owns:  selection / marked-read / status & type filter / view-mode / earlier-expand.
- * Passes derived data and handlers down to leaf components.
+ * 持有：选中 / 标已读 / 状态与类型筛选 / 视图模式 / earlier 展开。
+ * 把派生数据和 handler 下传到底层组件。
  */
 export default function NotificationsPage() {
   const { extras: pushedItems, markedReadIds: storeReadIds } = useNotifications()

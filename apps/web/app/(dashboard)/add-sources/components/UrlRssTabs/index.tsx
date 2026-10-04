@@ -16,9 +16,9 @@ export interface UrlRssTabsProps {
 }
 
 /**
- * URL fetch + RSS subscribe tabs (mutually exclusive).
- * Both panes render always; visibility is toggled via a hidden class.
- * Inputs are controlled; submit buttons emit `onUrlSubmit` / `onRssSubmit`.
+ * URL 抓取 + RSS 订阅双 tab（互斥）。
+ * 两个面板始终渲染，可见性由 hidden class 切换。
+ * 表单受控；提交按钮触发 `onUrlSubmit` / `onRssSubmit` 回调。
  */
 export function UrlRssTabs({ tab, onTabChange, onUrlSubmit, onRssSubmit }: UrlRssTabsProps) {
   const [urlValue, setUrlValue] = React.useState(

@@ -11,9 +11,9 @@ export interface AgentDAGProps {
 }
 
 /**
- * Compact vertical DAG timeline (5 nodes max). Background rail spans full
- * height; an active highlight rail stops at the active node. Active node
- * pulses with `cobaltPulse`. Pending nodes show hollow circles.
+ * 紧凑型竖向 DAG 时间线（最多 5 节点）。背景 rail 贯穿全部高度；
+ * active 高亮 rail 停在当前 active 节点。active 节点带 `cobaltPulse` 脉冲。
+ * pending 节点显示空心圆。
  */
 export function AgentDAG({ onSelectNode, nodes }: AgentDAGProps) {
   // Highlight rail stops at the position of the active node (88px hardcoded

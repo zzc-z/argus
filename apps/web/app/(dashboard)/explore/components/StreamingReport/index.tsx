@@ -12,17 +12,15 @@ const TRAILING_BODY_FALLBACK =
 export interface StreamingReportProps {
   onSelectCitation: (citation: Citation) => void
   /**
-   * Text that has "streamed in" so far for the trailing paragraph.
-   * When `undefined` or empty the trailing paragraph falls back to
-   * the static mock body (back-compat with pages that don't drive it).
+   * 尾段已经「流式输入」的文本。
+   * 当值为 `undefined` 时回退到静态 mock 文案（保持不传此 prop 也能跑）。
    */
   streamedText?: string
 }
 
 /**
- * Hero streaming report — H1, 3 prose paragraphs interleaved with [n]
- * citation superscripts, mid-article 3-column hardware metrics card, and
- * a blinking cursor in the active streaming paragraph.
+ * 流式报告主区 —— H1、3 段正文（穿插 [n] 引文上标）、文中 3 列硬件指标卡、
+ * 当前正在流式追加的段落末尾带闪烁光标。
  */
 export function StreamingReport({ onSelectCitation, streamedText }: StreamingReportProps) {
   const isStreaming = streamedText !== undefined

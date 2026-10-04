@@ -5,8 +5,8 @@ import { IconSpan } from '@/components/common/IconSpan'
 import styles from './index.module.css'
 
 /**
- * Drag-and-drop upload surface. Drag-over state is a single useState toggle.
- * On drop or click → emits `onFilesSelected` with the chosen File objects.
+ * 拖拽上传区。drag-over 状态由一个 useState 控制。
+ * 拖放或点击 → 通过 `onFilesSelected` 回调把选中的 File 数组抛出。
  */
 export interface UploadDropZoneProps {
   /** Called when the user drops files onto the zone or activates the picker. */

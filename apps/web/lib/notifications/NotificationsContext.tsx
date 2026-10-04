@@ -10,20 +10,17 @@ import type {
 } from '@/app/(dashboard)/notifications/mock'
 
 /**
- * NotificationsContext — cross-page state for user-pushed notifications.
+ * NotificationsContext — 跨页面共享的用户推送通知状态。
  *
- * The /notifications page owns its own static mock (8 historical items
- * grouped into today / yesterday / earlier sections). This store carries
- * the *delta*: notifications created by other routes (e.g. /topics drawer
- * submitting a subscription, /add-sources finishing an ingestion) that
- * should appear in the notification center as fresh unread items.
+ * /notifications 页面自带 8 条历史 mock（按今天 / 昨天 / 更早分组）。
+ * 本 store 承载**增量**：其他路由产生的、需要出现在通知中心顶部作为新未读项的通知
+ * （例如 /topics drawer 提交订阅、/add-sources 完成一次摄取）。
  *
- * Persistence: localStorage key `argus:notifications-extra`. SSR renders
- * empty extras (matches mock fallback); client mounts → reads storage → dispatches
- * HYDRATE. New items pushed via `pushNotification` are appended in-memory
- * AND written to storage in the same effect cycle.
+ * 持久化：localStorage 键 `argus:notifications-extra`。SSR 渲染 extras=[]（与 mock 兜底一致）；
+ * 客户端 mount → 读 storage → dispatch HYDRATE。通过 `pushNotification` push 的新条目
+ * 既写入内存，也写入 storage（同一 effect 周期内完成）。
  *
- * Scope: PRD §6.1.3 close-the-loop demo. No real backend; no WebSocket.
+ * 范围：PRD §6.1.3 闭环演示。无真实后端、无 WebSocket。
  */
 
 const STORAGE_KEY = 'argus:notifications-extra'

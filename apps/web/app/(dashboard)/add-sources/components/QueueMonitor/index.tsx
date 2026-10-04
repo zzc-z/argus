@@ -6,9 +6,9 @@ import { queueSummary, type QueueItem } from '../../mock'
 import styles from './index.module.css'
 
 /**
- * Ingestion queue monitor — task list + ETA footer + action row.
- * Items are passed in via props so the page can append user-uploaded /
- * user-submitted tasks and observe them animating to `done` state.
+ * 摄取队列监视器 —— 任务列表 + ETA 页脚 + 操作行。
+ * 任务列表通过 props 传入，page 端可以追加用户上传 / 用户提交的任务，
+ * 并观察它们从处理中动画推进到 `done` 终态。
  */
 export interface QueueMonitorProps {
   items: QueueItem[]

@@ -16,15 +16,15 @@ const OPEN_DRAWER_EVENT = 'argus:topics:open-drawer'
 const CLOSE_DRAWER_EVENT = 'argus:topics:close-drawer'
 
 /**
- * 主题订阅管理 (Topic Subscriptions) page.
+ * 主题订阅管理 (Topic Subscriptions) 页面。
  *
- * Composition (top → bottom):
- *   - PageLayout header: eyebrow + title + subtitle + Cmd-N CTA + success pill
- *   - MetricsGrid, FilterBar, TopicTable, recommendSection (templates + agent log)
- *   - NewSubscriptionDrawer (mounted always, controlled via custom events)
+ * 自上而下组合：
+ *   - PageLayout header：eyebrow + 标题 + 副标题 + Cmd-N CTA + success pill
+ *   - MetricsGrid / FilterBar / TopicTable / recommendSection（模板 + agent 日志）
+ *   - NewSubscriptionDrawer（始终挂载，通过自定义事件控制开关）
  *
- * On drawer submit, pushes a subscription notification into the cross-page
- * Notifications store so /notifications shows it as a fresh unread item.
+ * drawer 提交时，向跨页 Notifications store push 一条订阅通知，
+ * /notifications 页面就会把它作为新未读项显示在顶部。
  */
 export default function TopicsPage() {
   const [drawerOpen, setDrawerOpen] = React.useState(false)
