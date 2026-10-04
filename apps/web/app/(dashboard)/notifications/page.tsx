@@ -5,6 +5,7 @@ import { useMemo, useState, useCallback } from 'react'
 
 import { PageLayout } from '@/components/common/PageLayout'
 import { IconSpan } from '@/components/common/IconSpan'
+import { useNotifications } from '@/lib/notifications'
 import { FilterToolbar } from './components/FilterToolbar'
 import { BulkActionToolbar } from './components/BulkActionToolbar'
 import { NotificationSection } from './components/NotificationSection'
@@ -18,6 +19,7 @@ import {
   totalCount,
   healthSnapshot,
   pushSettings,
+  todaySection,
   type TypeFilterValue,
   type ViewMode,
   type NotificationWithMeta,
@@ -32,6 +34,7 @@ import styles from './page.module.css'
  * Passes derived data and handlers down to leaf components.
  */
 export default function NotificationsPage() {
+  const { extras: pushedItems, markedReadIds: storeReadIds } = useNotifications()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set(['n1', 'n2']))
   const [markedReadIds, setMarkedReadIds] = useState<Set<string>>(new Set())
   const [statusFilter, setStatusFilter] = useState<'unread' | 'all'>('unread')
@@ -39,13 +42,22 @@ export default function NotificationsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>('time')
   const [earlierExpanded, setEarlierExpanded] = useState(false)
 
+  // Compose sections: prepend pushed items to todaySection so fresh
+  // notifications (subscriptions, ingestion, etc.) appear at the top.
+  const sections = useMemo(() => {
+    if (pushedItems.length === 0) return allSections
+    const mergedToday = { ...todaySection, items: [...pushedItems, ...todaySection.items] }
+    return [mergedToday, ...allSections.filter((s) => s.title !== todaySection.title)]
+  }, [pushedItems])
+
   const isDerivedUnread = useCallback(
-    (item: NotificationWithMeta): boolean => item.unread && !markedReadIds.has(item.id),
-    [markedReadIds],
+    (item: NotificationWithMeta): boolean =>
+      item.unread && !markedReadIds.has(item.id) && !storeReadIds.has(item.id),
+    [markedReadIds, storeReadIds],
   )
 
   const totalVisible = useMemo(() => {
-    return allSections.reduce((sum, s) => {
+    return sections.reduce((sum, s) => {
       return (
         sum +
         s.items.filter((it) => {
@@ -55,11 +67,11 @@ export default function NotificationsPage() {
         }).length
       )
     }, 0)
-  }, [statusFilter, typeFilter, isDerivedUnread])
+  }, [sections, statusFilter, typeFilter, isDerivedUnread])
 
   const visibleIds = useMemo(() => {
     const ids: string[] = []
-    for (const s of allSections) {
+    for (const s of sections) {
       for (const it of s.items) {
         if (statusFilter === 'unread' && !isDerivedUnread(it)) continue
         if (typeFilter !== 'all' && it.category !== typeFilter) continue
@@ -67,19 +79,19 @@ export default function NotificationsPage() {
       }
     }
     return ids
-  }, [statusFilter, typeFilter, isDerivedUnread])
+  }, [sections, statusFilter, typeFilter, isDerivedUnread])
 
   const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id))
 
   const derivedUnreadCount = useMemo(() => {
     let n = 0
-    for (const s of allSections) {
+    for (const s of sections) {
       for (const it of s.items) {
         if (isDerivedUnread(it)) n += 1
       }
     }
     return n
-  }, [isDerivedUnread])
+  }, [sections, isDerivedUnread])
 
   const toggleItem = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -224,7 +236,7 @@ export default function NotificationsPage() {
 
       <div className={styles.grid}>
         <div className={styles.streamCol}>
-          {allSections.map((section) => (
+          {sections.map((section) => (
             <NotificationSection
               key={section.title}
               section={{
