@@ -5,8 +5,18 @@ import { IconSpan } from '@/components/common/IconSpan'
 import { REPORT_QUERY, REPORT_TITLE, HARDWARE_METRICS, CITATIONS, type Citation } from '../../mock'
 import styles from './index.module.css'
 
+/** Static fallback for the trailing paragraph when no streamed text is passed. */
+const TRAILING_BODY_FALLBACK =
+  '更为关键的是,总体拥有成本 (TCO) 为大规模智算中心运营方带来了革命性的结构优化。以支撑 100,000 QPS 推理负载的集群规模测算,Blackwell 较同等吞吐 吞吐量的 Hopper 集群将数据中心综合电力消耗锐减 75%。目前主要的落地摩擦点集中于机房 二次液冷系统改建,因为 GB200 机柜强制要求采用单机柜高达 120kW 换热 密度的芯片级直触液冷回路...'
+
 export interface StreamingReportProps {
   onSelectCitation: (citation: Citation) => void
+  /**
+   * Text that has "streamed in" so far for the trailing paragraph.
+   * When `undefined` or empty the trailing paragraph falls back to
+   * the static mock body (back-compat with pages that don't drive it).
+   */
+  streamedText?: string
 }
 
 /**
@@ -14,7 +24,14 @@ export interface StreamingReportProps {
  * citation superscripts, mid-article 3-column hardware metrics card, and
  * a blinking cursor in the active streaming paragraph.
  */
-export function StreamingReport({ onSelectCitation }: StreamingReportProps) {
+export function StreamingReport({ onSelectCitation, streamedText }: StreamingReportProps) {
+  const isStreaming = streamedText !== undefined
+  const showCursor =
+    isStreaming && streamedText.length > 0 && streamedText.length < TRAILING_BODY_FALLBACK.length
+  // While a stream is active (even before the first char arrives), still show
+  // the static fallback so the page never renders an empty paragraph.
+  const trailingBody = isStreaming && streamedText.length > 0 ? streamedText : TRAILING_BODY_FALLBACK
+
   return (
     <article className={styles.article}>
       {/* Query badge + model stamp */}
@@ -77,13 +94,9 @@ export function StreamingReport({ onSelectCitation }: StreamingReportProps) {
         </p>
 
         <p className={styles.p3}>
-          更为关键的是，总体拥有成本 (TCO) 为大规模智算中心运营方带来了革命性的结构 优化。以支撑
-          100,000 QPS 推理负载的集群规模测算，Blackwell 较同等吞吐 吞吐量的 Hopper
-          集群将数据中心综合电力消耗锐减 75%
+          {trailingBody}
           <Cite id={1} onSelect={onSelectCitation} />
-          。目前主要的落地摩擦点集中于机房 二次液冷系统改建，因为 GB200 机柜强制要求采用单机柜高达
-          120kW 换热 密度的芯片级直触液冷回路...
-          <span className={styles.cursor} />
+          {showCursor && <span className={styles.cursor} />}
         </p>
       </div>
     </article>

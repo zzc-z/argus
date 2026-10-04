@@ -24,6 +24,7 @@
  */
 
 import * as React from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Inter } from 'next/font/google'
 
 import { TopBar } from './components/TopBar'
@@ -37,7 +38,12 @@ import {
   type InspectorPayload,
 } from './components/InspectorDrawer'
 import { PromptInput } from './components/PromptInput'
-import type { SlashCommand } from './mock'
+import {
+  AGENT_NODES,
+  type AgentNode,
+  type NodeLifecycle,
+  type SlashCommand,
+} from './mock'
 import styles from './page.module.css'
 
 const inter = Inter({
@@ -46,23 +52,59 @@ const inter = Inter({
   weight: ['400', '500', '600'],
 })
 
+/** Full target text for the trailing streaming paragraph. */
+const STREAM_TARGET =
+  '更为关键的是,总体拥有成本 (TCO) 为大规模智算中心运营方带来了革命性的结构优化。以支撑 100,000 QPS 推理负载的集群规模测算,Blackwell 较同等吞吐 吞吐量的 Hopper 集群将数据中心综合电力消耗锐减 75%。目前主要的落地摩擦点集中于机房 二次液冷系统改建,因为 GB200 机柜强制要求采用单机柜高达 120kW 换热 密度的芯片级直触液冷回路...'
+
+/** Reset all agent nodes to "pending" — the run starts from zero. */
+const INITIAL_NODES: AgentNode[] = AGENT_NODES.map((n) => ({ ...n, lifecycle: 'pending' }))
+
+/** Promote one pending node to active and mark all earlier nodes completed. */
+function advance(nodes: AgentNode[]): AgentNode[] {
+  const next: NodeLifecycle[] = nodes.map((n) => n.lifecycle)
+  const firstPending = next.findIndex((s) => s === 'pending')
+  if (firstPending < 0) return nodes
+  // Mark everything up to firstPending-1 as completed.
+  for (let i = 0; i < firstPending; i++) next[i] = 'completed'
+  next[firstPending] = 'active'
+  return nodes.map((n, i) => ({ ...n, lifecycle: next[i] as NodeLifecycle }))
+}
+
+/** Final pass: mark the remaining active node as completed. */
+function finalize(nodes: AgentNode[]): AgentNode[] {
+  return nodes.map((n) =>
+    n.lifecycle === 'active' ? { ...n, lifecycle: 'completed' as NodeLifecycle } : n,
+  )
+}
+
+type RunState = 'idle' | 'running' | 'completed'
+
 export default function ExplorePage() {
-  const [inspectorOpen, setInspectorOpen] = React.useState(true)
-  const [inspectorPayload, setInspectorPayload] = React.useState<InspectorPayload>(() =>
+  const [inspectorOpen, setInspectorOpen] = useState(true)
+  const [inspectorPayload, setInspectorPayload] = useState<InspectorPayload>(() =>
     getDefaultInspectorPayload(),
   )
 
-  const [promptValue, setPromptValue] = React.useState('')
+  const [promptValue, setPromptValue] = useState('')
   // Popover is visible when value starts with "/" (and is exactly "/", per
   // design — typing more characters hides it again).
   const slashVisible = promptValue === '/'
 
-  const handleSelectNode = React.useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
+  // Run state — drives DAG animation + StreamingReport tail typewriter.
+  const [runState, setRunState] = useState<RunState>('idle')
+  const [nodes, setNodes] = useState<AgentNode[]>(INITIAL_NODES)
+  const [streamedText, setStreamedText] = useState('')
+
+  // Refs to keep cleanup centralized in the effect below.
+  const nodeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const typeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const handleSelectNode = useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
     setInspectorOpen(true)
     setInspectorPayload(buildNodePayload(node))
   }, [])
 
-  const handleSelectCitation = React.useCallback(
+  const handleSelectCitation = useCallback(
     (citation: Parameters<typeof buildCitationPayload>[0]) => {
       setInspectorOpen(true)
       setInspectorPayload(buildCitationPayload(citation))
@@ -70,24 +112,70 @@ export default function ExplorePage() {
     [],
   )
 
-  const handleToggleInspector = React.useCallback(() => {
+  const handleToggleInspector = useCallback(() => {
     setInspectorOpen((v) => !v)
   }, [])
 
-  const handleCloseInspector = React.useCallback(() => {
+  const handleCloseInspector = useCallback(() => {
     setInspectorOpen(false)
   }, [])
 
-  const handlePromptSubmit = React.useCallback((value: string) => {
-    // Stub: real submit would route to a chat handler. For now we just
-    // clear the input — design has no console.log spam.
+  const handlePromptSubmit = useCallback((value: string) => {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    if (runState === 'running') return
     setPromptValue('')
-    void value
-  }, [])
+    setNodes(INITIAL_NODES)
+    setStreamedText('')
+    setRunState('running')
+  }, [runState])
 
-  const handleSlashSelect = React.useCallback((cmd: SlashCommand) => {
+  const handleSlashSelect = useCallback((cmd: SlashCommand) => {
     setPromptValue(`${cmd.cmd} `)
   }, [])
+
+  /** Effect that owns the run timers. Cleans up on unmount or when runState changes. */
+  useEffect(() => {
+    if (runState !== 'running') return
+
+    // Node promotion: every 800ms advance one pending → active → completed.
+    const nodeTimer = setInterval(() => {
+      setNodes((prev) => {
+        const stillPending = prev.some((n) => n.lifecycle === 'pending')
+        if (!stillPending) {
+          // All done: mark last active as completed and stop the node timer.
+          return finalize(prev)
+        }
+        return advance(prev)
+      })
+    }, 800)
+    nodeTimerRef.current = nodeTimer
+
+    // Typewriter: every 30ms append the next character to streamedText.
+    const typeTimer = setInterval(() => {
+      setStreamedText((prev) => {
+        if (prev.length >= STREAM_TARGET.length) return prev
+        return STREAM_TARGET.slice(0, prev.length + 1)
+      })
+    }, 30)
+    typeTimerRef.current = typeTimer
+
+    return () => {
+      clearInterval(nodeTimer)
+      clearInterval(typeTimer)
+      nodeTimerRef.current = null
+      typeTimerRef.current = null
+    }
+  }, [runState])
+
+  // Once the typewriter catches up AND every node is completed, mark the run done.
+  useEffect(() => {
+    if (runState !== 'running') return
+    const allCompleted = nodes.every((n) => n.lifecycle === 'completed')
+    if (allCompleted && streamedText.length >= STREAM_TARGET.length) {
+      setRunState('completed')
+    }
+  }, [runState, nodes, streamedText])
 
   return (
     <div className={`${styles.shell} ${inter.className}`}>
@@ -96,8 +184,8 @@ export default function ExplorePage() {
       <div className={styles.main}>
         {/* Center column: DAG + Streaming Report */}
         <main className={styles.center}>
-          <AgentDAG onSelectNode={handleSelectNode} />
-          <StreamingReport onSelectCitation={handleSelectCitation} />
+          <AgentDAG onSelectNode={handleSelectNode} nodes={nodes} />
+          <StreamingReport onSelectCitation={handleSelectCitation} streamedText={streamedText} />
         </main>
 
         {/* Right inspector (collapsible) */}

@@ -2,11 +2,12 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { AGENT_NODES, DAG_STATS, type AgentNode } from '../../mock'
+import { DAG_STATS, type AgentNode } from '../../mock'
 import styles from './index.module.css'
 
 export interface AgentDAGProps {
   onSelectNode: (node: AgentNode) => void
+  nodes: AgentNode[]
 }
 
 /**
@@ -14,10 +15,10 @@ export interface AgentDAGProps {
  * height; an active highlight rail stops at the active node. Active node
  * pulses with `cobaltPulse`. Pending nodes show hollow circles.
  */
-export function AgentDAG({ onSelectNode }: AgentDAGProps) {
+export function AgentDAG({ onSelectNode, nodes }: AgentDAGProps) {
   // Highlight rail stops at the position of the active node (88px hardcoded
   // mirrors the design: rail covers nodes 1..active).
-  const activeIndex = AGENT_NODES.findIndex((n) => n.lifecycle === 'active')
+  const activeIndex = nodes.findIndex((n) => n.lifecycle === 'active')
   const highlightHeight = activeIndex >= 0 ? `${activeIndex * 44 + 24}px` : '0px'
 
   return (
@@ -48,7 +49,7 @@ export function AgentDAG({ onSelectNode }: AgentDAGProps) {
         {/* Active highlight rail (covers nodes 1..active) */}
         <div className={styles.railActive} aria-hidden="true" style={{ height: highlightHeight }} />
 
-        {AGENT_NODES.map((node) => (
+        {nodes.map((node) => (
           <NodeRow key={node.id} node={node} onClick={() => onSelectNode(node)} />
         ))}
       </div>
