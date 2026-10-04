@@ -9,13 +9,34 @@ export type UrlRssTab = 'url' | 'rss'
 export interface UrlRssTabsProps {
   tab: UrlRssTab
   onTabChange: (t: UrlRssTab) => void
+  /** Called when the user submits the URL pane (URL string only). */
+  onUrlSubmit?: (url: string) => void
+  /** Called when the user submits the RSS pane (URL + period). */
+  onRssSubmit?: (url: string, period: '1h' | '6h' | '24h') => void
 }
 
 /**
  * URL fetch + RSS subscribe tabs (mutually exclusive).
  * Both panes render always; visibility is toggled via a hidden class.
+ * Inputs are controlled; submit buttons emit `onUrlSubmit` / `onRssSubmit`.
  */
-export function UrlRssTabs({ tab, onTabChange }: UrlRssTabsProps) {
+export function UrlRssTabs({ tab, onTabChange, onUrlSubmit, onRssSubmit }: UrlRssTabsProps) {
+  const [urlValue, setUrlValue] = React.useState(
+    'https://semianalysis.com/2026/02/foundry-packaging-inflection',
+  )
+  const [rssUrl, setRssUrl] = React.useState('')
+  const [rssPeriod, setRssPeriod] = React.useState<'1h' | '6h' | '24h'>('1h')
+
+  const submitUrl = () => {
+    if (!urlValue.trim() || !onUrlSubmit) return
+    onUrlSubmit(urlValue.trim())
+  }
+
+  const submitRss = () => {
+    if (!rssUrl.trim() || !onRssSubmit) return
+    onRssSubmit(rssUrl.trim(), rssPeriod)
+  }
+
   return (
     <section className={styles.section}>
       <div className={styles.head}>
@@ -58,12 +79,22 @@ export function UrlRssTabs({ tab, onTabChange }: UrlRssTabsProps) {
             </span>
             <input
               type="text"
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitUrl()
+              }}
               className={`${styles.urlInput} font-body-sm`}
-              defaultValue="https://semianalysis.com/2026/02/foundry-packaging-inflection"
               placeholder="https://arxiv.org/abs/2403... 或任意新闻研报地址"
+              data-testid="url-input"
             />
           </div>
-          <button type="button" className={`${styles.fetchBtn} font-body-sm`}>
+          <button
+            type="button"
+            onClick={submitUrl}
+            className={`${styles.fetchBtn} font-body-sm`}
+            data-testid="url-submit"
+          >
             <IconSpan name="downloading" size={18} />
             <span>抓取并解析</span>
           </button>
@@ -90,16 +121,31 @@ export function UrlRssTabs({ tab, onTabChange }: UrlRssTabsProps) {
             </span>
             <input
               type="text"
+              value={rssUrl}
+              onChange={(e) => setRssUrl(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') submitRss()
+              }}
               className={`${styles.urlInput} font-body-sm`}
               placeholder="https://domain.com/feed.xml 或 Substack RSS 链接"
+              data-testid="rss-input"
             />
           </div>
-          <select className={`${styles.periodSelect} font-body-sm`} defaultValue="1h">
+          <select
+            value={rssPeriod}
+            onChange={(e) => setRssPeriod(e.target.value as '1h' | '6h' | '24h')}
+            className={`${styles.periodSelect} font-body-sm`}
+          >
             <option value="1h">周期: 每小时 (1h)</option>
             <option value="6h">周期: 每 6 小时</option>
             <option value="24h">周期: 每天 (24h)</option>
           </select>
-          <button type="button" className={`${styles.subscribeBtn} font-body-sm`}>
+          <button
+            type="button"
+            onClick={submitRss}
+            className={`${styles.subscribeBtn} font-body-sm`}
+            data-testid="rss-submit"
+          >
             <IconSpan name="add" size={18} />
             <span>验证并订阅</span>
           </button>

@@ -2,20 +2,25 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { queueItems, queueSummary, type QueueItem } from '../../mock'
+import { queueSummary, type QueueItem } from '../../mock'
 import styles from './index.module.css'
 
 /**
- * Ingestion queue monitor — 4 task items + ETA footer + action row.
- * Per-item rendering branches on `done` / `waveform` flags.
+ * Ingestion queue monitor — task list + ETA footer + action row.
+ * Items are passed in via props so the page can append user-uploaded /
+ * user-submitted tasks and observe them animating to `done` state.
  */
-export function QueueMonitor() {
+export interface QueueMonitorProps {
+  items: QueueItem[]
+}
+
+export function QueueMonitor({ items }: QueueMonitorProps) {
   return (
     <section className={styles.panel}>
       <div className={styles.head}>
         <div className={styles.headLeft}>
           <span className={`${styles.headTitle} font-headline-sm`}>当前处理队列</span>
-          <span className={`${styles.headChip} font-code`}>{queueSummary.total} Tasks</span>
+          <span className={`${styles.headChip} font-code`}>{items.length} Tasks</span>
           <span className={`${styles.headSub} font-label-sm`}>
             并发处理配额: {queueSummary.capacity}
           </span>
@@ -27,7 +32,7 @@ export function QueueMonitor() {
       </div>
 
       <div className={styles.list}>
-        {queueItems.map((item) => (
+        {items.map((item) => (
           <QueueRow key={item.id} item={item} />
         ))}
       </div>

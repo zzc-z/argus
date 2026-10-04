@@ -5,11 +5,17 @@ import { IconSpan } from '@/components/common/IconSpan'
 import styles from './index.module.css'
 
 /**
- * Drag-and-drop upload surface (visual only). Drag-over state is a single
- * useState toggle — matches the source HTML's behavior (bg swap on dragover).
+ * Drag-and-drop upload surface. Drag-over state is a single useState toggle.
+ * On drop or click → emits `onFilesSelected` with the chosen File objects.
  */
-export function UploadDropZone() {
+export interface UploadDropZoneProps {
+  /** Called when the user drops files onto the zone or activates the picker. */
+  onFilesSelected: (files: File[]) => void
+}
+
+export function UploadDropZone({ onFilesSelected }: UploadDropZoneProps) {
   const [dragOver, setDragOver] = React.useState(false)
+  const inputRef = React.useRef<HTMLInputElement>(null)
 
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -24,6 +30,18 @@ export function UploadDropZone() {
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault()
     setDragOver(false)
+    const files = Array.from(e.dataTransfer.files ?? [])
+    if (files.length > 0) onFilesSelected(files)
+  }
+
+  const onClick = () => {
+    inputRef.current?.click()
+  }
+
+  const onPickerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length > 0) onFilesSelected(files)
+    e.target.value = ''
   }
 
   return (
@@ -42,9 +60,18 @@ export function UploadDropZone() {
         onDragEnter={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
+        onClick={onClick}
         role="button"
         tabIndex={0}
       >
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          hidden
+          onChange={onPickerChange}
+          data-testid="upload-input"
+        />
         <div className={styles.dropIcon}>
           <IconSpan name="cloud_upload" size={24} className="text-primary-container" />
         </div>
