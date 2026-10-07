@@ -32,3 +32,9 @@ htmlcov/
 *.log
 .env
 .env.local
+
+# Local SQLite (W1 Day 2 dev 用；W1 Day 9 切 Postgres 后此条自然失效)
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
