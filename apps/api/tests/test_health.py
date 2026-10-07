@@ -34,7 +34,7 @@ def test_readyz_returns_503_when_db_unavailable() -> None:
     patch app.main.check_db_health 而不是真改 .env——测试不依赖外部环境。
     """
     with (
-        patch("app.main.check_db_health", side_effect=ConnectionError("db down")),
+        patch("app.gateway.health.check_db_health", side_effect=ConnectionError("db down")),
         TestClient(app) as client,
     ):
         response = client.get("/api/v1/readyz")

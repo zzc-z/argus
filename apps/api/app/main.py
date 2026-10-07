@@ -1,34 +1,34 @@
-"""FastAPI 应用入口。
+"""FastAPI 应用入口—— 只做装配，不写业务。
 
-- ``lifespan``：启动 / 关闭钩子，取代已废弃的 ``@app.on_event``。
-- ``/api/v1/healthz``：liveness 探针，进程活着就返回 200。
-- ``/api/v1/readyz``：readiness 探针，DB 连得上才返回 200，否则 503。
+职责边界（docs/STRUCTURE.md 约定）：
+- 本文件：创建 app 实例、注册 lifespan、挂中间件、include_router
+- app/gateway/：所有 HTTP 路由（health / auth / sources / reports ...）
+- app/services/：业务逻辑
+- app/repositories/：数据访问
 
-API 前缀统一为 ``/api/v1``（2026-10-06 决策），后续所有 endpoint 都挂在这个前缀下。
+API 前缀统一 /api/v1（2026-10-06 决策），由各router 自己声明 prefix。
 """
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.db import check_db_health
-from app.schemas.health import HealthResponse
+from app.gateway import health_router
 
 _settings = get_settings()
-
-SERVICE_NAME = "argus-api"
-SERVICE_VERSION = "0.1.0"
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     """应用生命周期钩子。
 
-    ``yield`` 之前 = 启动阶段（此处暂无重资源，engine 在 app.db 导入时已建）。
-    ``yield`` 之后 = 关闭阶段（Day 5 接 Redis 时在此关闭连接）。
+    ``yield`` 之前 = 启动阶段。当前无重资源需创建（engine 在 app.db 导入时已建为模块级单例）。
+    ``yield`` 之后 = 关闭阶段。Day 5 接 Redis 时在此创建/释放连接。
+
+    需要跨端点共享的运行时对象挂到 ``app.state``（如 app.state.redis）。
     """
     yield
 
@@ -36,7 +36,7 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
 app = FastAPI(
     title="Argus API",
     description="Argus 多智能体研究助手 · 后端服务",
-    version=SERVICE_VERSION,
+    version="0.1.0",
     lifespan=lifespan,
     docs_url="/docs",
     openapi_url="/openapi.json",
@@ -50,40 +50,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.get(
-    "/api/v1/healthz",
-    response_model=HealthResponse,
-    summary="存活探针",
-    description="进程存活即返回 200，不检查任何外部依赖。",
-)
-async def healthz() -> HealthResponse:
-    return HealthResponse(
-        status="ok",
-        service=SERVICE_NAME,
-        version=SERVICE_VERSION,
-    )
-
-
-@app.get(
-    "/api/v1/readyz",
-    response_model=HealthResponse,
-    summary="就绪探针",
-    description="数据库连接可用才返回 200，否则 503。",
-)
-async def readyz(response: Response) -> HealthResponse:
-    try:
-        await check_db_health()
-    except Exception as exc:
-        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        return HealthResponse(
-            status="unavailable",
-            service=SERVICE_NAME,
-            version=SERVICE_VERSION,
-            detail=type(exc).__name__,
-        )
-    return HealthResponse(
-        status="ok",
-        service=SERVICE_NAME,
-        version=SERVICE_VERSION,
-    )
+app.include_router(health_router)
