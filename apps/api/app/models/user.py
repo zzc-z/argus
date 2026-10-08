@@ -12,8 +12,10 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Self
 
-from sqlalchemy import DateTime, ForeignKey, Index, PrimaryKeyConstraint, String, func
+from sqlalchemy import DateTime, ForeignKey, Index, PrimaryKeyConstraint, String, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base
@@ -60,6 +62,16 @@ class User(Base):
         lazy="selectin",
     )
 
+    @classmethod
+    async def find_by_email(cls, session: AsyncSession, email: str) -> Self | None:
+        """按邮箱查用户——OAuth 自动关联的第一步。
+
+        只在 provider 能保证邮箱已验证时调用（GitHub / Google 的 OAuth
+        流程都强制验证），否则攻击者可用他人邮箱劫持账号。
+        """
+        stmt = select(cls).where(cls.email == email)
+        return await session.scalar(stmt)
+
 
 class Account(Base):
     """外部身份绑定：provider +该 provider 内的唯一 ID。
@@ -99,3 +111,21 @@ class Account(Base):
         PrimaryKeyConstraint("provider", "provider_account_id"),
         Index("ix_accounts_user_id", "user_id"),
     )
+
+    @classmethod
+    async def find_by_identity(
+        cls,
+        session: AsyncSession,
+        provider: str,
+        provider_account_id: str,
+    ) -> Self | None:
+        """按 (provider, provider_account_id) 查身份绑定，找不到返回 None。
+
+        登录时的第一步查询：命中说明是老用户，走更新资料；
+        不命中说明是新身份，需要建用户或做账号关联。
+        """
+        stmt = select(cls).where(
+            cls.provider == provider,
+            cls.provider_account_id == provider_account_id,
+        )
+        return await session.scalar(stmt)
