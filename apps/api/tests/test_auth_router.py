@@ -8,7 +8,6 @@ app.gateway.auth._exchange_code_for_token 与 _fetch_github_profile。
 cookie 属性——外部 HTTP 交互被桩函数接管，行为完全确定。
 """
 
-from collections.abc import AsyncGenerator, Iterator
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -16,39 +15,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_session
 from app.gateway import auth as auth_module
 from app.gateway.auth import OAUTH_STATE_COOKIE
-from app.main import app
 from app.models import Account, Provider, User
 from app.services.auth import OAuthProfile
 from app.services.token import decode_access_token
-
-
-@pytest.fixture
-async def api_db(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
-    """把路由里的 get_session 依赖换成测试库，避免写 dev 库。"""
-    from collections.abc import AsyncIterator
-
-    async def _override() -> AsyncIterator[AsyncSession]:
-        yield db_session
-
-    app.dependency_overrides[get_session] = _override
-    yield db_session
-    app.dependency_overrides.clear()
-
-
-@pytest.fixture
-def client(api_db: AsyncSession) -> Iterator[TestClient]:
-    with TestClient(app) as c:
-        yield c
-
-
-@pytest.fixture
-def github_state(client: TestClient) -> str:
-    """跑一次 login 端点，拿到合法 state 并留在 client 的 cookie 里。"""
-    resp = client.get("/api/v1/auth/github/login", follow_redirects=False)
-    return parse_qs(urlparse(resp.headers["location"]).query)["state"][0]
 
 
 def _stub_github(

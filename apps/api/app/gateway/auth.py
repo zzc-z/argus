@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.db import get_session
+from app.gateway.deps import SESSION_COOKIE, SESSION_COOKIE_PATH
 from app.models import Provider
 from app.services.auth import OAuthProfile, get_or_create_user
 from app.services.token import create_access_token
@@ -168,16 +169,33 @@ async def github_callback(
         headers={"Location": f"{settings.frontend_base_url}/dashboard"},
     )
     redirect.set_cookie(
-        key="argus_session",
+        key=SESSION_COOKIE,
         value=create_access_token(result.user.id),
         max_age=settings.jwt_expire_seconds,
         httponly=True,
         secure=settings.cookie_secure,
         samesite="lax",
-        path="/",
+        path=SESSION_COOKIE_PATH,
     )
     _clear_state_cookie(redirect, settings)
     return redirect
+
+
+@router.post("/logout", summary="登出")
+async def logout() -> Response:
+    """删掉会话 cookie，客户端即退出登录。
+
+    不校验当前是否已登录——重复登出返回 200 才对，
+    前端不必先判断状态再决定调不调。
+
+    服务端不存 session，所以「已发出去的 JWT」在过期前（默认 7 天）
+    依然能通过校验。真要立刻失效得加撤销名单（黑名单表 / Redis），
+    当前不做：7 天窗口内窃取 cookie 的攻击者本来就能直接调任何接口，
+    黑名单只把「立刻失效」变成「需要额外的在线校验」，收益不大。
+    """
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    response.delete_cookie(SESSION_COOKIE, path=SESSION_COOKIE_PATH)
+    return response
 
 
 async def _exchange_code_for_token(
