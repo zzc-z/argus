@@ -49,6 +49,19 @@ class Settings(BaseSettings):
         default="http://localhost:8000/auth/github/callback",
     )
 
+    # ── JWT / Session ──────────────────────────────────────────
+    # argus 自己的登录票据。与 OAuth secret 必须独立——两者泄露后果不同，
+    # 共用一把钥匙等于把两把锁做成一把。
+    # 生成：python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+    jwt_secret_key: SecretStr | None = Field(default=None)
+    jwt_algorithm: str = Field(default="HS256")
+    jwt_expire_seconds: int = Field(default=7 * 24 * 60 * 60)  # 7 天
+    # dev 走 http://localhost，Secure cookie 不会被浏览器带上，必须 false。
+    # 生产部署改true——显式配置而非按环境自动切换，避免线上漏改。
+    cookie_secure: bool = Field(default=False)
+    # 登录成功后把浏览器送回的前端地址
+    frontend_base_url: str = Field(default="http://localhost:3000")
+
     # ── LLM ─────────────────────────────────────────────────────
     anthropic_api_key: SecretStr | None = Field(default=None)
     openai_api_key: SecretStr | None = Field(default=None)

@@ -105,7 +105,7 @@ class Account(Base):
         onupdate=func.now(),
     )
 
-    user: Mapped[User] = relationship(back_populates="accounts")
+    user: Mapped[User] = relationship(back_populates="accounts", lazy="selectin")
 
     __table_args__ = (
         PrimaryKeyConstraint("provider", "provider_account_id"),

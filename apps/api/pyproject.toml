@@ -26,6 +26,7 @@ dependencies = [
     "structlog>=24.4",
     "pyjwt>=2.9",
     "authlib>=1.8",
+    "itsdangerous>=2.2.0",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +39,7 @@ dev = [
     "mypy>=1.13",
     "pre-commit>=4.0",
     "types-redis",
-    "types-pyjwt",
+    "types-authlib",
     "aiosqlite>=0.20",   # SQLite dev 驱动；prod 走 asyncpg + Postgres 不需要
 ]
 
@@ -109,3 +110,6 @@ precision = 2
 show_missing = true
 skip_covered = false
 fail_under = 80
+
+[dependency-groups]
+dev = []
