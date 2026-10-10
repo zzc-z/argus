@@ -26,8 +26,14 @@ export function ThemeToggle() {
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY)
     const initial: Theme = stored === 'dark' ? 'dark' : 'light'
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setTheme(initial)
     document.documentElement.dataset.theme = initial
+    // set-state-in-effect 在这里是**必要**的，不是反模式：
+    // 主题初值存在 localStorage（浏览器侧），服务端渲染时读不到，
+    // 所以首次渲染只能先用默认值 'light'，挂载后再同步成真实值。
+    // 真正的修法是让服务端也拿到这个值（cookie 持久化 + SSR 读 cookie），
+    // 属于架构改动，见 AGENTS.md §16.8「React Compiler 一旦启用」同批排期。
   }, [])
 
   function toggle() {

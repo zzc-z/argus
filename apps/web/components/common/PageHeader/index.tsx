@@ -7,9 +7,6 @@ import type {
   PageHeaderAction,
   PageHeaderBreadcrumb,
   PageHeaderConfig,
-  PageHeaderEyebrow,
-  PageHeaderMetaItem,
-  PageHeaderStat,
 } from './types'
 import styles from './index.module.css'
 
@@ -53,7 +50,6 @@ function Crumb({ item }: { item: PageHeaderBreadcrumb }) {
 function Action({
   action,
   primaryLabelClass,
-  shortcutClass,
 }: {
   action: PageHeaderAction
   primaryLabelClass: string

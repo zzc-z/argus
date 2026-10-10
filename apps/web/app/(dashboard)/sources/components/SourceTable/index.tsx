@@ -8,7 +8,6 @@ import {
   IconLabel,
   ProgressBar,
   type ActionBtn,
-  type Tone,
 } from '@/components/common/TableCells'
 import {
   PlainTable,

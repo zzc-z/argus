@@ -170,8 +170,13 @@ export default function ExplorePage() {
     if (runState !== 'running') return
     const allCompleted = nodes.every((n) => n.lifecycle === 'completed')
     if (allCompleted && streamedText.length >= STREAM_TARGET.length) {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
       setRunState('completed')
     }
+    // set-state-in-effect 指得对：runState 本可由 nodes/streamedText 派生
+    // （useMemo 算 completed），不必存成 state 再在 effect 里同步。
+    // 这里是 W1 mock 演示逻辑，Day 3 接真实 SSE 后 runState 会由流事件
+    // 驱动、无法派生，这个 effect 自然消失。届时一并清理。
   }, [runState, nodes, streamedText])
 
   return (

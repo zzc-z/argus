@@ -42,6 +42,9 @@ webpack-loaders.trash.*/
 out/
 *.tsbuildinfo
 
+# Turbo（任务编排缓存，每次 build 都会变）
+.turbo/
+
 # CodeGraph（代码图谱 MCP server 数据库，db 已 2.8MB 不入仓；其他全部配置入仓）
 .codegraph/
 .env.local

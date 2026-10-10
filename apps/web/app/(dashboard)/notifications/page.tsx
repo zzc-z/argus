@@ -4,7 +4,6 @@ import * as React from 'react'
 import { useMemo, useState, useCallback } from 'react'
 
 import { PageLayout } from '@/components/common/PageLayout'
-import { IconSpan } from '@/components/common/IconSpan'
 import { useNotifications } from '@/lib/notifications'
 import { FilterToolbar } from './components/FilterToolbar'
 import { BulkActionToolbar } from './components/BulkActionToolbar'
@@ -124,10 +123,8 @@ export default function NotificationsPage() {
   }, [])
 
   const toggleSelectAll = useCallback(() => {
-    setSelectedIds((prev) => {
-      if (allVisibleSelected) return new Set()
-      return new Set(visibleIds)
-    })
+    // 全选/取消全选只关心「当前是否已全选」，不读上一次的 selectedIds
+    setSelectedIds(allVisibleSelected ? new Set<string>() : new Set(visibleIds))
   }, [allVisibleSelected, visibleIds])
 
   const bulkMarkAsRead = useCallback(() => {
@@ -155,9 +152,10 @@ export default function NotificationsPage() {
   const markAllAction = useCallback(() => markAll(), [markAll])
 
   return (
-    <PageLayout
-      header={null}
-    >
+    // 本页自带面包屑头部，不走 PageLayout 的默认 PageHeader，
+    // 所以不传 header（PageLayout 内部按 `header ?` 判断，传 null 也能跑，
+    // 但类型声明是可选而非 nullable，传 null 过不了 tsc）。
+    <PageLayout>
       {/* Top Breadcrumb & Metadata Header — 1:1 from argus_notifications/code.html */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 pt-[8px] pb-2">
         <div className="flex flex-col">

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 
 import { ErrorHeader } from '../../(dashboard)/error-404/components/ErrorHeader'
 import { TopologyDiagram } from '../../(dashboard)/error-404/components/TopologyDiagram'
@@ -33,6 +34,7 @@ const reportSubtitle =
  * Top-level keyboard shortcuts: ⌘K → search, ⌘H → back to dashboard.
  */
 export default function Error500Page() {
+  const router = useRouter()
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const isMod = e.metaKey || e.ctrlKey
@@ -43,12 +45,12 @@ export default function Error500Page() {
         window.alert('正在呼出全局命令面板 (⌘K)...')
       } else if (key === 'h') {
         e.preventDefault()
-        window.location.href = '/dashboard'
+        router.push('/dashboard')
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [])
+  }, [router])
 
   return (
     <div className={styles.shell}>

@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { IconSpan } from '@/components/common/IconSpan'
+import type { Route } from 'next'
 import type { Report } from '../../mock'
 import styles from './index.module.css'
 
@@ -20,7 +21,7 @@ export function ReportGrid({ reports }: ReportGridProps) {
       {reports.map((r) => {
         const isRunning = r.status === 'running'
         return (
-          <Link key={r.id} href={`/report/${r.id}` as any} className={styles.cardLink}>
+          <Link key={r.id} href={`/report/${r.id}` as Route} className={styles.cardLink}>
             <article className={styles.card}>
             <div className={styles.cardHead}>
               <div className={styles.cardTopRow}>

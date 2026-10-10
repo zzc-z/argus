@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { LiveTerminal } from '../LiveTerminal'
-import { StatusDot } from '@/components/common/StatusDot'
+import { StatusDot, type StatusDotColor } from '@/components/common/StatusDot'
 import styles from './index.module.css'
 
 type AgentCard = {
@@ -98,7 +98,9 @@ export function DagCardGrid() {
 }
 
 function AgentCardItem({ agent }: { agent: AgentCard }) {
-  const dotColor =
+  // 显式标注 StatusDotColor：三元推导出的类型本就是它的三个成员之一，
+  // 但 TS 会推成 string 联合，加标注才能传给 StatusDot 的 color prop。
+  const dotColor: StatusDotColor =
     agent.state === 'running' ? 'purple' : agent.state === 'idle' ? 'emerald' : 'amber'
   return (
     <div className={`${styles.card} ${agent.highlight ? styles.cardHighlight : ''}`}>
@@ -111,7 +113,7 @@ function AgentCardItem({ agent }: { agent: AgentCard }) {
         >
           {agent.index} {agent.title}
         </span>
-        <StatusDot color={dotColor as any} ping={agent.state === 'running'} />
+        <StatusDot color={dotColor} ping={agent.state === 'running'} />
       </div>
       <p
         className={`${styles.cardDesc} font-medium ${agent.highlight ? styles.cardDescActive : ''}`}

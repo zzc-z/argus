@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { IconSpan } from '@/components/common/IconSpan'
 import { type AgentLogLine } from '../../mock'
 import styles from './index.module.css'
 
@@ -66,10 +65,4 @@ export function AgentLogCard({ log }: AgentLogCardProps) {
       </footer>
     </article>
   )
-}
-
-/* (Unused symbol retained only to keep import surface stable in case future
-    iterations add an agent action footer button.) */
-function _importedIconSpanIsUsed() {
-  return <IconSpan name="smart_toy" size={14} />
 }

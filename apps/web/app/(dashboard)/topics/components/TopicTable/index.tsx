@@ -153,6 +153,13 @@ export function TopicTable() {
       allSelected: allChecked,
       partiallySelected: indeterminate,
     }),
+    // 依赖故意不含 toggleSelect / toggleSelectAll（它们每次渲染都新建）：
+    // 1) 两个回调都用 setSelected 的函数式更新（读 prev 参数），不闭包捕获
+    //    state，旧引用调用也拿到最新值——stale closure 在这里不会发生。
+    // 2) 列进依赖会让这两个每次渲染都变的函数导致 useMemo 永久失效，memo 白写。
+    // 3) PlainTable 未包 React.memo，父组件重渲染时它本就会拿到最新引用。
+    // 详见 AGENTS.md §16.8。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [selected, allChecked, indeterminate],
   )
 

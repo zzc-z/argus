@@ -112,7 +112,6 @@ export default function ReportsPage() {
   const onBulkAction = React.useCallback(
     (actionId: string) => {
       if (typeof window !== 'undefined') {
-        // eslint-disable-next-line no-console
         console.info('[bulk-action]', actionId, Array.from(selectedIds))
       }
     },
@@ -121,7 +120,6 @@ export default function ReportsPage() {
 
   const onNewResearch = React.useCallback(() => {
     if (typeof window !== 'undefined') {
-      // eslint-disable-next-line no-console
       console.info('[new-research] ⌘N stub')
     }
   }, [])

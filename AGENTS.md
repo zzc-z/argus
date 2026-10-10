@@ -264,7 +264,89 @@ uv run pre-commit install                 # 装 pre-commit hooks
 - ❌ 自己起 playwright / curl / screenshot **验证设计稿还原程度** → 那是人类美学判断
 - 🔧 修复运行 bug 时 agent 可以用浏览器 MCP（chrome-devtools / playwright）介入——抓 console error、看页面渲染异常、对照 network panel 排查请求失败
 - ❌ 把 shadcn 组件文件名改成小写（`button.tsx`）→ PascalCase 强制
+- ❌ 预防性地包 `useCallback` / `useMemo` → 见 §16.8「Hook 使用规则」
 
+### 16.8 Hook 使用规则：useCallback / useMemo（2026-10-10 立）
+
+**现状**：React 19.3 + **React Compiler 未启用**，全项目 `React.memo` 0 处。
+这两条决定了本节规则。
+
+#### 判断标准（满足任一条才准用）
+
+| 场景 | 准用 | 说明 |
+|---|---|---|
+| 函数传给 `React.memo` 子组件 | ✅ | useCallback 唯一无可替代的用途 |
+| 函数是 `useEffect` / `useMemo` 的依赖，且闭包里有 state/props | ✅ | 否则 effect 每次渲染都重跑 |
+| 函数传给 `memo()` 的第三方组件 | ✅ | 同上 |
+| **单纯「怕子组件重渲染」但子组件没 memo** | ❌ | 没 memo 就没有重渲染可省，纯粹白包 |
+| **空函数 `useCallback(() => {}, [])`** | ❌ | 零收益，纯噪音 |
+| **函数体内没读任何响应式值，deps 却写满** | ❌ | 本来就不会变，不用包 |
+| **「以防万一」预包** | ❌ | YAGNI。有性能问题再包不迟 |
+
+#### 规则
+
+1. **默认不写 `useCallback` / `useMemo`**，需要时再加
+2. 包之前先回答：这个函数被 `memo` 组件消费，或被 `useEffect` 当依赖吗？两个都不是 → 别包
+3. 一旦用了，**依赖数组必须诚实**——闭包里读了什么就写什么，禁止为了「少写几个」删依赖
+4. 禁止空包裹：`useCallback(() => {}, [])` 一律删掉
+5. 禁止用 `useCallback` 代替 `useRef` 存「只想读不想触发重渲染」的值——那是 `useRef` 的活
+
+#### 依赖数组删错的修法
+
+依赖警告不要靠 `eslint-disable` 消掉。正确顺序：
+
+```
+1. 把函数体里用到的 props/state 解构成局部变量 → 依赖写局部变量（不是整个 props 对象）
+2. 确实要保持引用稳定 → useCallback
+3. 实在绕不开 → 写 disable 注释并附一句为什么（不能只写 disable）
+```
+
+```tsx
+// ❌ 依赖整个 props，对象每次渲染都是新的 → 白包
+const handleSubmit = useCallback(() => props.onSubmit(emails), [emails, props])
+
+// ✅ 解构出用到的那个函数，依赖精确
+const { onSubmit } = props
+const handleSubmit = useCallback(() => onSubmit(emails), [emails, onSubmit])
+```
+
+#### 机器强制（eslint.config.mjs）
+
+规则光写文档会烂。`apps/web/eslint.config.mjs` 已配好 `react-hooks/exhaustive-deps: error`，
+`npm run lint` 会真实拦截。**改动后必须跑一遍。**
+
+配置踩过的坑，别重复踩：
+
+| 坑 | 症状 | 正确做法 |
+|---|---|---|
+| 用 `next lint` | Next 16 已废弃该命令，它把 `lint` 当目录名 → lint 从未真正跑过 | 用 `eslint` CLI 直接跑 |
+| 用 ESLint 内置 `no-unused-vars` | 不认 TS 语法，误报 84 处，信号全淹 | 必须配 `typescript-eslint`，并关掉内置那两条 |
+| `eslint .` | 在 pnpm workspace 里 `.` 解析到仓库根，把 `apps/api/.venv` 的第三方 JS 全扫进来（7 万条噪音） | 显式写目录：`eslint app components lib` |
+| ignores 不独立成块 | `.next/` 构建产物被扫进去 | ignore 必须是数组首个、只含 `ignores` 键的对象 |
+
+#### React Compiler 一旦启用，本节作废
+
+Compiler 会自动做记忆化，届时 `useCallback` / `useMemo` 大部分不再需要。
+启用 Compiler 的同时必须回改本节，否则规则会误导。
+
+#### 当前债务（2026-10-10 盘点）
+
+`useCallback` 59 处，其中 `settings/page.tsx` 12 处、`explore/page.tsx` 6 处、
+`notifications/page.tsx` 5 处 大多属「预防性包裹」。
+**不要一次性全改**——逐个文件碰到时顺手清理，改一处测一处。
+
+lint 首次跑通后暴露的**真实 bug**（依赖缺失，闭包读到过期值）：
+
+| 位置 | 问题 |
+|---|---|
+| `topics/components/TopicTable/index.tsx:156` | `useMemo` 缺 `toggleSelectAll` |
+| `components/common/DataTable/index.tsx:31` | `useEffect` 缺 `sel` |
+| `components/common/PlainTable/index.tsx:30` | `useEffect` 缺 `selection` |
+
+另有 4 处 `react-hooks/set-state-in-effect`（ThemeContext / ThemeToggle 等在 effect 里
+同步 setState）——这个先不动，属于架构问题，改动面大，等单独排期。
+
+---
 ---
 
 - [apps/web/CONTRIBUTING.md](./apps/web/CONTRIBUTING.md)

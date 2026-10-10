@@ -21,7 +21,7 @@ export interface FilterBarProps {
  * `argus:topics:open-drawer` CustomEvent dispatched by TopicsHeader and forwards
  * a second event to the drawer (single source of truth = the event channel).
  */
-export function FilterBar(_props: FilterBarProps) {
+export function FilterBar() {
   const [activeTab, setActiveTab] = React.useState<TopicsFilter>('all')
   const [search, setSearch] = React.useState('')
   const [refreshing, setRefreshing] = React.useState(false)

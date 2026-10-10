@@ -28,6 +28,9 @@ export function DataTable<TData extends RowData = RowData>({
     if (masterRef.current && sel) {
       masterRef.current.indeterminate = sel.partiallySelected && !sel.allSelected
     }
+    // 依赖精确到两个字段而非整个对象：selection 由父组件 useMemo 产出，
+    // 引用变了不代表字段变了，列整个对象会让 effect 白跑。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel?.partiallySelected, sel?.allSelected])
 
   // selection 模式：把内置复选框列塞到最前面

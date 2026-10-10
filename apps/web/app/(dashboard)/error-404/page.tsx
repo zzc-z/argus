@@ -33,7 +33,10 @@ export default function ErrorPage() {
         window.alert('正在呼出全局命令面板 (⌘K)...')
       } else if (key === 'h') {
         e.preventDefault()
-        // Navigate to dashboard anchor (no real router wired yet).
+        // 页内锚点跳转。@next/next/no-location-assign-relative-destination
+        // 禁的是内部「路由」（/dashboard 这类），锚点属于浏览器原生行为，
+        // router.push('#dashboard') 反而会走客户端导航、破坏滚动位置。
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = '#dashboard'
       }
     }
