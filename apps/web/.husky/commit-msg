@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
+# hook 在仓库根执行（core.hooksPath 指向这里），但 commitlint 装在 apps/web。
+# 必须先切目录，否则报 "Command commitlint not found"。
+cd "$(dirname "$0")/.." || exit 1
 pnpm exec commitlint --edit "$1"

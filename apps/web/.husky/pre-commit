@@ -1,5 +1,4 @@
 #!/usr/bin/env sh
-. "$(dirname -- "$0")/_/husky.sh"
-
-pnpm exec lint-staged
-pnpm exec tsc --noEmit
+# hook 在仓库根执行（core.hooksPath 指向这里），lint 装在 apps/web。
+cd "$(dirname "$0")/.." || exit 1
+pnpm run lint
