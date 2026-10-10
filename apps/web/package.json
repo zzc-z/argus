@@ -6,10 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint app components lib",
     "clean": "rm -rf .next .turbo",
     "format": "prettier --write \"**/*.{ts,tsx,css,md,json}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,css,md,json}\""
+    "format:check": "prettier --check \"**/*.{ts,tsx,css,md,json}\"",
+    "prepare": "husky"
   },
   "dependencies": {
     "@argus/shared": "workspace:*",
@@ -25,6 +26,8 @@
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.3",
+    "@commitlint/config-conventional": "^21.2.3",
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -32,11 +35,14 @@
     "eslint": "^9",
     "eslint-config-next": "^16.3.7",
     "html-to-jsx": "^0.0.4",
+    "husky": "^9.1.7",
     "less": "^4.2.0",
+    "lint-staged": "^17.6.0",
     "postcss": "^8.4",
     "prettier": "^3.3",
     "prettier-plugin-tailwindcss": "^0.6",
     "tailwindcss": "^3.4",
-    "typescript": "^5.6"
+    "typescript": "^5.6",
+    "typescript-eslint": "^8.71.1"
   }
 }

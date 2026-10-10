@@ -4,6 +4,8 @@ import { IconSpan } from '@/components/common/IconSpan'
 import { ArgusMark } from '@/components/common/ArgusMark'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 
+import { UserMenu } from './components/UserMenu'
+
 import { NavLink } from './NavLink'
 import styles from './layout.module.css'
 
@@ -105,15 +107,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </button>
             <div className={styles.topbarDivider} aria-hidden="true" />
             <ThemeToggle />
-            <div className={styles.userBox}>
-              <div className={styles.userText}>
-                <span className={`${styles.userName} font-body-sm font-medium`}>Thomas Lin</span>
-                <span className={`${styles.userRole} font-label-sm`}>Lead Researcher</span>
-              </div>
-              <div className={styles.avatar} aria-hidden="true">
-                <IconSpan name="person" size={18} />
-              </div>
-            </div>
+            <UserMenu />
           </div>
         </header>
 

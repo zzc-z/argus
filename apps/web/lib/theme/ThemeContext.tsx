@@ -38,9 +38,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const stored = readStoredTheme()
     if (stored && stored !== theme) {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
       setThemeState(stored)
     }
-    // Mount-only — trust the provider's initial render to mirror DOM.
+    // 同 ThemeToggle：主题初值在 localStorage，SSR 阶段读不到，
+    // 首次渲染只能用默认值，挂载后再同步。彻底修法是把主题存进 cookie
+    // 并在服务端读取（layout 读 cookies() 决定初始 theme），
+    // 那样这个 effect 可以整个删掉——属架构改动，单独排期。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

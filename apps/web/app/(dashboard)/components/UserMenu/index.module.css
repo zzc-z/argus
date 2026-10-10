@@ -1,0 +1,225 @@
+/*
+ * 顶栏用户菜单卡片。
+ *
+ * 配色全部取自 globals.css 的 design token，不写死 hex——主题切换
+ * （data-theme）时自动跟随，不会出现卡片是亮色而页面是暗色的情况。
+ */
+
+.root {
+  position: relative;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.375rem 0.25rem 0.25rem;
+  border-radius: 9999px;
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.trigger:hover,
+.trigger:focus-visible {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border-color: var(--token-surface-container-highest, #e1e3e4);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--token-primary, #5704e1);
+  outline-offset: 2px;
+}
+
+/* ── 头像 ────────────────────────────────────────────────── */
+
+.avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary, #5704e1);
+  color: var(--token-on-primary, #ffffff);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.avatarImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 9999px;
+}
+
+/* ── 触发器里的文字（窄屏隐藏，只留头像）── */
+
+.userText {
+  display: none;
+  flex-direction: column;
+  text-align: right;
+}
+
+@media (min-width: 640px) {
+  .userText {
+    display: flex;
+  }
+}
+
+.userName {
+  font-family: var(--font-family-sans);
+  font-size: var(--text-body-sm-size);
+  line-height: var(--text-body-sm-line-height);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.userRole {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-label-sm-size);
+  line-height: var(--text-label-sm-line-height);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--token-on-surface-variant, #494456);
+}
+
+/* ── 未登录时的入口 ──────────────────────────────────────── */
+
+.loginLink {
+  font-family: var(--font-family-sans);
+  font-size: var(--text-body-sm-size);
+  font-weight: 500;
+  color: var(--token-primary, #5704e1);
+  text-decoration: none;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid var(--token-surface-container-highest, #e1e3e4);
+  transition: background-color 120ms ease;
+}
+
+.loginLink:hover {
+  background-color: var(--token-surface-container-high, #e7e8e9);
+}
+
+/* ── 弹出卡片 ────────────────────────────────────────────── */
+
+.card {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  /* 必须高于 topbar 的 z-index: 40，才能压在页面内容之上 */
+  z-index: 60;
+  min-width: 260px;
+  padding: 0.5rem;
+  border-radius: var(--radius-md, 12px);
+  /* 浮层用 lowest + highest 描边，跟 OAuthButton / SsoPanel / LoginForm 同一套 */
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border: 1px solid var(--token-surface-container-highest, #e1e3e4);
+  /* 与页面 chrome 同量级的阴影，靠 elevation 提示层级 */
+  box-shadow: var(--shadow-md, 0 4px 16px rgba(0, 0, 0, 0.35));
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.5rem;
+}
+
+.cardAvatar {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary, #5704e1);
+  color: var(--token-on-primary, #ffffff);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  overflow: hidden;
+}
+
+.cardIdentity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cardName {
+  font-family: var(--font-family-sans);
+  font-size: var(--text-body-sm-size);
+  font-weight: 600;
+  color: var(--token-on-surface, #191c1d);
+  /* 昵称过长时截断，别把卡片撑宽 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardEmail {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-label-sm-size);
+  color: var(--token-on-surface-variant, #494456);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardDivider {
+  height: 1px;
+  margin: 0.25rem 0;
+  background-color: var(--token-surface-container, #edeeef);
+}
+
+.cardItem {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  border-radius: var(--radius-sm, 8px);
+  background: transparent;
+  border: none;
+  font-family: var(--font-family-sans);
+  font-size: var(--text-body-sm-size);
+  color: var(--token-on-surface, #191c1d);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.cardItem:hover:not(:disabled),
+.cardItem:focus-visible {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+}
+
+.cardItem:focus-visible {
+  outline: 2px solid var(--token-primary, #5704e1);
+  outline-offset: -2px;
+}
+
+.cardItem:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.cardItemDanger {
+  color: var(--token-error, #ba1a1a);
+}
+
+.cardItemDanger:hover:not(:disabled),
+.cardItemDanger:focus-visible {
+  background-color: color-mix(in srgb, var(--token-error-container, #ffdad6) 40%, transparent);
+  color: var(--token-error, #ba1a1a);
+}
