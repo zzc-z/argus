@@ -66,6 +66,11 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = Field(default=None)
     openai_api_key: SecretStr | None = Field(default=None)
 
+    # Tavily（联网搜索工具）。与 LLM key 独立——它只买「搜索」这一项能力，
+    # 泄露后果也比 LLM key 轻。没填时 tavily_search 工具返回错误字符串给模型，
+    # agent 循环照常跑完，只是搜不到东西。
+    tavily_api_key: SecretStr | None = Field(default=None)
+
     # 中转站 base_url：留空走 Anthropic 官方（https://api.anthropic.com）。
     # 用第三方中转站时填对应地址，例如 https://llmapi.pro。
     # 注意：中转站返回的 model 实际身份不一定是字段名标称的版本——

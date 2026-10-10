@@ -27,6 +27,7 @@ dependencies = [
     "pyjwt>=2.9",
     "authlib>=1.8",
     "itsdangerous>=2.2.0",
+    "tavily-python>=0.8",
 ]
 
 [project.optional-dependencies]
@@ -85,6 +86,13 @@ strict_concatenate = true
 [[tool.mypy.overrides]]
 module = ["tests.*"]
 disallow_untyped_defs = false
+
+# tavily-python 0.8.5 没发 py.typed，也没有官方 types 包（查过 PyPI）。
+# 它只在 app/services/llm.py 里做一层薄封装，类型信息由我们自己声明的
+# 返回类型兜住，不需要第三方 stub。
+[[tool.mypy.overrides]]
+module = ["tavily.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
