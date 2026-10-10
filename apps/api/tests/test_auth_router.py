@@ -10,6 +10,7 @@ cookie 属性——外部 HTTP 交互被桩函数接管，行为完全确定。
 
 from urllib.parse import parse_qs, urlparse
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
@@ -135,11 +136,49 @@ def test_callback_with_tampered_cookie_rejected(client: TestClient) -> None:
 
 
 def test_callback_handles_provider_denial(client: TestClient, github_state: str) -> None:
-    """用户在 GitHub 点「取消授权」→ 400 且带原因。"""
-    resp = client.get(f"/api/v1/auth/github/callback?error=access_denied&state={github_state}")
+    """用户在 GitHub 点「取消授权」→ 送回登录页并带 error，不抛 400。
 
-    assert resp.status_code == 400
-    assert "拒绝授权" in resp.json()["detail"]
+    点取消是用户的正常选择，不是系统故障——浏览器不能停在裸 JSON 上。
+    """
+    resp = client.get(
+        f"/api/v1/auth/github/callback?error=access_denied&state={github_state}",
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "http://localhost:3000/login?error=access_denied"
+
+
+def test_denial_clears_state_cookie(client: TestClient, github_state: str) -> None:
+    """拒绝后 state cookie 必须清掉，否则下次发起登录会撞上旧的。"""
+    resp = client.get(
+        f"/api/v1/auth/github/callback?error=access_denied&state={github_state}",
+        follow_redirects=False,
+    )
+
+    assert f"{OAUTH_STATE_COOKIE}=" in resp.headers["set-cookie"]
+    assert "Max-Age=0" in resp.headers["set-cookie"]
+
+
+def test_denial_error_param_is_sanitized(client: TestClient) -> None:
+    """error 值拼进 Location 前做白名单过滤，防止 URL 注入。"""
+    resp = client.get(
+        "/api/v1/auth/github/callback?error=../../evil%23path",
+        follow_redirects=False,
+    )
+
+    location = resp.headers["location"]
+    assert location.startswith("http://localhost:3000/login?error=")
+    assert ".." not in location
+    assert "#" not in location
+
+
+def test_denial_without_state_cookie_still_redirects(client: TestClient) -> None:
+    """拒绝时不校验 state——用户都还没授权，state 有没有都该送回登录页。"""
+    resp = client.get("/api/v1/auth/github/callback?error=access_denied", follow_redirects=False)
+
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "http://localhost:3000/login?error=access_denied"
 
 
 def test_callback_without_code_rejected(client: TestClient, github_state: str) -> None:
@@ -235,3 +274,123 @@ def test_github_user_without_email_still_works(
 
     assert resp.status_code == 307
     assert "argus_session=" in resp.headers["set-cookie"]
+
+
+# ── 外部依赖故障降级 ────────────────────────────────────────
+#
+# 与 GitHub 的通信走公网，代理抖动 / GitHub 限流都可能让连接中途断。
+# 这些异常必须降级成跳回登录页，而不是冒到 FastAPI 变成 500——
+# 用户看到 Internal Server Error 既看不懂，也不知道能不能重试。
+
+
+def test_network_failure_during_token_exchange_redirects(
+    client: TestClient, github_state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """换 token 时连接断开 → 跳回登录页，不抛 500。"""
+
+    async def _boom(code: str, code_verifier: str, settings: object) -> str:
+        raise httpx.RemoteProtocolError("Server disconnected without sending a response.")
+
+    monkeypatch.setattr(auth_module, "_exchange_code_for_token", _boom)
+
+    resp = client.get(
+        f"/api/v1/auth/github/callback?code=abc&state={github_state}",
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "http://localhost:3000/login?error=provider_unavailable"
+
+
+def test_network_failure_during_profile_fetch_redirects(
+    client: TestClient, github_state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """拉用户资料时连接断开（代理抖动最常见的一步）→ 同样降级。"""
+
+    async def _fake_exchange(code: str, code_verifier: str, settings: object) -> str:
+        return "gho_test_token"
+
+    async def _boom(access_token: str) -> OAuthProfile:
+        raise httpx.ConnectTimeout("timed out")
+
+    monkeypatch.setattr(auth_module, "_exchange_code_for_token", _fake_exchange)
+    monkeypatch.setattr(auth_module, "_fetch_github_profile", _boom)
+
+    resp = client.get(
+        f"/api/v1/auth/github/callback?code=abc&state={github_state}",
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 307
+    assert "provider_unavailable" in resp.headers["location"]
+
+
+def test_github_error_status_gets_distinct_code(
+    client: TestClient, github_state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GitHub 明确回错（401 等）→ provider_rejected，不跟网络故障混为一谈。
+
+    网络不通是网络问题，重试就好；GitHub 说「这个 token 无效」是我们凭据
+    或请求本身有问题，重试没用。两者排查方向不同，错误码必须能区分开。
+    """
+
+    async def _fake_exchange(code: str, code_verifier: str, settings: object) -> str:
+        return "gho_test_token"
+
+    async def _rejected(access_token: str) -> OAuthProfile:
+        raise httpx.HTTPStatusError(
+            "401 Unauthorized",
+            request=httpx.Request("GET", "https://api.github.com/user"),
+            response=httpx.Response(401),
+        )
+
+    monkeypatch.setattr(auth_module, "_exchange_code_for_token", _fake_exchange)
+    monkeypatch.setattr(auth_module, "_fetch_github_profile", _rejected)
+
+    resp = client.get(
+        f"/api/v1/auth/github/callback?code=abc&state={github_state}",
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 307
+    assert resp.headers["location"] == "http://localhost:3000/login?error=provider_rejected"
+
+
+async def test_no_user_created_when_provider_unreachable(
+    client: TestClient, github_state: str, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """外部故障时不能留下半截数据——users 表应保持为空。"""
+
+    async def _fake_exchange(code: str, code_verifier: str, settings: object) -> str:
+        return "gho_test_token"
+
+    async def _boom(access_token: str) -> OAuthProfile:
+        raise httpx.ReadTimeout("read timed out")
+
+    monkeypatch.setattr(auth_module, "_exchange_code_for_token", _fake_exchange)
+    monkeypatch.setattr(auth_module, "_fetch_github_profile", _boom)
+
+    client.get(f"/api/v1/auth/github/callback?code=abc&state={github_state}")
+
+    assert await api_db.scalar(select(func.count()).select_from(User)) == 0
+
+
+def test_internal_error_not_exposed_to_user(
+    client: TestClient, github_state: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """跳转 URL 里不能出现内部异常细节（网络拓扑、主机名、堆栈）。"""
+
+    async def _boom(code: str, code_verifier: str, settings: object) -> str:
+        raise httpx.RemoteProtocolError("connection to 10.0.0.5:443 refused")
+
+    monkeypatch.setattr(auth_module, "_exchange_code_for_token", _boom)
+
+    resp = client.get(
+        f"/api/v1/auth/github/callback?code=abc&state={github_state}",
+        follow_redirects=False,
+    )
+
+    location = resp.headers["location"]
+    assert "10.0.0.5" not in location
+    assert "RemoteProtocolError" not in location
+    assert "refused" not in location

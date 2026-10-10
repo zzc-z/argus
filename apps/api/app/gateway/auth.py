@@ -15,6 +15,7 @@ session 存储或 Redis：无状态、多worker 安全（登录请求打A worker
 state 校验与 token 交换都自己控制。
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Annotated, Any
 
@@ -40,6 +41,8 @@ GITHUB_SCOPE = "read:user user:email"
 GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_API_BASE = "https://api.github.com"
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,6 +112,27 @@ def _clear_state_cookie(response: Response, settings: Settings) -> None:
     response.delete_cookie(OAUTH_STATE_COOKIE, path="/api/v1/auth")
 
 
+def _bounce_to_login(settings: Settings, error: str) -> Response:
+    """用户放弃授权时送回登录页，而不是抛 400。
+
+    「点取消」是用户的正常选择，不是系统故障。抛 400 会让浏览器停在
+    一页裸 JSON 上——用户既看不懂也不知道下一步做什么。跳回登录页并
+    把原因带在 query 里，前端读出来显示一行提示即可重新发起。
+
+    error 值来自 GitHub（受控枚举），拼进 Location 前仍做白名单校验，
+    只保留字母和下划线，防止意外构造出可注入的 URL。
+    """
+    safe_error = "".join(ch for ch in error if ch.isalnum() or ch == "_")[:32] or "unknown"
+    response = Response(
+        status_code=status.HTTP_307_TEMPORARY_REDIRECT,
+        headers={
+            "Location": f"{settings.frontend_base_url}/login?error={safe_error}",
+        },
+    )
+    _clear_state_cookie(response, settings)
+    return response
+
+
 @router.get("/github/login", summary="发起 GitHub 登录")
 async def github_login(
     settings: Annotated[Settings, Depends(get_settings)],
@@ -149,7 +173,7 @@ async def github_callback(
     """
     error = request.query_params.get("error")
     if error:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"GitHub 拒绝授权：{error}")
+        return _bounce_to_login(settings, error)
 
     flow = _load_state_cookie(request, settings)
     returned_state = request.query_params.get("state", "")
@@ -160,8 +184,25 @@ async def github_callback(
     if not code:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "缺少授权码")
 
-    access_token = await _exchange_code_for_token(code, flow.code_verifier, settings)
-    profile = await _fetch_github_profile(access_token)
+    # 与 GitHub 的两次交互都兜住：它们是外部依赖，代理抖动或 GitHub 限流
+    # 都可能让连接中途断开。不接住的话异常会一路冒到 FastAPI，用户看到
+    # 500 Internal Server Error——既看不懂也不知道能不能重试。
+    #
+    # 两类故障分开处理，因为排查方向不同：
+    #   HTTPStatusError —— GitHub 明确回了错误状态（401 token 失效、
+    #                       403 限流）。是我们凭据或请求本身的问题。
+    #   其他 HTTPError   —— 连不上（断开、超时、代理错误）。是网络问题，
+    #                       用户等一下重试通常就好了。
+    try:
+        access_token = await _exchange_code_for_token(code, flow.code_verifier, settings)
+        profile = await _fetch_github_profile(access_token)
+    except httpx.HTTPStatusError as exc:
+        logger.warning("GitHub 返回错误状态，登录流程中止", exc_info=exc)
+        return _bounce_to_login(settings, "provider_rejected")
+    except httpx.HTTPError as exc:
+        logger.warning("与 GitHub 通信失败，登录流程中止", exc_info=exc)
+        return _bounce_to_login(settings, "provider_unavailable")
+
     result = await get_or_create_user(session, profile)
 
     redirect = Response(
