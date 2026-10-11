@@ -268,6 +268,17 @@
 
 .circleIcon {
   color: var(--token-on-surface-variant, #49454f);
+  /*
+   * Material Symbols 是图标字体，字形在框内天生偏右一点（右侧留白比左侧
+   * 宽），在 16px 的圆点里看着像没居中。
+   *
+   * line-height:1 把行盒压到等于字号，否则会继承父级的 19.5px
+   * 让字形整体上移。剩下的横向偏差用 relative 左移 1px 抵消——
+   * 不动父级的 justify-content: center，避免影响其他状态。
+   */
+  line-height: 1;
+  position: relative;
+  left: -1px;
 }
 
 .circleActive {
