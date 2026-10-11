@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { TOOL_CALLS, TRACE_ID, ANALYST_RAW_STATE, type AgentNode, type Citation } from '../../mock'
+import { ANALYST_RAW_STATE, type AgentNode, type Citation, type ToolCall } from '../../mock'
 import styles from './index.module.css'
 
 export type InspectorTab = 'Input' | 'Output' | 'Prompt' | 'Tools'
@@ -13,6 +13,8 @@ export interface InspectorPayload {
   jsonText: string
   /** Drives status dot color (active / completed / default). */
   dotState: 'active' | 'completed' | 'default'
+  /** 本节点关联的工具调用。空数组表示这次运行没调过工具。 */
+  toolCalls: ToolCall[]
 }
 
 export interface InspectorDrawerProps {
@@ -62,7 +64,7 @@ export function InspectorDrawer({ open, payload, onClose }: InspectorDrawerProps
       {/* Body: left tab strip + right content */}
       <div className={styles.body}>
         <TabStrip tab={tab} onTabChange={setTab} />
-        <ContentArea tab={tab} jsonText={payload.jsonText} />
+        <ContentArea tab={tab} jsonText={payload.jsonText} toolCalls={payload.toolCalls} />
       </div>
     </aside>
   )
@@ -123,9 +125,10 @@ function TabIcon({ tab, active }: { tab: InspectorTab; active: boolean }) {
 interface ContentAreaProps {
   tab: InspectorTab
   jsonText: string
+  toolCalls: ToolCall[]
 }
 
-function ContentArea({ tab, jsonText }: ContentAreaProps) {
+function ContentArea({ tab, jsonText, toolCalls: calls }: ContentAreaProps) {
   const tabStatusLabel = TAB_LABELS[tab]
 
   return (
@@ -138,10 +141,10 @@ function ContentArea({ tab, jsonText }: ContentAreaProps) {
       {/* Tool calls summary (always visible) */}
       <div className={styles.toolsBlock}>
         <div className={styles.toolsHead}>
-          <span>已执行工具调用 ({TOOL_CALLS.length})</span>
-          <span className={styles.toolsTrace}>{TRACE_ID}</span>
+          <span>已执行工具调用 ({calls.length})</span>
+          {calls[0] && <span className={styles.toolsTrace}>{calls[0].id}</span>}
         </div>
-        {TOOL_CALLS.map((tc) => (
+        {calls.map((tc) => (
           <div key={tc.id} className={styles.toolRow}>
             <div className={styles.toolRowHead}>
               <div className={styles.toolRowName}>
@@ -175,6 +178,7 @@ function ContentArea({ tab, jsonText }: ContentAreaProps) {
 /* ───────── Builders exposed to page ───────── */
 
 const DEFAULT_PAYLOAD: InspectorPayload = {
+  toolCalls: [],
   title: '分析节点检查器 (Analyst Node Inspector)',
   latency: '运行耗时 4.4秒',
   jsonText: JSON.stringify(ANALYST_RAW_STATE, null, 2),
@@ -190,6 +194,7 @@ export function buildNodePayload(node: AgentNode): InspectorPayload {
         ? 'completed'
         : 'default'
   return {
+    toolCalls: [],
     title: `${node.name} 检查器`,
     latency: node.latency,
     jsonText: JSON.stringify(
@@ -213,6 +218,7 @@ export function buildNodePayload(node: AgentNode): InspectorPayload {
 /** Build a payload from a clicked citation. */
 export function buildCitationPayload(citation: Citation): InspectorPayload {
   return {
+    toolCalls: [],
     title: `数据源引用 [${citation.id}] 溯源核验`,
     latency: '14ms',
     dotState: 'active',

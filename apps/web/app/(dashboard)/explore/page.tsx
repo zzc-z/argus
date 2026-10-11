@@ -42,6 +42,7 @@ import {
   type AgentNode,
   type NodeLifecycle,
   type SlashCommand,
+  type ToolCall,
 } from './mock'
 import styles from './page.module.css'
 
@@ -60,6 +61,38 @@ const INITIAL_NODES: AgentNode[] = AGENT_NODES.map((n) => ({ ...n, lifecycle: 'p
  * 报告区就分不清该不该显示结果。
  */
 type RunState = 'idle' | 'running' | 'completed'
+
+/** 后端 ToolCallEvent 的 v 字段。phase=start 时 ok/elapsed_ms 无意义。 */
+interface ToolCallEventV {
+  call_id: string
+  phase: string
+  name: string
+  tool_input: Record<string, unknown>
+  ok: boolean
+  elapsed_ms: number
+}
+
+/**
+ * start + end 两段事件合成一条展示记录。
+ *
+ * 后端把一次调用拆成两段发（开始时立刻显示「正在搜索」，结束后补耗时），
+ * 前端按 call_id 配对：start 建的记录，end 时补齐耗时与成败。
+ */
+/**
+ * 把一次工具调用转成 InspectorDrawer 要的展示态。
+ *
+ * `end` 是同一 call_id 的 end 事件；没有就说明还在跑，duration 显示
+ * 「执行中…」。start 事件一定存在——后端先发 start 再执行工具。
+ */
+function toToolCall(v: ToolCallEventV, end?: ToolCallEventV): ToolCall {
+  const source = end ?? v
+  return {
+    id: source.call_id,
+    name: source.name,
+    args: JSON.stringify(source.tool_input).slice(0, 120),
+    duration: end ? `${(source.elapsed_ms / 1000).toFixed(1)}s` : '执行中…',
+  }
+}
 
 interface DoneEventV {
   session_id: string
@@ -102,14 +135,16 @@ export default function ExplorePage() {
   const [summary, setSummary] = useState<DoneEventV | null>(null)
   // 当前提问。标题要从它取——后端返回的正文不含标题。
   const [question, setQuestion] = useState('')
+  // 工具调用轨迹：InspectorDrawer 的「已执行工具调用」区读它。
+  const [toolCalls, setToolCalls] = useState<ToolCall[]>([])
 
   // 中断用的 AbortController：用户重问或卸载页面时取消上一次请求。
   const abortRef = useRef<AbortController | null>(null)
 
   const handleSelectNode = useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
     setInspectorOpen(true)
-    setInspectorPayload(buildNodePayload(node))
-  }, [])
+    setInspectorPayload({ ...buildNodePayload(node), toolCalls })
+  }, [toolCalls])
 
   const handleSelectCitation = useCallback(
     (citation: Parameters<typeof buildCitationPayload>[0]) => {
@@ -162,8 +197,20 @@ export default function ExplorePage() {
             setSummary(v as unknown as DoneEventV)
             setRunState('completed')
             break
-          // tool_call 事件暂不驱动 UI——InspectorDrawer 的 payload 结构
-          // 还是设计稿的 4 字段形状，接真实数据要一起改，留到下一步。
+          case 'tool_call': {
+            const tv = v as unknown as ToolCallEventV
+            setToolCalls((prev) => {
+              // 按 call_id 合并 start / end 两段：start 先占位并显示
+              // 「执行中…」，end 到达时用真实耗时覆盖同一 id。
+              const i = prev.findIndex((c) => c.id === tv.call_id)
+              const merged = toToolCall(tv, tv.phase === 'end' ? tv : undefined)
+              if (i < 0) return [...prev, merged]
+              const next = [...prev]
+              next[i] = merged
+              return next
+            })
+            break
+          }
           default:
             break
         }
@@ -201,7 +248,12 @@ export default function ExplorePage() {
       <div className={styles.main}>
         {/* Center column: DAG + Streaming Report */}
         <main className={styles.center}>
-          <AgentDAG onSelectNode={handleSelectNode} nodes={nodes} />
+          <AgentDAG
+            onSelectNode={handleSelectNode}
+            nodes={nodes}
+            elapsed={summary ? `${(summary.elapsed_ms / 1000).toFixed(1)}秒` : undefined}
+            tokens={summary ? `${summary.output_tokens} 标记` : undefined}
+          />
           {errorText && (
             <p role="alert" className={styles.errorBanner}>
               {errorText}

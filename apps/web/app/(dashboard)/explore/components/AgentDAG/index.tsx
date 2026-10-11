@@ -8,6 +8,12 @@ import styles from './index.module.css'
 export interface AgentDAGProps {
   onSelectNode: (node: AgentNode) => void
   nodes: AgentNode[]
+  /** 第几步（1-based）。缺省时用 mock 的静态值，保持组件可独立预览。 */
+  currentStep?: number
+  /** 已耗时（格式化好的文案）。缺省时用 mock 的静态值。 */
+  elapsed?: string
+  /** token 用量（格式化好的文案）。缺省时用 mock 的静态值。 */
+  tokens?: string
 }
 
 /**
@@ -15,7 +21,12 @@ export interface AgentDAGProps {
  * active 高亮 rail 停在当前 active 节点。active 节点带 `cobaltPulse` 脉冲。
  * pending 节点显示空心圆。
  */
-export function AgentDAG({ onSelectNode, nodes }: AgentDAGProps) {
+export function AgentDAG({
+  onSelectNode,
+  nodes,
+  elapsed,
+  tokens,
+}: AgentDAGProps) {
   // Highlight rail stops at the position of the active node (88px hardcoded
   // mirrors the design: rail covers nodes 1..active).
   const activeIndex = nodes.findIndex((n) => n.lifecycle === 'active')
@@ -33,12 +44,13 @@ export function AgentDAG({ onSelectNode, nodes }: AgentDAGProps) {
         </div>
         <div className={styles.headStats}>
           <span className={styles.headStatEmphasis}>
-            {DAG_STATS.totalSteps} 步中的第 {DAG_STATS.currentStep} 步
+            {DAG_STATS.totalSteps} 步中的第{' '}
+            {nodes.filter((n) => n.lifecycle !== 'pending').length || DAG_STATS.currentStep} 步
           </span>
           <span className={styles.headStatSep}>·</span>
-          <span>{DAG_STATS.elapsed}</span>
+          <span>{elapsed ?? DAG_STATS.elapsed}</span>
           <span className={styles.headStatSep}>·</span>
-          <span>{DAG_STATS.tokens}</span>
+          <span>{tokens ?? DAG_STATS.tokens}</span>
         </div>
       </div>
 

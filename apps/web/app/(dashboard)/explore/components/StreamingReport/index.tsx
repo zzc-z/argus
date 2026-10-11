@@ -33,11 +33,15 @@ export function StreamingReport({
   title,
 }: StreamingReportProps) {
   const isStreaming = streamedText !== undefined
-  const showCursor =
-    isStreaming && streamedText.length > 0 && streamedText.length < TRAILING_BODY_FALLBACK.length
-  // While a stream is active (even before the first char arrives), still show
-  // the static fallback so the page never renders an empty paragraph.
-  const trailingBody = isStreaming && streamedText.length > 0 ? streamedText : TRAILING_BODY_FALLBACK
+  // 光标：只在「已收到正文但流还没结束」时显示。之前拿长度和
+  // TRAILING_BODY_FALLBACK 比——真实正文一旦超过 mock 的字数，
+  // 光标就永久消失。
+  const showCursor = isStreaming && streamedText.length > 0
+  // 空串显示「研究中…」而不是整份 mock 报告：传了 streamedText 就
+  // 说明是真实运行，第一个字没到时页面不该先显示完整报告。
+  const trailingBody = isStreaming
+    ? streamedText || '正在检索并撰写…'
+    : TRAILING_BODY_FALLBACK
 
   return (
     <article className={styles.article}>
@@ -55,9 +59,11 @@ export function StreamingReport({
 
       {/* Prose */}
       <div className={styles.prose}>
+        {!isStreaming && (
+          <>
         <p className={styles.p1}>
           从 NVIDIA Hopper 架构 (H100 SXM) 迁移至最新部署的 Blackwell 计算平台 (B200 / GB200
-          NVL72)，标志着高并发大语言模型 (LLM) 推理经济性迎来结构性拐点
+          NVL72），标志着高并发大语言模型 (LLM) 推理经济性迎来结构性拐点
           <Cite id={1} onSelect={onSelectCitation} />
           。尽管 H100 已经确立了 FP8 张量计算作为主流前沿模型（如 Llama 3 70B 和 Mixtral
           8x22B）的标准部署格式，但 Blackwell 进一步引入了集成微张量缩放的第二代 Transformer
@@ -88,7 +94,10 @@ export function StreamingReport({
             ))}
           </div>
         </div>
-
+          </>
+        )}
+        {!isStreaming && (
+          <>
         <p>
           在显存子系统方面，带宽规格从 H100 的 3.35 TB/s 扩充至 Blackwell 的 8.0 TB/s
           HBM3e。在生成式自回归解码阶段——即显存总线带宽长期占据绝对瓶颈 的关键环节——Blackwell
@@ -99,10 +108,12 @@ export function StreamingReport({
           128）下，单 Token 吐字延迟由 H100 的 42ms 骤降至约 14ms
           <Cite id={2} onSelect={onSelectCitation} />。
         </p>
+          </>
+        )}
 
         <p className={styles.p3}>
           {trailingBody}
-          <Cite id={1} onSelect={onSelectCitation} />
+          {!isStreaming && <Cite id={1} onSelect={onSelectCitation} />}
           {showCursor && <span className={styles.cursor} />}
         </p>
       </div>
