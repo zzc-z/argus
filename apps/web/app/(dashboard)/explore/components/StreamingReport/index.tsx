@@ -37,11 +37,9 @@ export function StreamingReport({
   // TRAILING_BODY_FALLBACK 比——真实正文一旦超过 mock 的字数，
   // 光标就永久消失。
   const showCursor = isStreaming && streamedText.length > 0
-  // 空串显示「研究中…」而不是整份 mock 报告：传了 streamedText 就
-  // 说明是真实运行，第一个字没到时页面不该先显示完整报告。
-  const trailingBody = isStreaming
-    ? streamedText || '正在检索并撰写…'
-    : TRAILING_BODY_FALLBACK
+  // 空串（还没收到第一个 delta）时不显示任何正文——页面不该先给出
+    // 整份 mock 报告，也不该提前打「正在…」的预告。
+  const trailingBody = isStreaming ? streamedText : TRAILING_BODY_FALLBACK
 
   return (
     <article className={styles.article}>

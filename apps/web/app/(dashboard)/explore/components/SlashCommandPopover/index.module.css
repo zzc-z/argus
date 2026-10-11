@@ -3,12 +3,12 @@
   bottom: 56px;
   left: 1.5rem;
   width: 256px;
-  background-color: #111111;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
   border-radius: 8px;
   box-shadow:
     0 16px 40px -8px rgba(0, 0, 0, 0.8),
-    0 0 0 1px rgba(255, 255, 255, 0.08);
+    0 0 0 1px color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
   padding: 6px;
   z-index: 50;
   font-size: 12px;
@@ -19,9 +19,9 @@
   padding: 4px 8px 6px 8px;
   font-size: 10px;
   text-transform: uppercase;
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
   letter-spacing: 0.04em;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 30%, transparent);
   margin-bottom: 4px;
   display: flex;
   align-items: center;
@@ -29,7 +29,7 @@
 }
 
 .headIcon {
-  color: #7039f9;
+  color: var(--token-primary, #4a5c92);
 }
 
 .row {
@@ -42,13 +42,13 @@
   background-color: transparent;
   border: none;
   cursor: pointer;
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
   text-align: left;
   transition: background-color 120ms ease-out;
 }
 
 .row:hover {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 30%, transparent);
 }
 
 .rowLeft {
@@ -58,16 +58,16 @@
 }
 
 .rowCmd {
-  color: #7039f9;
+  color: var(--token-primary, #4a5c92);
   font-weight: 600;
 }
 
 .rowDesc {
-  color: #a0a0a0;
+  color: var(--token-on-surface-variant, #49454f);
   font-size: 11px;
 }
 
 .rowHint {
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
   font-size: 10px;
 }

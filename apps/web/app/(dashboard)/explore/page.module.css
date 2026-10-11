@@ -1,7 +1,7 @@
 .shell {
-  min-height: 100vh;
-  background-color: #0a0a0a;
-  color: #fafafa;
+  min-height: 100%;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  color: var(--token-on-surface, #1a1c1e);
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
@@ -19,7 +19,7 @@
 
 .center {
   width: 100%;
-  padding: 3.5rem 1.5rem 7rem 17.5rem;
+  padding: 1.5rem 1.5rem 7rem;
   display: flex;
   flex-direction: column;
   transition: all 200ms ease-out;
@@ -29,7 +29,7 @@
   .center {
     width: 920px;
     margin-inline: auto;
-    padding: 3.5rem 1.5rem 7rem 17.5rem;
+    padding: 1.5rem 1.5rem 7rem;
   }
 }
 
@@ -67,4 +67,38 @@
   font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 11px;
   letter-spacing: 0.02em;
+}
+
+/* ── 页面级标题栏 ───────────────────────────────────────────
+   原本这里是一整套自带的深色 TopBar，与 (dashboard)/layout.tsx
+   的全局顶栏重复（两层 56px 头部，且本页那层盖住了全局的）。
+   现在只保留一行轻量标题 + 检查器开关，高度让给全局顶栏。 */
+
+.pageBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0 6px;
+}
+
+.pageTitle {
+  font-family: var(--token-font-headline-sm, inherit);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--token-on-surface, #1a1c1e);
+}
+
+.inspectorToggle {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--token-outline-variant, #cac4d0);
+  background: transparent;
+  color: var(--token-on-surface-variant, #49454f);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.inspectorToggle:hover {
+  background: var(--token-surface-container, #edeeef);
 }

@@ -20,26 +20,26 @@
   margin-bottom: 0.75rem;
   font-size: 12px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
 }
 
 .metaLabel {
-  color: #a0a0a0;
+  color: var(--token-on-surface-variant, #49454f);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .metaIcon {
-  color: #7039f9;
+  color: var(--token-tertiary, #6b5ca5);
 }
 
 .metaQuery {
-  color: #fafafa;
-  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--token-on-surface, #1a1c1e);
+  background-color: color-mix(in srgb, var(--token-primary, #4a5c92) 6%, transparent);
   padding: 2px 8px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--token-outline-variant, #cac7d0);
 }
 
 /* ──────── H1 ──────── */
@@ -48,7 +48,7 @@
   font-size: 30px;
   font-weight: 600;
   letter-spacing: -0.01em;
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
   margin: 0 0 1.5rem 0;
   line-height: 1.2;
 }
@@ -58,7 +58,7 @@
 .prose {
   font-size: 14px;
   line-height: 1.7;
-  color: #a0a0a0;
+  color: var(--token-on-surface-variant, #49454f);
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -86,9 +86,9 @@
   padding: 1px 4px;
   margin: 0 2px;
   border-radius: 4px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #a0a0a0;
+  background-color: var(--token-surface-container, #edeeef);
+  border: 1px solid var(--token-outline-variant, #cac7d0);
+  color: var(--token-on-surface-variant, #49454f);
   cursor: pointer;
   position: relative;
   top: -0.45em;
@@ -100,7 +100,7 @@
 }
 
 .cite:hover {
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
   background-color: rgba(79, 124, 255, 0.16);
   border-color: rgba(79, 124, 255, 0.5);
 }
@@ -108,8 +108,8 @@
 /* ──────── Hardware metrics card ──────── */
 
 .metricsCard {
-  background-color: #111111;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--token-surface-container, #f3f4f5);
+  border: 1px solid var(--token-outline-variant, #cac7d0);
   border-radius: 8px;
   padding: 1rem;
   margin-block: 1.5rem;
@@ -126,14 +126,14 @@
   justify-content: space-between;
   margin-bottom: 0.75rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid var(--token-outline-variant, #cac7d0);
   font-size: 12px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
 }
 
 .metricsHeadEmphasis {
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
 }
 
 .metricsGrid {
@@ -151,30 +151,30 @@
 }
 
 .metricCol + .metricCol {
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid var(--token-outline-variant, #cac7d0);
   padding-left: 1rem;
 }
 
 .metricLabel {
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
   font-size: 10px;
   text-transform: uppercase;
 }
 
 .metricHeadline {
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
   font-weight: 500;
   font-size: 14px;
   margin-top: 2px;
 }
 
 .metricDetail {
-  color: #a0a0a0;
+  color: var(--token-on-surface-variant, #49454f);
   font-size: 11px;
 }
 
 .metricDetailHighlight {
-  color: #7039f9;
+  color: var(--token-tertiary, #6b5ca5);
   font-weight: 500;
 }
 
@@ -184,7 +184,7 @@
   display: inline-block;
   width: 6px;
   height: 18px;
-  background-color: #4f7cff;
+  background-color: var(--token-primary, #4a5c92);
   margin-left: 3px;
   vertical-align: text-bottom;
   animation: cursorBlink 1s steps(1, end) infinite;

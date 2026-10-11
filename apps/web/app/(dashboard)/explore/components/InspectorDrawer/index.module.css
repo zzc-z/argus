@@ -5,7 +5,7 @@
   bottom: 0;
   width: 380px;
   background-color: #0d0d0d;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
   z-index: 40;
   display: flex;
   flex-direction: column;
@@ -37,11 +37,11 @@
 .head {
   height: 48px;
   padding-inline: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background-color: #111111;
+  background-color: var(--token-surface-container-low, #f3f4f5);
 }
 
 .headLeft {
@@ -57,16 +57,16 @@
 }
 
 .headDotActive {
-  background-color: #4f7cff;
+  background-color: var(--token-primary, #4a5c92);
   animation: livePulse 1.4s ease-in-out infinite;
 }
 
 .headDotCompleted {
-  background-color: #888888;
+  background-color: var(--token-on-surface-variant, #49454f);
 }
 
 .headDotDefault {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 10%, transparent);
 }
 
 @keyframes livePulse {
@@ -83,7 +83,7 @@
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   letter-spacing: -0.01em;
 }
@@ -97,7 +97,7 @@
 .headLatency {
   font-size: 11px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
   margin-right: 8px;
 }
 
@@ -107,7 +107,7 @@
   border-radius: 8px;
   border: none;
   background-color: transparent;
-  color: #a0a0a0;
+  color: var(--token-on-surface-variant, #49454f);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -118,8 +118,8 @@
 }
 
 .closeBtn:hover {
-  background-color: rgba(255, 255, 255, 0.08);
-  color: #fafafa;
+  background-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
+  color: var(--token-on-surface, #1a1c1e);
 }
 
 /* ──────── Body grid ──────── */
@@ -134,8 +134,8 @@
 
 .tabStrip {
   width: 48px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
-  background-color: #0a0a0a;
+  border-right: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
+  background-color: var(--token-surface-container, #edeeef);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -158,25 +158,25 @@
 }
 
 .tabBtn:hover {
-  color: #fafafa;
-  background-color: rgba(255, 255, 255, 0.04);
+  color: var(--token-on-surface, #1a1c1e);
+  background-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 20%, transparent);
 }
 
 .tabBtnActive {
-  color: #4f7cff;
+  color: var(--token-primary, #4a5c92);
   background-color: rgba(79, 124, 255, 0.1);
 }
 
 .tabIcon {
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
 }
 
 .tabBtn:hover .tabIcon {
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
 }
 
 .tabIconActive {
-  color: #4f7cff;
+  color: var(--token-primary, #4a5c92);
 }
 
 /* ──────── Content ──────── */
@@ -192,17 +192,17 @@
 .contentHead {
   height: 32px;
   padding-inline: 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 20%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: #a0a0a0;
+  color: var(--token-on-surface-variant, #49454f);
 }
 
 .contentSize {
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
   font-size: 10px;
 }
 
@@ -210,7 +210,7 @@
 
 .toolsBlock {
   padding: 0.75rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 30%, transparent);
   background-color: rgba(17, 17, 17, 0.6);
 }
 
@@ -218,7 +218,7 @@
   font-size: 10px;
   text-transform: uppercase;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
   margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
@@ -226,12 +226,12 @@
 }
 
 .toolsTrace {
-  color: #7039f9;
+  color: var(--token-primary, #4a5c92);
 }
 
 .toolRow {
-  background-color: #0a0a0a;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--token-surface-container, #edeeef);
+  border: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
   border-radius: 8px;
   padding: 8px;
   margin-bottom: 6px;
@@ -244,7 +244,7 @@
 }
 
 .toolRow:hover {
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 10%, transparent);
 }
 
 .toolRowHead {
@@ -259,24 +259,24 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
   font-weight: 500;
   font-size: 11px;
 }
 
 .toolRowIcon {
-  color: #7039f9;
+  color: var(--token-primary, #4a5c92);
 }
 
 .toolRowDuration {
   font-size: 10px;
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
 }
 
 .toolRowArgs {
   font-size: 10px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
   margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -292,7 +292,7 @@
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   font-size: 11px;
   line-height: 1.6;
-  color: #a0a0a0;
+  color: var(--token-on-surface-variant, #49454f);
   background-color: #0d0d0d;
 }
 
@@ -306,8 +306,8 @@
 
 .footer {
   padding: 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  background-color: #111111;
+  border-top: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
+  background-color: var(--token-surface-container-low, #f3f4f5);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -316,7 +316,7 @@
 .phoenixLink {
   font-size: 12px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: #a0a0a0;
+  color: var(--token-on-surface-variant, #49454f);
   text-decoration: none;
   display: flex;
   align-items: center;
@@ -325,15 +325,15 @@
 }
 
 .phoenixLink:hover {
-  color: #7039f9;
+  color: var(--token-primary, #4a5c92);
 }
 
 .phoenixIcon {
-  color: #7039f9;
+  color: var(--token-primary, #4a5c92);
 }
 
 .spanId {
   font-size: 10px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
 }

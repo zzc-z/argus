@@ -14,8 +14,8 @@
 
 .bar {
   height: 48px;
-  background-color: #111111;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--token-surface-container, #edeeef);
+  border: 1px solid var(--token-outline-variant, #cac4d0);
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -30,7 +30,7 @@
 }
 
 .toggleIcon {
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
   display: flex;
   align-items: center;
 }
@@ -41,12 +41,12 @@
   border: none;
   outline: none;
   font-size: 14px;
-  color: #fafafa;
+  color: var(--token-on-surface, #1a1c1e);
   font-family: inherit;
 }
 
 .input::placeholder {
-  color: #666666;
+  color: var(--token-on-surface-variant, #49454f);
 }
 
 .rightCluster {

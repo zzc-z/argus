@@ -3,18 +3,21 @@
 /**
  * /explore — Argus 多智能体深度研究控制台。
  *
- * 设计稿是 argus_2/code.html 的还原。本页刻意与项目 Material 3 token 体系不同：
- * argus_2 自带一套深色面板调色（#0a0a0a 背景 + #4f7cff 品牌色 + #7039f9 强调色），
- * UI 主字体用 Inter。通过 next/font/google 按页面加载，不影响其他路由（其他路由用 Geist）。
+ * 设计稿是 argus_2/code.html 的还原，但配色已全部改走项目 Material 3
+ * token（`--token-surface-*` / `--token-primary` 等），跟随全局主题切换。
+ * UI 主字体用 Inter，通过 next/font/google 按页面加载，不影响其他路由。
  *
- * 布局（1440px 容器，sticky 56px TopBar）：
- *   ┌──────────────────────────────────────────────┐
- *   │ TopBar (brand, search, live, toggle, avatar) │
- *   ├─────────────────────────────────┬────────────┤
- *   │ Center column (920px)           │ Inspector  │
- *   │  ├ AgentDAG (5 nodes)           │ (380px)    │
- *   │  ├ StreamingReport (H1 + prose) │ collapsible│
- *   │  │  └ cite-sup + metrics card   │            │
+ * 顶栏与侧边栏来自 `(dashboard)/layout.tsx`，本页不再自带一套——早期版本
+ * 有一根 56px 的深色 TopBar，与 layout 的全局 topbar 叠成两层头部，
+ * 内容被顶到视口外。现在只留页面级标题栏（标题 + 检查器开关）。
+ *
+ * 布局（中心栏 + 可折叠检查器）：
+ *   ┌─────────────────────────────────┬────────────┐
+ *   │ 页面标题栏 + 检查器开关          │            │
+ *   ├─────────────────────────────────┤ Inspector  │
+ *   │ Center column (920px)           │ (380px)    │
+ *   │  ├ AgentDAG (5 nodes)           │ collapsible│
+ *   │  ├ StreamingReport (H1 + prose) │            │
  *   └─────────────────────────────────┴────────────┘
  *           ┌──────────────────────────┐
  *           │ PromptInput (48px fixed) │
@@ -25,7 +28,6 @@ import * as React from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Inter } from 'next/font/google'
 
-import { TopBar } from './components/TopBar'
 import { AgentDAG } from './components/AgentDAG'
 import { StreamingReport } from './components/StreamingReport'
 import {
@@ -243,7 +245,17 @@ export default function ExplorePage() {
 
   return (
     <div className={`${styles.shell} ${inter.className}`}>
-      <TopBar onToggleInspector={handleToggleInspector} inspectorOpen={inspectorOpen} />
+      <div className={styles.pageBar}>
+        <span className={styles.pageTitle}>研究控制台 / Explore</span>
+        <button
+          type="button"
+          onClick={handleToggleInspector}
+          className={styles.inspectorToggle}
+          aria-pressed={inspectorOpen}
+        >
+          {inspectorOpen ? '隐藏检查器' : '显示检查器'}
+        </button>
+      </div>
 
       <div className={styles.main}>
         {/* Center column: DAG + Streaming Report */}
