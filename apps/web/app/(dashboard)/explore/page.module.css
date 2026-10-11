@@ -40,7 +40,9 @@
   right: 0;
   z-index: 30;
   padding-block: 8px 20px;
-  background: linear-gradient(to top, #0a0a0a 0%, rgba(10, 10, 10, 0.95) 60%, transparent 100%);
+  /* 输入区底部的渐变遮罩。原先是纯黑，在浅色主题下会糊成一条脏带。
+     用 on-surface 的浅色版本，主题切换时自动跟随。 */
+  background: linear-gradient(to top, var(--token-surface, #f9f9f9) 0%, color-mix(in srgb, var(--token-surface, #f9f9f9) 60%, transparent) 60%, transparent 100%);
   pointer-events: none;
 }
 
