@@ -16,13 +16,22 @@ export interface StreamingReportProps {
    * 当值为 `undefined` 时回退到静态 mock 文案（保持不传此 prop 也能跑）。
    */
   streamedText?: string
+  /** 真实提问。缺省时用静态 mock 文案，保持组件可独立预览。 */
+  query?: string
+  /** 报告标题。缺省时用静态 mock 文案。 */
+  title?: string
 }
 
 /**
  * 流式报告主区 —— H1、3 段正文（穿插 [n] 引文上标）、文中 3 列硬件指标卡、
  * 当前正在流式追加的段落末尾带闪烁光标。
  */
-export function StreamingReport({ onSelectCitation, streamedText }: StreamingReportProps) {
+export function StreamingReport({
+  onSelectCitation,
+  streamedText,
+  query,
+  title,
+}: StreamingReportProps) {
   const isStreaming = streamedText !== undefined
   const showCursor =
     isStreaming && streamedText.length > 0 && streamedText.length < TRAILING_BODY_FALLBACK.length
@@ -38,11 +47,11 @@ export function StreamingReport({ onSelectCitation, streamedText }: StreamingRep
           <IconSpan name="bolt" size={14} className={styles.metaIcon} />
           <span>研究课题:</span>
         </span>
-        <span className={styles.metaQuery}>&quot;{REPORT_QUERY}&quot;</span>
+        <span className={styles.metaQuery}>&quot;{query ?? REPORT_QUERY}&quot;</span>
       </div>
 
       {/* H1 */}
-      <h1 className={styles.h1}>{REPORT_TITLE}</h1>
+      <h1 className={styles.h1}>{title ?? REPORT_TITLE}</h1>
 
       {/* Prose */}
       <div className={styles.prose}>

@@ -36,6 +36,7 @@ import {
   type InspectorPayload,
 } from './components/InspectorDrawer'
 import { PromptInput } from './components/PromptInput'
+import { apiStream } from '@/lib/api/client'
 import {
   AGENT_NODES,
   type AgentNode,
@@ -50,32 +51,37 @@ const inter = Inter({
   weight: ['400', '500', '600'],
 })
 
-/** 尾段打字机要追到的完整目标文本。 */
-const STREAM_TARGET =
-  '更为关键的是,总体拥有成本 (TCO) 为大规模智算中心运营方带来了革命性的结构优化。以支撑 100,000 QPS 推理负载的集群规模测算,Blackwell 较同等吞吐 吞吐量的 Hopper 集群将数据中心综合电力消耗锐减 75%。目前主要的落地摩擦点集中于机房 二次液冷系统改建,因为 GB200 机柜强制要求采用单机柜高达 120kW 换热 密度的芯片级直触液冷回路...'
-
 /** 把所有 agent 节点重置为 pending —— 每次提问都从 0 重新跑。 */
 const INITIAL_NODES: AgentNode[] = AGENT_NODES.map((n) => ({ ...n, lifecycle: 'pending' }))
 
-/** 把下一个 pending 节点提为 active，并把之前的节点标为 completed。 */
-function advance(nodes: AgentNode[]): AgentNode[] {
-  const next: NodeLifecycle[] = nodes.map((n) => n.lifecycle)
-  const firstPending = next.findIndex((s) => s === 'pending')
-  if (firstPending < 0) return nodes
-  // 把 firstPending 之前的全部标为 completed。
-  for (let i = 0; i < firstPending; i++) next[i] = 'completed'
-  next[firstPending] = 'active'
-  return nodes.map((n, i) => ({ ...n, lifecycle: next[i] as NodeLifecycle }))
-}
-
-/** 最后一步：把剩下的 active 节点也标为 completed。 */
-function finalize(nodes: AgentNode[]): AgentNode[] {
-  return nodes.map((n) =>
-    n.lifecycle === 'active' ? { ...n, lifecycle: 'completed' as NodeLifecycle } : n,
-  )
-}
-
+/**
+ * 运行态。刻意不含 'error'——错误由 `errorText` 单独承担。
+ * 塞进 runState 会让「跑完了但出错了」和「跑完了正常」变成同一个值，
+ * 报告区就分不清该不该显示结果。
+ */
 type RunState = 'idle' | 'running' | 'completed'
+
+interface DoneEventV {
+  session_id: string
+  elapsed_ms: number
+  turns: number
+  input_tokens: number
+  output_tokens: number
+  truncated: boolean
+}
+
+/** 把后端 node 事件合并到前端 AgentNode 上。 */
+function applyNode(node: AgentNode, nv: NodeEventV): AgentNode {
+  return {
+    ...node,
+    role: nv.detail || node.role,
+    lifecycle: nv.lifecycle as NodeLifecycle,
+    latency:
+      nv.elapsed_ms != null ? `${(nv.elapsed_ms / 1000).toFixed(1)}s` : node.latency,
+  }
+}
+
+type NodeEventV = { node_id: string; lifecycle: string; detail: string; elapsed_ms: number | null }
 
 export default function ExplorePage() {
   const [inspectorOpen, setInspectorOpen] = useState(true)
@@ -91,10 +97,14 @@ export default function ExplorePage() {
   const [runState, setRunState] = useState<RunState>('idle')
   const [nodes, setNodes] = useState<AgentNode[]>(INITIAL_NODES)
   const [streamedText, setStreamedText] = useState('')
+  const [errorText, setErrorText] = useState<string | null>(null)
+  // 收尾统计：done 事件带的 session_id / 耗时 / token 数。
+  const [summary, setSummary] = useState<DoneEventV | null>(null)
+  // 当前提问。标题要从它取——后端返回的正文不含标题。
+  const [question, setQuestion] = useState('')
 
-  // 用 ref 保存 timer，cleanup 集中在下面的 effect 里统一清。
-  const nodeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const typeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // 中断用的 AbortController：用户重问或卸载页面时取消上一次请求。
+  const abortRef = useRef<AbortController | null>(null)
 
   const handleSelectNode = useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
     setInspectorOpen(true)
@@ -117,67 +127,72 @@ export default function ExplorePage() {
     setInspectorOpen(false)
   }, [])
 
-  const handlePromptSubmit = useCallback((value: string) => {
-    const trimmed = value.trim()
-    if (!trimmed) return
-    if (runState === 'running') return
-    setPromptValue('')
+  const run = useCallback(async (question: string) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     setNodes(INITIAL_NODES)
     setStreamedText('')
+    setErrorText(null)
+    setSummary(null)
+    setQuestion(question)
     setRunState('running')
-  }, [runState])
+
+    try {
+      await apiStream('/api/v1/research/ask', { question }, (event) => {
+        const v = event.v as Record<string, unknown>
+        switch (event.type) {
+          case 'node': {
+            const nv = v as unknown as NodeEventV
+            setNodes((prev) => prev.map((n) => (n.id === nv.node_id ? applyNode(n, nv) : n)))
+            break
+          }
+          case 'delta': {
+            const dv = v as unknown as { text: string }
+            setStreamedText((prev) => prev + dv.text)
+            break
+          }
+          case 'error': {
+            const ev = v as unknown as { message: string }
+            setErrorText(ev.message)
+            break
+          }
+          case 'done':
+            setSummary(v as unknown as DoneEventV)
+            setRunState('completed')
+            break
+          // tool_call 事件暂不驱动 UI——InspectorDrawer 的 payload 结构
+          // 还是设计稿的 4 字段形状，接真实数据要一起改，留到下一步。
+          default:
+            break
+        }
+      }, controller.signal)
+      setRunState((prev) => (prev === 'running' ? 'completed' : prev))
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setErrorText(err instanceof Error ? err.message : '连接失败')
+      setRunState('completed')
+    }
+  }, [])
 
   const handleSlashSelect = useCallback((cmd: SlashCommand) => {
     setPromptValue(`${cmd.cmd} `)
   }, [])
 
-  /** 持有运行期 timer 的 effect：unmount 或 runState 变化时统一 cleanup。 */
-  useEffect(() => {
-    if (runState !== 'running') return
+  const handlePromptSubmit = useCallback(
+    (value: string) => {
+      const trimmed = value.trim()
+      if (!trimmed) return
+      if (runState === 'running') return
+      setPromptValue('')
+      void run(trimmed)
+    },
+    [runState, run],
+  )
 
-    // 节点推进：每 800ms 把下一个 pending 提为 active。
-    const nodeTimer = setInterval(() => {
-      setNodes((prev) => {
-        const stillPending = prev.some((n) => n.lifecycle === 'pending')
-        if (!stillPending) {
-          // 全部跑完：把最后 active 标 completed，等下个 tick 退出循环。
-          return finalize(prev)
-        }
-        return advance(prev)
-      })
-    }, 800)
-    nodeTimerRef.current = nodeTimer
-
-    // 打字机：每 30ms 追加 streamedText 的下一个字符。
-    const typeTimer = setInterval(() => {
-      setStreamedText((prev) => {
-        if (prev.length >= STREAM_TARGET.length) return prev
-        return STREAM_TARGET.slice(0, prev.length + 1)
-      })
-    }, 30)
-    typeTimerRef.current = typeTimer
-
-    return () => {
-      clearInterval(nodeTimer)
-      clearInterval(typeTimer)
-      nodeTimerRef.current = null
-      typeTimerRef.current = null
-    }
-  }, [runState])
-
-  // 当打字机追平 + 所有节点都 completed 时，把 runState 切到 completed。
-  useEffect(() => {
-    if (runState !== 'running') return
-    const allCompleted = nodes.every((n) => n.lifecycle === 'completed')
-    if (allCompleted && streamedText.length >= STREAM_TARGET.length) {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-      setRunState('completed')
-    }
-    // set-state-in-effect 指得对：runState 本可由 nodes/streamedText 派生
-    // （useMemo 算 completed），不必存成 state 再在 effect 里同步。
-    // 这里是 W1 mock 演示逻辑，Day 3 接真实 SSE 后 runState 会由流事件
-    // 驱动、无法派生，这个 effect 自然消失。届时一并清理。
-  }, [runState, nodes, streamedText])
+  // 卸载时中断挂起的请求，否则组件没了 fetch 还在跑。
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   return (
     <div className={`${styles.shell} ${inter.className}`}>
@@ -187,7 +202,24 @@ export default function ExplorePage() {
         {/* Center column: DAG + Streaming Report */}
         <main className={styles.center}>
           <AgentDAG onSelectNode={handleSelectNode} nodes={nodes} />
-          <StreamingReport onSelectCitation={handleSelectCitation} streamedText={streamedText} />
+          {errorText && (
+            <p role="alert" className={styles.errorBanner}>
+              {errorText}
+            </p>
+          )}
+          {summary && (
+            <p className={styles.runSummary}>
+              会话 {summary.session_id.slice(0, 8)} · {summary.turns} 轮 ·{' '}
+              {(summary.elapsed_ms / 1000).toFixed(1)} 秒 · 输入 {summary.input_tokens} / 输出{' '}
+              {summary.output_tokens} tokens{summary.truncated && ' · 已截断'}
+            </p>
+          )}
+          <StreamingReport
+            onSelectCitation={handleSelectCitation}
+            streamedText={streamedText}
+            query={question || undefined}
+            title={question ? `${question} · 研究报告` : undefined}
+          />
         </main>
 
         {/* Right inspector (collapsible) */}
@@ -213,3 +245,4 @@ export default function ExplorePage() {
     </div>
   )
 }
+

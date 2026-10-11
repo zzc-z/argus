@@ -47,3 +47,24 @@
 .bottomInner {
   pointer-events: auto;
 }
+
+/* 错误横幅：流中途失败时给出可读原因，不吞掉。 */
+.errorBanner {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgb(239 68 68 / 30%);
+  background: rgb(239 68 68 / 10%);
+  color: #fca5a5;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* 收尾统计：done 事件带的轮次 / 耗时 / token。 */
+.summary {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
