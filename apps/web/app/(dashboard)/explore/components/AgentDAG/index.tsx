@@ -27,10 +27,22 @@ export function AgentDAG({
   elapsed,
   tokens,
 }: AgentDAGProps) {
-  // Highlight rail stops at the position of the active node (88px hardcoded
-  // mirrors the design: rail covers nodes 1..active).
+  // 高亮轨道停在 active 节点上。高度实测得出而不是写死：行高由 CSS
+  // padding + 字体决定，改样式时这个数字会跟着失配（之前写死 44，
+  // 实际行高是 30，轨道伸到列表外面）。
   const activeIndex = nodes.findIndex((n) => n.lifecycle === 'active')
-  const highlightHeight = activeIndex >= 0 ? `${activeIndex * 44 + 24}px` : '0px'
+  const listRef = React.useRef<HTMLDivElement>(null)
+  const [rowHeight, setRowHeight] = React.useState(0)
+  // 用 useEffect 而不是 useLayoutEffect：后者在 SSR 阶段会告警
+  // 「在服务端渲染时不能调用 useLayoutEffect」。也不能用 useMemo——
+  // 渲染时 listRef.current 还是 null，算出来恒为 0。
+  React.useEffect(() => {
+    const first = listRef.current?.querySelector('.' + styles.row)
+    setRowHeight(first ? first.getBoundingClientRect().height : 0)
+  }, [nodes.length])
+  // 轨道从 timeline 顶 +19px（第一个圆心，实测值）起，画到第 active 个圆心。
+  const highlightHeight =
+    activeIndex >= 0 && rowHeight > 0 ? `${activeIndex * rowHeight + 19}px` : '0px'
 
   return (
     <section className={styles.section}>
@@ -55,7 +67,7 @@ export function AgentDAG({
       </div>
 
       {/* Timeline */}
-      <div className={styles.timeline}>
+      <div className={styles.timeline} ref={listRef}>
         {/* Background rail */}
         <div className={styles.rail} aria-hidden="true" />
         {/* Active highlight rail (covers nodes 1..active) */}

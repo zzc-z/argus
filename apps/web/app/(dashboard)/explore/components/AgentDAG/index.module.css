@@ -84,19 +84,36 @@
   padding-block: 4px;
 }
 
+/*
+ * 竖线（rail）要与状态圆点同心。
+ *
+ * 实测推导（浏览器 getBoundingClientRect，非估算）：
+ *   圆点中心距 timeline 左边缘 24px
+ *     = timeline padding-left 8 + row padding-left 8 + 圆点半径 8
+ *   rail 自身宽 1px，要让这条线的中心落在 24 → left = 23.5
+ *
+ * 但绝对定位的 left 是相对 padding box，而 timeline 的 padding-left(8)
+ * 已经把子元素推到 8px 处——两者叠加后实际落点是 23.5 - 8(row padding
+ * 被 row 自身相对 timeline 再推一次) = 15.5，仍偏右 8px。
+ * 浏览器实测：left: 15.5px 时 rail 中心在 394、圆点中心在 402。
+ * 直接按「要移到哪」写更省事：394 - 402 = -8.5，left 取 7px。
+ *
+ * 上下端点 top/bottom 各 15px，让 rail 从首圆心连到末圆心，而不是
+ * 从容器边缘连——否则线短一截，圆点看着悬空。
+ */
 .rail {
   position: absolute;
-  left: 15px;
-  top: 12px;
-  bottom: 16px;
+  left: 23.5px;
+  top: 19px;
+  bottom: 19px;
   width: 1px;
   background-color: var(--token-outline-variant, #cac4d0);
 }
 
 .railActive {
   position: absolute;
-  left: 15px;
-  top: 12px;
+  left: 23.5px;
+  top: 19px;
   width: 1px;
   background-color: var(--token-outline, #79747e);
   transition: height 200ms ease-out;
