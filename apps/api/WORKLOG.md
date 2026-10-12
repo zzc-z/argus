@@ -1,11 +1,188 @@
 # Argus API 开发工作日志
 
 > 用途：上下文压缩后据此恢复开发状态。**最新的章节在顶部**。
-> 最后更新：2026-10-13（W2 Day 10 完成）
+> 最后更新：2026-10-13（W2 Day 11 完成）
 
 ---
 
-# 🔴 最新：W2 Day 10 完成（混合检索已通）
+# 🔴 最新：W2 Day 11 完成（Citation Builder + 本地检索接进 agent）
+
+## 进度
+
+W1 全完成，W2 Day 9 + 10 + 11 完成。**332 tests 全绿**（Day 10 结束时 296）。
+mypy strict 36 文件零问题，ruff 零告警。
+
+## 这一轮把什么接上了
+
+Day 9/10 建好的切片 / 向量 / BM25 索引，在 Day 11 之前**查询侧一个都调不到**——
+`run_agent` 只认 `tavily_search`，用户上传的 PDF 完全没进回答。现在闭环了：
+
+    上传 PDF → 摄取建索引 → 用户提问 → agent 调 local_search
+      → 混合检索命中切片 → Citation Builder 编 [n] 号
+      → 模型据此写作并标引用 → 前端拿到 reference 事件渲染角标
+
+## 新增文件
+
+| 文件 | 作用 |
+|---|---|
+| `app/services/citation.py` | `ReferenceTable`（编号分配器）+ `render_evidence` + `citation_rules` |
+| `tests/test_citation.py` | 19 条，编号与渲染 |
+| `tests/test_local_search.py` | 11 条，工具接线与私域隔离 |
+
+## 实测结论（本轮踩到的坑）
+
+### 1. 引用编号必须跨多次工具调用稳定
+
+模型完全可以连续调两次 `local_search`（「先查财务数据，再查产品规格」）。
+如果每次调用各自从 1 开始编，正文里第一段的 `[1]` 指向财务数据、第三段的
+`[1]` 却指向产品规格——**而且不会报任何错**，因为 `[1]` 一直是合法字符串，
+只是指错了地方。症状是「用户点角标跳到的原文莫名其妙」。
+
+所以 `ReferenceTable` 按 chunk_id 记账：已发过号的复用，新切片才取下一个号。
+顺带解决去重——同一切片被两轮召回时不占两个号。
+
+放在 `ToolContext` 里由 agent 循环持有，**不放模块级全局**：SSE 并发时
+两个请求会互相串号。
+
+### 2. ⚠️ 我读错了 FastAPI 源码，session 方案整个是错的
+
+**这一条最重要，因为它是「以为自己验证过了」。**
+
+CR 指出 `_stream` 自己开的 session 绕过了 `dependency_overrides`（`conftest`
+的首要约定就是测试绝不碰开发库）。我确认了这点，但**对成因的判断搞反了方向**，
+于是写了 `asynccontextmanager(get_session)()` 并在 docstring 里论证「这样
+override 就能换掉」——实测证明 override 根本没被调用。
+
+真正的事实（用 TestClient 跑完整 ASGI 栈实测，不是读源码猜的）：
+
+```
+dep OPEN → gen yield0 query=1 → yield1 query=1 → yield2 query=1
+→ gen done → dep CLOSED → CLIENT 收到全部 chunk
+```
+
+**端点注入的 session 在整个流期间完全可用**，三次真实 SQL 查询都跑通了。
+
+错在哪：`routing.py:147-152` 有两层 `AsyncExitStack`——
+
+```python
+async with AsyncExitStack() as request_stack:      # 外层
+    scope["fastapi_inner_astack"] = request_stack
+    async with AsyncExitStack() as function_stack:  # 内层
+        response = await f(request)
+    await response(scope, receive, send)            # ← 只有内层在此之前出栈
+```
+
+内层确实早关，但 `Depends()` 默认 `scope="request"`，依赖挂的是**外层**
+（`dependencies/utils.py:664-667`：`use_astack = request_astack`），外层在响应
+发完才关。只有显式 `Depends(scope="function")` 才早关。
+
+**FastAPI 0.118.0 把「yield 依赖提前关闭」当 bug revert 了**，release notes
+的原话举的例子就是这个场景：
+
+> if you had a database session in a dependency with `yield`, the
+> `StreamingResponse` would not be able to use that session while streaming data
+> because the session would have already been closed
+
+本项目装的是 **0.142.2**（不是 pyproject 里写的 `>=0.141` 的某个旧版）。
+
+**教训**：读源码看到「某个 stack 在某行之前出栈」就下结论，是把两件事混了。
+「内层 stack 早关」和「依赖挂在内层」是两回事，后者才是关键。改之前先写个
+TestClient 实测脚本，10 行代码能验的事不该靠读源码推断。
+
+最终方案就是**用端点注入的 `db`**——它走 `Depends()` 求解，override 才生效。
+`tests/test_research_router.py` 里有两条测试守着这个：
+`test_agent_gets_the_override_session`（拿到的是不是测试库那个对象）与
+`test_agent_session_is_usable_during_stream`（生成器里能不能真的执行查询）。
+
+**连接占用仍然存在**（db 活满 30-60 秒，pin 住池里一个连接）——那是
+`scope="request"` 的既定行为，不是 bug。`MAX_CONCURRENT_STREAMS = 4` 是兜底。
+上量前要改的话，方向是「每单位工作一个 session，跨边界只传 ID」
+（tiangolo 与 YuriiMotov 在两个 issue 里指向同一个方向）。
+
+### 3. jieba + BM25 的 OR 语义让「无关查询」照样有命中
+
+以为「完全无关的词」是零命中，实际不是：
+
+```
+tokenize('完全无关的词') -> 完全 无关 的 词
+tokenize('营业收入')    -> 营业 收入
+```
+
+BM25 查询串用 `OR` 连接所有词（Day 10 的设计，见 `bm25.py` 模块 docstring），
+所以「的」「词」这类单字照样命中语料。要真的零命中只能用单个乱码词
+（`zzzqqqxyz`）。写零命中测试时必须先验分词结果，不能凭直觉造词。
+
+### 4. 前端早就有 `Citation` 契约了，别另立一套
+
+`apps/web/app/(dashboard)/explore/mock.ts` 里已经定义了：
+
+```ts
+export interface Citation {
+  id: number
+  sourceTitle: string
+  url: string
+  date: string
+}
+```
+
+`InspectorDrawer.buildCitationPayload` 直接吃这个形状。第一版后端发的是
+`n` / `title` / `source_id`，对不上——前端得写一层转换才能用，而两边字段名
+不一致时那个转换迟早会漏。现在 `Reference.to_citation()` 同时给两种命名
+（`n` + `id`、`title` + `sourceTitle`），后端内部的检索语义用前者，
+前端契约用后者。`tests/test_citation.py` 里有 5 条测试锁住这个对应关系。
+
+`url` / `date` 这轮没给：本地资料是上传的 PDF，没有 URL 也没有发表日期
+（`Source` 上只有 `created_at`）。前端只用来显示，缺了不会崩——但**编一个
+日期会骗用户**，所以宁可不发。
+
+### 5. 端到端冒烟第一次写错了，两次都是测试的问题不是代码的问题
+
+- **PDF 中文提取成了 `···`**：造 PDF 时用了 `insert_text` 的默认字体，
+  没有 CJK 字形。换成英文内容或 `insert_textbox` + 支持 CJK 的字体。
+- **三个查询返回顺序完全一样**：一开始把三段内容用 `\n\n` 拼起来，
+  总共 157 字 < `CHUNK_SIZE=512`，整份文档只切出 **1 片**。
+  1 个候选当然排不出差异——这不是排序坏了，是根本没得排。
+
+教训：**冒烟测试的样本必须先验证它能触发被测的那条路径**。
+第一次跑出来「三个查询结果一样」时，先怀疑样本构造，再怀疑代码。
+
+## 设计决策
+
+| 决策 | 理由 |
+|---|---|
+| 编号从 1 起，且由 `ReferenceTable` 统一分配 | 让模型自己编号必然错配；详见上文实测 1 |
+| `references` 返回**全量表**而非本轮增量 | 前端要的是整张映射表。第二次调用返回 `[1,2]` 是对的——第一片仍占 1 号 |
+| 证据块给完整正文，引用表只给 120 字 excerpt | 模型要看确切措辞才能引用；全放进 SSE 帧会膨胀（8 条 × 500 字 ≈ 4KB） |
+| `citation_rules` 显式写死「只能引用 [1]~[N]，严禁编造」 | 模型默认倾向是看到数字就顺手标一个。少了这段编造引用率明显上升 |
+| 上界取 `table.all` 长度而非本轮新增数 | 模型可能第三轮才首次用工具，拿本轮号数当上界会漏掉前两轮 |
+| `available_tools(has_local=False)` 摘掉 local_search | 没数据库连接时它必然执行不了；模型看不到就不会浪费一轮去调它 |
+| 工具顺序固定按 `ALL_TOOLS_NAMES` 声明序 | `set` 迭代顺序随 PYTHONHASHSEED 变，会让 prompt 缓存失效 |
+| 引用字段名对齐前端既有 `Citation` | 前端 `mock.ts` 已有 `{ id, sourceTitle, url, date }`，`InspectorDrawer.buildCitationPayload` 直接吃它。**另立一套字段名就得在前端多写一层转换，而那个转换迟早会漏**——WORKLOG 里本来就挂着这条警告 |
+
+## 变异测试结果
+
+| 变异 | 失败数 | 说明 |
+|---|---|---|
+| 编号不续编（每次从 1 重来） | 10 | 跨调用稳定性被守住 |
+| `local_search` 传 `user_id=0`（去掉私域过滤） | 5 | 会漏别人的资料，被守住 |
+| 证据块只给 excerpt 不给全文 | 1 | `test_evidence_full_body_not_excerpt` |
+
+## 端到端实测输出
+
+真实 3 页 PDF → 摄取出 3 片（页码分布 `[1,2,3]`）→ 三个查询各自命中正确的章节：
+
+```
+=== energy efficiency 与 Hopper 的差距  命中 3 条
+  p1 向量+BM25 :: Section 1. NVIDIA Blackwell raises datacenter energy efficie
+=== H200 的实测 QPS 是多少            命中 3 条
+  p2 向量+BM25 :: Section 2. H200 measured inference throughput is 100000 QPS
+=== quarterly revenue 增长多少          命中 3 条
+  p3 向量+BM25 :: Section 3. Quarterly revenue reached 3.21 billion USD
+```
+
+---
+
+# 🔴 W2 Day 10 完成（混合检索已通）
 
 ## 进度
 
@@ -263,22 +440,33 @@ langchain 的 `create_documents` 不返回字符偏移，而引用高亮必须�
    精度够用，要提精度再上（`_rrf_fuse` 已按 PRD 预留 top-50 召回）。
 5. **`Source.chunks` 的 lazy='selectin'** 会让每次查 source 都带出全部切片。
    列表页 `list_owned` 用不上，应该改成 `lazy='raise'` 或 `raiseload` + 显式查询。
+6. **SSE 长连接 pin 住一个 DB 连接 30-60 秒**——`Depends()` 默认
+   `scope="request"`，依赖活满整个响应（见 Day 11 实测 2，这是既定行为不是
+   bug）。连接池默认 `pool_size=5`，4 条并发 SSE 就占掉 4 个。
+   `MAX_CONCURRENT_STREAMS = 4` 是兜底，所以**当前不会**打穿池子。
+   上量前要改的话方向是「每单位工作一个 session，跨边界只传 ID」
+   ——不要改成 `Depends(scope="function")`，那会让流跑到一半 session 就关了。
+7. **`SYSTEM_PROMPT` 是写死的常量，还在指示模型调 `tavily_search`**，
+   完全没提 `local_search`。私有资料部署（没配 Tavily key）下，
+   `available_tools()` 摘掉 `tavily_search` 后模型会被指示去调一个它看不到的
+   工具，而 `local_search` 无人提及。**要改成按实际工具集动态拼接。**
 
-## 下一步：W2 Day 11-12（citation 溯源 + 前端接线）
+## 下一步：W2 Day 12（explore 页接线 + URL 抓取）
 
-Day 10 的混合检索已完成（见上），剩下的：
+Day 11 的 Citation Builder 与本地检索已完成（见上），剩下的：
 
-1. **Citation Builder**——给每条检索结果加 doc_id / chunk_id / page，
-   让前端引用能点回原文。`Retrieved` 已经带了 chunk + source，
-   缺的只是把它序列化进 SSE / agent 上下文
-2. **explore 页接上检索**——现在只走 Tavily 搜索，没用本地资料。
-   `app/gateway/research.py` 要加一个 `search_sources` 工具
+1. **explore 页接上后端流**——现在 `explore/page.tsx` 还是 `setInterval` +
+   硬编码字符串模拟整个流程。要改成 `fetch` + `ReadableStream` 消费
+   `POST /research/ask`，并处理新加的 `reference` 事件
+2. **点击角标跳转原文**——`Citation` 契约已对齐（见上），但
+   `InspectorDrawer` 里的 `extracted_facts` / `relevance_score` 现在是
+   硬编码，要换成 `reference` 事件里的真实字段
 3. **URL 抓取**——`POST /api/v1/sources/url` 现在只登记不抓取，
    要接 Tavily extract 或 Firecrawl
 4. **rerank**（PRD §8）——可选，先不做
 
-⚠️ 前端 citation 契约要看 `explore/components/InspectorDrawer` 的
-`buildCitationPayload`，别自己另立一套字段。
+⚠️ 前端 citation 契约已对齐到 `mock.ts` 的 `Citation`（见 Day 11 实测 4），
+Day 12 改前端时直接用后端发的字段，不要再改后端字段名。
 
 ---
 

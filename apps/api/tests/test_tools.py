@@ -28,6 +28,10 @@ def _with_tavily_key(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+def _raise_not_configured() -> object:
+    raise LLMNotConfiguredError("TAVILY_API_KEY 未配置")
+
+
 # ── URL 规范化 ────────────────────────────────────────────────
 
 
@@ -266,7 +270,40 @@ def test_available_tools_excludes_tavily_without_key(monkeypatch: pytest.MonkeyP
 def test_available_tools_includes_all_when_configured(
     monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
 ) -> None:
-    assert len(available_tools()) == 2
+    assert {t.name for t in available_tools()} == {
+        "tavily_search",
+        "local_search",
+        "dedup",
+    }
+
+
+def test_available_tools_drops_local_without_db(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
+    """没有数据库连接时摘掉 local_search——模型看不到就不会浪费一轮去调它。"""
+    names = {t.name for t in available_tools(has_local=False)}
+    assert "local_search" not in names
+    assert "tavily_search" in names
+
+
+def test_available_tools_drops_tavily_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tavily 没配时摘掉搜索工具，但本地检索要留着。"""
+    monkeypatch.setattr(
+        tools_module, "get_tavily_client", _raise_not_configured
+    )
+    names = {t.name for t in available_tools(has_local=True)}
+    assert names == {"local_search", "dedup"}
+
+
+def test_available_tools_order_is_stable(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
+    """工具顺序必须固定——set 的迭代顺序随 PYTHONHASHSEED 变，
+    同��份配置两次启动给出不同的 tools 数组会让 prompt 缓存失效。"""
+    first = [t.name for t in available_tools()]
+    second = [t.name for t in available_tools()]
+    assert first == second
+    assert first == ["tavily_search", "local_search", "dedup"]
 
 
 def test_tool_schemas_shape() -> None:

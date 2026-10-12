@@ -27,13 +27,16 @@ from app.services.stream import (
     DoneEvent,
     ErrorEvent,
     NodeEvent,
+    ReferenceEvent,
     ToolCallEvent,
 )
 
 # ── 假 agent ──────────────────────────────────────────────────
 
 
-async def _fake_agent_success(question: str) -> AsyncIterator[AgentEvent]:
+async def _fake_agent_success(
+    question: str, *, user_id: int, **_: Any
+) -> AsyncIterator[AgentEvent]:
     """吐一段正常的完整事件序列。"""
     yield NodeEvent(node_id="supervisor", lifecycle="active", detail="正在拆解问题意图")
     yield NodeEvent(node_id="supervisor", lifecycle="completed", elapsed_ms=2)
@@ -193,7 +196,7 @@ async def test_delta_text_is_chinese_not_escaped(client: TestClient, monkeypatch
 async def test_tool_call_event_reaches_client(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
     """工具调用事件要能穿过端点——前端要显示「正在搜索」。"""
 
-    async def _with_tool(question: str) -> AsyncIterator[AgentEvent]:
+    async def _with_tool(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
         yield ToolCallEvent(call_id="t1", phase="start", name="tavily_search")
         yield ToolCallEvent(
             call_id="t1", phase="end", name="tavily_search", ok=True, elapsed_ms=2100
@@ -213,13 +216,71 @@ async def test_tool_call_event_reaches_client(client: TestClient, monkeypatch: p
     assert calls[1]["v"]["elapsed_ms"] == 2100
 
 
+async def test_reference_event_reaches_client(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """引用表要能穿过端点——前端靠它把 ``[1]`` 渲染成可点角标。"""
+
+    async def _with_ref(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        yield ReferenceEvent(
+            references=[
+                {
+                    "n": 1,
+                    "chunk_id": 7,
+                    "source_id": 2,
+                    "chunk_index": 0,
+                    "page": 3,
+                    "title": "NVIDIA Q2 财报",
+                    "excerpt": "数据中心收入 392 亿美元",
+                    "recall": "向量+BM25",
+                }
+            ]
+        )
+        yield DeltaEvent(node_id="writer", text="数据中心收入 392 亿美元 [1]")
+        yield DoneEvent(
+            session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1
+        )
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _with_ref)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "问题"}) as resp:
+        frames = _frames(resp)
+
+    refs = [f for f in frames if f["type"] == "reference"]
+    assert len(refs) == 1
+    assert refs[0]["v"]["references"][0]["chunk_id"] == 7
+    assert refs[0]["v"]["references"][0]["page"] == 3
+
+
+async def test_reference_precedes_delta(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """引用表必须早于正文到达，否则用户读到 ``[1]`` 时角标还没准备好。"""
+
+    async def _with_ref(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        yield ReferenceEvent(references=[{"n": 1, "chunk_id": 7}])
+        yield DeltaEvent(node_id="writer", text="答案 [1]")
+        yield DoneEvent(
+            session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1
+        )
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _with_ref)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "问题"}) as resp:
+        types = [f["type"] for f in _frames(resp)]
+
+    assert types.index("reference") < types.index("delta")
+
+
 # ── 开流后的错误（改不了状态码，只能走事件）──────────────────
 
 
 async def test_error_event_when_agent_crashes(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
     """agent 抛异常要变成 error 事件，而不是 500 或裸断连接。"""
 
-    async def _boom(question: str) -> AsyncIterator[AgentEvent]:
+    async def _boom(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
         yield NodeEvent(node_id="supervisor", lifecycle="active")
         raise RuntimeError("循环崩了")
 
@@ -238,10 +299,120 @@ async def test_error_event_when_agent_crashes(client: TestClient, monkeypatch: p
     assert "循环崩了" not in json.dumps(frames, ensure_ascii=False)
 
 
+async def test_error_event_when_vector_engine_unavailable(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """向量库起不来也要变成 error 事件，不能裸 500。
+
+    ``get_vector_engine`` 是懒初始化的单例，首次调用才建连接——sqlite-vec
+    扩展加载失败、数据库文件不可写都在这一步抛。它在 try 块里的话前端
+    至少收得到 error 事件；挪出去就成了裸 500，前端连失败都判断不了。
+    """
+
+    def _boom() -> object:
+        raise RuntimeError("vec0 扩展加载失败")
+
+    async def _never(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        raise AssertionError("引擎挂了就不该进 agent")
+        yield  # pragma: no cover
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "get_vector_engine", _boom)
+    monkeypatch.setattr(research_module, "run_agent", _never)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "问题"}) as resp:
+        assert resp.status_code == 200
+        frames = _frames(resp)
+
+    errors = [f for f in frames if f["type"] == "error"]
+    assert len(errors) == 1
+    assert errors[0]["v"]["code"] == "internal_error"
+    assert "vec0" not in json.dumps(frames, ensure_ascii=False)
+
+
+async def test_stream_releases_slot_on_error(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """出错后并发槽必须归还，否则几次失败就把 4 个槽全占死。"""
+
+    async def _boom(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        raise RuntimeError("崩")
+        yield  # pragma: no cover
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _boom)
+
+    for _ in range(research_module.MAX_CONCURRENT_STREAMS + 2):
+        with client.stream("POST", "/api/v1/research/ask", json={"question": "q"}) as resp:
+            assert resp.status_code == 200, "槽没归还，第 N 次已经被 503 挡掉"
+
+
+async def test_agent_gets_the_override_session(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """agent 拿到的必须是测试库那个 session，不能是开发库。
+
+    这条守着 ``api_db`` fixture 的 override：一旦有人把 db 改成
+    ``SessionLocal()`` 或 ``asynccontextmanager(get_session)()``（两者都是
+    普通函数调用、绕过依赖求解器），override 就不生效，测试会静悄悄地
+    连到 ``argus.db`` 上去——症状是「测试全绿，但开发库被写了」。
+    """
+    seen: dict[str, object] = {}
+
+    async def _capture(
+        question: str, *, user_id: int, db: Any, **_: Any
+    ) -> AsyncIterator[AgentEvent]:
+        seen["db"] = db
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _capture)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "q"}) as resp:
+        assert resp.status_code == 200
+        resp.read()
+
+    assert seen["db"] is api_db, "agent 拿到的不是测试库 session——override 被绕过了"
+
+
+async def test_agent_session_is_usable_during_stream(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """流生成器跑的时候 session 必须还能执行查询。
+
+    ``Depends()`` 默认 ``scope="request"``，依赖挂在**外层** exit stack 上，
+    在响应发完之后才关闭（``dependencies/utils.py:664-667``）。内层
+    ``function_stack`` 早关是另一回事，别看成同一个——真踩过这个坑，
+    第一版误以为 session 在生成器跑之前就关了，于是自己开了一个，
+    结果绕过了 override、连上开发库。
+
+    有人把依赖改成 ``Depends(scope="function")`` 时这条会失败。
+    """
+    from sqlalchemy import text
+
+    rows: list[Any] = []
+
+    async def _query(
+        question: str, *, user_id: int, db: Any, **_: Any
+    ) -> AsyncIterator[AgentEvent]:
+        result = await db.execute(text("SELECT 1"))
+        rows.append(result.scalar())
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _query)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "q"}) as resp:
+        assert resp.status_code == 200
+        resp.read()
+
+    assert rows == [1], "生成器里 session 已经不能用了"
+
+
 async def test_error_is_last_frame(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
     """error 必须是最后一帧——前端靠它把界面收尾。"""
 
-    async def _boom(question: str) -> AsyncIterator[AgentEvent]:
+    async def _boom(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
         raise RuntimeError("挂了")
         yield  # pragma: no cover - 让它成为生成器
 
@@ -257,7 +428,7 @@ async def test_error_is_last_frame(client: TestClient, monkeypatch: pytest.Monke
 async def test_agent_error_event_passes_through(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
     """agent 自己发的 ErrorEvent 原样透传，不被端点重复包装。"""
 
-    async def _fail(question: str) -> AsyncIterator[AgentEvent]:
+    async def _fail(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
         yield ErrorEvent(code="llm_unavailable", message="模型服务暂时不可用，请稍后重试")
 
     await _login(client, api_db)
@@ -293,7 +464,7 @@ async def test_concurrency_limit_returns_503(
 ) -> None:
     """并发满时 503，且不会开流。"""
 
-    async def _never(question: str) -> AsyncIterator[AgentEvent]:
+    async def _never(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
         yield DoneEvent(  # pragma: no cover - 走不到
             session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1
         )
@@ -329,7 +500,7 @@ async def test_slots_released_after_stream(client: TestClient, monkeypatch: pyte
 async def test_slots_released_even_when_agent_crashes(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
     """agent 崩了也要归还槽位。"""
 
-    async def _boom(question: str) -> AsyncIterator[AgentEvent]:
+    async def _boom(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
         raise RuntimeError("崩")
         yield  # pragma: no cover
 

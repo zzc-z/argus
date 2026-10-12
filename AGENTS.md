@@ -76,6 +76,68 @@ uv run pytest -m smoke                    # 跑烟测
 uv run pre-commit install                 # 装 pre-commit hooks
 ```
 
+## 7.5 开发收尾流程（强制，2026-10-13 立）
+
+**每写完一批代码，必须依次走「质量门 → 测试 → CR」，缺一不可。**
+
+### 什么算「一批」
+
+由 Claude 按工作量自行划定，判据是**改动可以独立验证**。默认粒度：
+
+| 场景 | 一批 = |
+|---|---|
+| 单个功能 / 单个 commit 的功能 | 该功能的全部改动 |
+| 一个 sprint day | 一天的工作量 |
+| 一份 plan | plan 的一个阶段 |
+
+**不拆批的情况**：单批改动 ≤3 个文件，或只是纯文档/注释/配置调整——直接走质量门即可，不必起 CR。
+
+**必须拆批的情况**：改动跨越质量门之外的东西（schema、migration、鉴权、并发控制、事务边界）。
+
+### 三步流程
+
+```bash
+# 1. 质量门（apps/api）
+uv run ruff check app/ tests/ alembic/
+uv run mypy app/
+
+# 前端
+pnpm --filter web lint && pnpm --filter web tsc --noEmit
+
+# 2. 测试
+uv run pytest tests/ -q --no-header -p no:cacheprovider
+```
+
+两步都过 → 起 CR 审查（`reviewer-fresh` 代理，独立上下文只读审查）。
+
+CR 发现问题时：**修完重跑质量门 + 测试**，再复审一轮。CR 没发现严重/重要级问题才算这一批结束。
+
+### 为什么 CR 不省
+
+Claude 自己改完的代码，自己检查等于用同一套假设验同一套假设——盲区完全重合。CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类自检答案的盲区。
+
+**实证（2026-10-13，W2 Day 11）**：CR 报出 2 个严重 + 6 个重要问题，其中两个是我「以为验证过了」的：
+
+1. **绕过 `dependency_overrides`**——我自己开的 session 让测试静悄悄地连上开发库 `argus.db`，而 conftest 的首要约定就是测试绝不碰开发库。症状是「测试全绿」，没有任何报错。
+2. **读错 FastAPI 源码**——我看到 `function_stack` 在 `await response(...)` 之前出栈，就断定「依赖提前关闭」，于是自己开 session 并写了段 docstring 论证设计合理性。**而那个前提是错的**：`Depends()` 默认 `scope="request"`，依赖挂的是**外层** stack，要等响应发完才关。FastAPI 0.118.0 专门把这个行为 revert 过。
+
+第 2 条尤其说明问题：**读源码看到「某个 stack 在某行之前出栈」就下结论，是把「内层 stack 早关」和「依赖挂在内层」混成了一件事**。改这类东西之前先写个 10 行的 TestClient 实测脚本验一遍，比读源码推断可靠。
+
+本项目已用变异测试验证过测试的有效性（故意改坏代码，测试是否会失败）：
+
+| 变异 | 失败数 | 说明 |
+|---|---|---|
+| 引用编号不续编 | 10 | 只有测试能守住这类不变量 |
+| 去掉私域过滤 | 5 | 数据泄露防线 |
+| 证据块截断为 excerpt | 1 | — |
+
+**自检三连（CR 之前必做）**：
+
+1. 删掉一个未引用的 import / 走不到的 if 分支 / 三元死分支
+2. 「这里删一行会报错吗？不能 → 删得还不够」
+3. 同时存在的新旧两条路径 → 先删旧的
+4. **改动依赖外部行为时（框架版本、数据库语义、第三方 API），写实测脚本验一遍，别只读源码**
+
 ## 8. 设计 token 使用
 
 完整 token 速查表见 [apps/web/CONTRIBUTING.md § 设计 token](./apps/web/CONTRIBUTING.md)。

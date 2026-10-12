@@ -25,8 +25,10 @@ from typing import Any, cast
 from uuid import uuid4
 
 from anthropic import AsyncAnthropic
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.config import get_settings
+from app.services.citation import ReferenceTable
 from app.services.llm import get_anthropic_client
 from app.services.stream import (
     AgentEvent,
@@ -34,10 +36,17 @@ from app.services.stream import (
     DoneEvent,
     ErrorEvent,
     NodeEvent,
+    ReferenceEvent,
     TextSlicer,
     ToolCallEvent,
 )
-from app.services.tools import ToolSpec, available_tools, execute_tool, tool_schemas
+from app.services.tools import (
+    ToolContext,
+    ToolSpec,
+    available_tools,
+    execute_tool,
+    tool_schemas,
+)
 
 # ── 常量 ──────────────────────────────────────────────────────
 
@@ -47,11 +56,23 @@ MAX_OUTPUT_TOKENS = 4096  # 单轮输出预算。thinking 与正文共享，不�
 # 最后一轮强制收尾时传进去的空工具列表——模型看到空列表就不会再要工具。
 no_tools: tuple[ToolSpec, ...] = ()
 
+# 只写**跨工具的编排规则**，不写「有工具 X 可用」——那些已经在各自的
+# description 里了（见 app/services/tools.py 的 *_SPEC.description）。
+#
+# Anthropic 官方的分工是：工具的「是什么/何时用」属于 tool description，
+# system prompt 负责「when and when not to use」这类编排。重复写一遍是
+# 冗余 token，还会和 tools 数组脱节——写死在这里的 tavily_search 在
+# 没配 key 时并不存在，模型却被指示去调它。
+#
+# 下面第 2 条是**唯一**必须在 system prompt 里说的：它是跨两个工具的
+# 优先级顺序，任何单个 description 都承载不了这个信息。
 SYSTEM_PROMPT = """你是 Argus 的研究助手，回答用户的研究类问题。
 
 工作方式：
-- 需要最新数据、外部事实、具体数字时，调用 tavily_search 搜索，不要凭记忆作答。
-- 多次搜索后用 dedup 清理重复链接，避免把同一篇文章当成多份独立证据。
+- 你有若干可用工具，各工具的适用场景写在它自己的描述里，按描述选择。
+- 检索优先级：先用私有资料工具查用户自己的文档；它没有覆盖的部分，
+  再考虑联网搜索。私有资料是用户特意上传的，优先级高于公开搜索结果。
+- 检索到的链接用 dedup 清理，避免把同一篇文章当成多份独立证据。
 - 资料不足时，明确说明缺什么，不要编造数据或引用。
 - 最终回答用中文，结构清晰；涉及数据时写明来源。
 
@@ -151,12 +172,22 @@ class NodeTracker:
 # ── 主循环 ────────────────────────────────────────────────────
 
 
-async def run_agent(question: str) -> AsyncIterator[AgentEvent]:
+async def run_agent(
+    question: str,
+    *,
+    user_id: int,
+    db: AsyncSession | None = None,
+    vec_engine: AsyncEngine | None = None,
+) -> AsyncIterator[AgentEvent]:
     """跑一轮完整的研究流程，逐个产出事件。
 
     终止条件任一满足即停：模型不再要工具、轮数超上限、LLM 抛异常。
     无论怎么停，最后都会补一个 ``DoneEvent`` 或 ``ErrorEvent``——前端
     靠它收尾，缺了会一直转圈。
+
+    ``user_id`` 是私域检索的边界，没有它就查不了本地资料。
+    ``db`` / ``vec_engine`` 缺省时摘掉 ``local_search`` 工具——
+    测试里大量场景不接数据库，强行造连接比少一个工具更麻烦。
     """
     session_id = str(uuid4())
     started_at = time.monotonic()
@@ -164,8 +195,9 @@ async def run_agent(question: str) -> AsyncIterator[AgentEvent]:
 
     # 本地拼装提示词，让前端能看到「调度」这一步。
     yield tracker.activate(Stage.SUPERVISOR)
-    tools = available_tools()
-    prompt = _build_user_prompt(question, tools)
+    context = _build_context(user_id, db, vec_engine)
+    tools = available_tools(has_local=context is not None)
+    prompt = _build_user_prompt(question, tools, context is not None)
     _closing = tracker.complete()
     if _closing is not None:
         yield _closing
@@ -213,7 +245,7 @@ async def run_agent(question: str) -> AsyncIterator[AgentEvent]:
             for event in tracker.switch(Stage.RESEARCHER):
                 yield event
 
-            async for tool_event in _run_tools(result.tool_calls, tool_results):
+            async for tool_event in _run_tools(result.tool_calls, tool_results, context):
                 yield tool_event
 
             # Anthropic 协议：同一轮的多个 tool_result 必须打包进一条
@@ -339,14 +371,16 @@ async def _run_turn(
 async def _run_tools(
     tool_calls: list[dict[str, Any]],
     sink: list[dict[str, Any]],
+    context: ToolContext | None,
 ) -> AsyncIterator[AgentEvent]:
     """执行一轮里模型要的所有工具，产出 start/end 事件并往 sink 累积结果。
 
     execute_tool 保证不抛异常——工具失败会变成 ok=False 的 tool_result
     喂回模型，让它自己决定重试还是换路径，用户至少还能拿到答案。
 
-    sink 由调用方持有而不是模块级全局：SSE 是并发的，两个用户同时提问
-    时全局变量会让 tool_result 互相污染，模型拿到别人的搜索结果。
+    sink 与 context 都由调用方持有而不是模块级全局：SSE 是并发的，两个
+    用户同时提问时全局变量会让 tool_result 互相污染，模型拿到别人的
+    搜索结果。context 里的引用表同理——共用一个表会让两个请求串号。
     """
     for call in tool_calls:
         call_id = str(call.get("id", ""))
@@ -361,7 +395,7 @@ async def _run_tools(
         )
 
         started = time.monotonic()
-        outcome = await execute_tool(name, tool_input)
+        outcome = await execute_tool(name, tool_input, context)
         elapsed_ms = int((time.monotonic() - started) * 1000)
 
         yield ToolCallEvent(
@@ -372,6 +406,11 @@ async def _run_tools(
             elapsed_ms=elapsed_ms,
             preview=outcome.preview,
         )
+
+        if outcome.references:
+            yield ReferenceEvent(
+                references=[ref.to_citation() for ref in outcome.references],
+            )
 
         sink.append(
             {
@@ -386,17 +425,46 @@ async def _run_tools(
 # ── 辅助 ──────────────────────────────────────────────────────
 
 
-def _build_user_prompt(question: str, tools: tuple[ToolSpec, ...]) -> str:
-    """拼用户提示词。Tavily 没配时明说没有联网搜索。
+def _build_context(
+    user_id: int,
+    db: AsyncSession | None,
+    vec_engine: AsyncEngine | None,
+) -> ToolContext | None:
+    """能拿到数据库就建上下文，否则返回 None（对应「无本地检索」）。
+
+    每次调用新建一个 ``ReferenceTable``：编号是**每个请求独立**的，
+    共用会让两个并发请求的 ``[1]`` 指向不同切片。
+    """
+    if db is None or vec_engine is None:
+        return None
+    return ToolContext(
+        db=db,
+        vec_engine=vec_engine,
+        user_id=user_id,
+        citations=ReferenceTable(),
+    )
+
+
+def _build_user_prompt(
+    question: str,
+    tools: tuple[ToolSpec, ...],
+    has_local: bool,
+) -> str:
+    """拼用户提示词。工具不可用时明说，避免模型编造引用。
 
     不说的话模型会按「应该联网」的常识去编造引用——用户分不清哪些是
     查到的、哪些是模型想象的。
     """
     names = {spec.name for spec in tools}
-    if "tavily_search" in names:
+    notes: list[str] = []
+    if "tavily_search" not in names:
+        notes.append("未配置联网搜索工具")
+    if not has_local:
+        notes.append("无法检索你的私有资料")
+    if not notes:
         return question
     return (
-        f"{question}\n\n（注意：当前环境未配置联网搜索工具，"
+        f"{question}\n\n（注意：当前环境{'、'.join(notes)}，"
         "请基于已有知识回答，并说明信息可能不完整。）"
     )
 

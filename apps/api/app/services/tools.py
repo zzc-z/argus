@@ -18,6 +18,10 @@ from dataclasses import dataclass
 from typing import Any, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+
+from app.services import citation
+from app.services.citation import Reference, ReferenceTable
 from app.services.llm import LLMNotConfiguredError, get_tavily_client
 
 # ── 常量 ──────────────────────────────────────────────────────
@@ -32,6 +36,11 @@ RESULT_CONTENT_CHARS = 800
 # 全部搜索结果的总量上限。超了追加截断标记——静默截断会让模型误以为
 # 搜索只有这几条，编出「没有更多资料」的结论。
 RESULT_TOTAL_CHARS = 4000
+
+# 本地检索取几条切片。citation.MAX_REFERENCES 是 10，这里取 12 是为了给
+# RRF 融合后的一点重排留余量——超出 10 的会被引用表截掉，但模型仍能拿到
+# 排名靠前的那几条。
+LOCAL_SEARCH_TOP_K = 12
 
 # Tavily SDK 自带的超时（只管 HTTP 连接阶段）。
 TAVILY_TIMEOUT_SECONDS = 10.0
@@ -62,17 +71,42 @@ class ToolSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class ToolContext:
+    """工具执行所需的会话级依赖。
+
+    为什么要单独传而不是让工具自己去 ``get_session()``：那是 FastAPI 的
+    依赖注入，SSE 端点里拿不到——生成器跑的时候请求已经结束，依赖的生命周期
+    早就过了。连接必须由 agent 循环从网关层接进来传下去。
+
+    ``user_id`` 不能省：本地检索必须按用户收窄，这是私域隔离的唯一防线。
+    少了它，``local_search`` 会把所有人的资料混在一起返回。
+
+    ``citations`` 由 agent 循环创建并跨整轮循环持有——每次 ``local_search``
+    调用都必须共用同一个，否则正文里的 ``[1]`` 在不同段落指向不同切片。
+    """
+
+    db: AsyncSession
+    vec_engine: AsyncEngine
+    user_id: int
+    citations: ReferenceTable
+
+
+@dataclass(frozen=True, slots=True)
 class ToolOutcome:
     """一次工具执行的结果。
 
     ``content`` 是要喂回模型的文本（已裁剪）；``preview`` 是给前端看的
     简短摘要，几十字以内——完整内容已经在 SSE 的 delta 里流过了，
     检查器面板只需要一行说明。
+
+    ``references`` 是本次调用产出的引用表（本地检索才有）。模型看不到这个
+    字段，但 agent 循环会把它透传给前端的 ``reference`` 事件。
     """
 
     ok: bool
     content: str
     preview: str = ""
+    references: tuple[Reference, ...] = ()
 
 
 # ── 工具 schema ───────────────────────────────────────────────
@@ -119,21 +153,60 @@ DEDUP_SPEC = ToolSpec(
     },
 )
 
-ALL_TOOLS: tuple[ToolSpec, ...] = (TAVILY_SEARCH_SPEC, DEDUP_SPEC)
+LOCAL_SEARCH_SPEC = ToolSpec(
+    name="local_search",
+    description=(
+        "在用户上传的私有资料里检索（PDF / 网页 / Markdown / 纯文本）。"
+        "问及用户自己的文档、特定公司或产品的具体数据、"
+        "或联网搜不到的内容时用它。\n"
+        "返回的每条素材都已编号，形如 [1] 标题（第 3 页，第 2 段），"
+        "引用这些内容时必须标上对应编号。"
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "检索关键词。用用户问题里的核心名词，"
+                "不要把整句问题塞进来——切面太宽会召回不相关的段落",
+            },
+        },
+        "required": ["query"],
+    },
+)
+
+ALL_TOOLS: tuple[ToolSpec, ...] = (TAVILY_SEARCH_SPEC, LOCAL_SEARCH_SPEC, DEDUP_SPEC)
+
+# 工具名序列，:func:`available_tools` 按它决定输出顺序。
+ALL_TOOLS_NAMES: tuple[str, ...] = tuple(spec.name for spec in ALL_TOOLS)
 
 
-def available_tools() -> tuple[ToolSpec, ...]:
+def available_tools(*, has_local: bool = True) -> tuple[ToolSpec, ...]:
     """按外部依赖是否就绪过滤工具列表。
 
     Tavily key 没配时摘掉 tavily_search，并让调用方在 system prompt 里
     说明「当前没有联网搜索」。这比让它撞满 MAX_TURNS 次同样的错误优雅得多——
     模型看不到这个工具，就不会调它。
+
+    ``has_local`` 为 False 时摘掉 local_search：没有数据库连接时它必然
+    执行不了，而模型看不到就不会浪费一轮去调它。
     """
+    names = set(ALL_TOOLS_NAMES)
     try:
         get_tavily_client()
     except LLMNotConfiguredError:
-        return (DEDUP_SPEC,)
-    return ALL_TOOLS
+        names.discard(TAVILY_SEARCH_SPEC.name)
+    if not has_local:
+        names.discard(LOCAL_SEARCH_SPEC.name)
+    by_name = {
+        TAVILY_SEARCH_SPEC.name: TAVILY_SEARCH_SPEC,
+        LOCAL_SEARCH_SPEC.name: LOCAL_SEARCH_SPEC,
+        DEDUP_SPEC.name: DEDUP_SPEC,
+    }
+    # 按 ALL_TOOLS 的声明顺序返回，不按 set 的迭代顺序——set 顺序随
+    # PYTHONHASHSEED 变，同一份配置两次启动给出的 tools 数组顺序不同，
+    # 会让 prompt 缓存失效。
+    return tuple(by_name[n] for n in ALL_TOOLS_NAMES if n in names)
 
 
 def tool_schemas(tools: tuple[ToolSpec, ...]) -> list[dict[str, Any]]:
@@ -151,16 +224,31 @@ def tool_schemas(tools: tuple[ToolSpec, ...]) -> list[dict[str, Any]]:
 # ── 执行分发 ──────────────────────────────────────────────────
 
 
-async def execute_tool(name: str, tool_input: dict[str, Any]) -> ToolOutcome:
+async def execute_tool(
+    name: str,
+    tool_input: dict[str, Any],
+    context: ToolContext | None = None,
+) -> ToolOutcome:
     """按名字执行工具，任何失败都转成 ok=False 的结果。
 
     不抛异常是刻意的：见模块 docstring 的「两条硬约束」第 1 条。
     未知工具名也要返回错误而不是 KeyError——模型偶尔会幻觉出不存在的
     工具名，让它看到明确的「没有这个工具」比崩掉整个流有用。
+
+    ``context`` 只有 ``local_search`` 需要。缺它时返回错误而不是崩溃——
+    见 :func:`_run_local_search` 的注释。
     """
     try:
         if name == TAVILY_SEARCH_SPEC.name:
             return await _run_tavily_search(tool_input)
+        if name == LOCAL_SEARCH_SPEC.name:
+            if context is None:
+                return ToolOutcome(
+                    ok=False,
+                    content="local_search 需要检索上下文，本次调用无法执行。",
+                    preview="缺少上下文",
+                )
+            return await _run_local_search(context, tool_input)
         if name == DEDUP_SPEC.name:
             return _run_dedup(tool_input)
     except LLMNotConfiguredError as exc:
@@ -294,6 +382,48 @@ def _format_search_results(data: dict[str, Any], requested: int) -> ToolOutcome:
         preview=f"共 {found} 条结果"
         + (f"，超长丢弃 {over_budget} 条" if over_budget else "")
         + (f"，按上限裁掉 {dropped_by_request} 条" if dropped_by_request else ""),
+    )
+
+
+# ── local_search 实现 ─────────────────────────────────────────
+
+
+async def _run_local_search(context: ToolContext, tool_input: dict[str, Any]) -> ToolOutcome:
+    """在用户私有资料里做混合检索，把命中切片压成带编号的素材块。
+
+    编号走 ``context.citations``——整轮循环共用同一个表，所以第二次调用
+    拿到的是续编的号，不会覆盖第一次的号。
+    """
+    from app.services import retriever  # 顶层 import 会成环：retriever → citation
+
+    query = str(tool_input.get("query", "")).strip()
+    if not query:
+        return ToolOutcome(ok=False, content="检索关键词不能为空。", preview="参数错误")
+
+    results = await retriever.retrieve(
+        context.db,
+        context.vec_engine,
+        query,
+        user_id=context.user_id,
+        limit=LOCAL_SEARCH_TOP_K,
+    )
+    if not results:
+        # 明确说「没有」而不是返回空串：模型看到空 tool_result 会以为
+        # 工具坏了，转而去编造或反复重试。
+        return ToolOutcome(
+            ok=True,
+            content="用户的资料库里没有检索到相关内容。请如实说明资料中没有，"
+            "不要凭猜测补充数字。",
+            preview="0 条命中",
+        )
+
+    pairs = context.citations.register(results)
+    rules = citation.citation_rules(context.citations)
+    return ToolOutcome(
+        ok=True,
+        content=f"{citation.render_evidence(pairs)}\n\n{rules}",
+        preview=f"命中 {len(results)} 条本地资料",
+        references=tuple(context.citations.all),
     )
 
 

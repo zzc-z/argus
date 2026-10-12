@@ -57,6 +57,20 @@ class ToolCallEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class ReferenceEvent:
+    """引用表下发。前端拿它把正文里的 ``[n]`` 渲染成可点角标。
+
+    为什么单独一个事件而不是塞进 ``done``：引用在正文**之前**就要到，
+    否则用户读到 ``[3]`` 时还没法点击。单独一个事件让前端在收到第一条
+    delta 之前就能把角标组件准备好。
+    """
+
+    references: list[dict[str, Any]]
+    """见 :class:`app.services.citation.Reference`。用 dict 而不是
+    dataclass 是因为 SSE 帧最终要 JSON 化，多包一层转换没意义。"""
+
+
+@dataclass(frozen=True, slots=True)
 class DoneEvent:
     """正常收尾。必须带 session_id 与 token 数——前端 DAG 头部要显示。"""
 
@@ -82,7 +96,9 @@ class ErrorEvent:
     retryable: bool = True
 
 
-AgentEvent = NodeEvent | DeltaEvent | ToolCallEvent | DoneEvent | ErrorEvent
+AgentEvent = (
+    NodeEvent | DeltaEvent | ToolCallEvent | ReferenceEvent | DoneEvent | ErrorEvent
+)
 
 
 def encode_frame(event: AgentEvent) -> bytes:
@@ -101,6 +117,7 @@ def _type_name(event: AgentEvent) -> str:
         NodeEvent: "node",
         DeltaEvent: "delta",
         ToolCallEvent: "tool_call",
+        ReferenceEvent: "reference",
         DoneEvent: "done",
         ErrorEvent: "error",
     }[type(event)]

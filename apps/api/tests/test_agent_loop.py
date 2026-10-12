@@ -77,7 +77,11 @@ def _stub_turns(
 
 
 async def _collect(question: str = "测试问题") -> list[AgentEvent]:
-    return [event async for event in run_agent(question)]
+    """跑一轮 agent。不传 db/vec_engine —— 那条路径由 test_local_search_* 覆盖。
+
+    不传时 agent 会摘掉 local_search 工具，所以这些用例只验循环本身。
+    """
+    return [event async for event in run_agent(question, user_id=1)]
 
 
 # ── 单轮直答 ──────────────────────────────────────────────────
@@ -357,16 +361,26 @@ def test_tracker_complete_on_idle_returns_none() -> None:
 # ── 提示词组装 ────────────────────────────────────────────────
 
 
-def test_prompt_warns_when_search_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prompt_warns_when_search_unavailable() -> None:
     """没配 Tavily 时要在提示词里明说，否则模型会编造引用。"""
-    monkeypatch.setattr(agent_module, "available_tools", lambda: ())
-    prompt = agent_module._build_user_prompt("最新政策是什么", ())
+    prompt = agent_module._build_user_prompt("最新政策是什么", (), has_local=False)
     assert "未配置联网搜索工具" in prompt
 
 
-def test_prompt_untouched_when_search_available() -> None:
-    """工具列表里有 tavily_search 时，提示词原样透传不加警告。"""
-    from app.services.tools import DEDUP_SPEC, TAVILY_SEARCH_SPEC
+def test_prompt_warns_when_local_unavailable() -> None:
+    """没有数据库连接时也要明说——否则模型会声称查过用户资料。"""
+    from app.services.tools import TAVILY_SEARCH_SPEC
 
-    prompt = agent_module._build_user_prompt("问题", (TAVILY_SEARCH_SPEC, DEDUP_SPEC))
+    prompt = agent_module._build_user_prompt("问题", (TAVILY_SEARCH_SPEC,), has_local=False)
+    assert "无法检索你的私有资料" in prompt
+    assert "未配置联网搜索工具" not in prompt
+
+
+def test_prompt_untouched_when_both_available() -> None:
+    """两路都可用时提示词原样透传，不加任何警告。"""
+    from app.services.tools import LOCAL_SEARCH_SPEC, TAVILY_SEARCH_SPEC
+
+    prompt = agent_module._build_user_prompt(
+        "问题", (TAVILY_SEARCH_SPEC, LOCAL_SEARCH_SPEC), has_local=True
+    )
     assert prompt == "问题"
