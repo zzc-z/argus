@@ -28,6 +28,7 @@ dependencies = [
     "authlib>=1.8",
     "itsdangerous>=2.2.0",
     "tavily-python>=0.8",
+    "python-multipart>=0.0.20",   # FastAPI 收 multipart 上传必需，缺了启动即报错
 ]
 
 [project.optional-dependencies]
@@ -94,19 +95,39 @@ disallow_untyped_defs = false
 module = ["tavily.*"]
 ignore_missing_imports = true
 
+# aiosqlite 同样没发 py.typed。但它比 tavily 关键——vectorstore.py 靠它的
+# _execute 把同步的 load_extension 丢进工作线程，那是个私有 API，加载失败
+# 时没有任何类型或运行时保护。所以对它的未标注调用一律放开，行为由
+# tests/test_vectorstore.py 实测保证。
+[[tool.mypy.overrides]]
+module = ["aiosqlite.*", "sqlite_vec.*"]
+ignore_missing_imports = true
+disallow_untyped_calls = false
+
+# pymupdf 1.28 带 py.typed（所以走 follow_imports 分析路径而非 ignore_missing_imports），
+# 但 Document.__iter__ 与 Page.get_text 都没有类型签名。mypy 的模块级 override
+# 管不到这里——因为 py.typed 让它检查函数体，所以只能在调用处 inline ignore。
+# 行为由 tests/test_parser.py 实测覆盖。
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-ra --strict-markers --tb=short"
+addopts = "-ra --strict-markers --tb=short -p no:faulthandler"
 markers = [
     "smoke: 冒烟测试——验证包可导入、运行时版本满足下限（CI 快速通道）",
 ]
+# -p no:faulthandler：pytest 内置的 faulthandler 插件与 pymupdf 的 SWIG C 扩展
+# （pymupdf/_mupdf.so）在 Python 3.14 上冲突，一import pymupdf 就段错误，
+# 且崩在 C 扩展初始化阶段——faulthandler 打印的栈也定位不到根因。
+# 它只在崩溃时打印栈，对我们没有净收益。
 filterwarnings = [
     "error",
     "ignore::DeprecationWarning:passlib.*",
     "ignore::DeprecationWarning:pydantic.*",
     # asynccontextmanager 在 Python 3.14 起建议用 AsyncGenerator 标注返回类型
     "ignore:.*AsyncIterator.*:DeprecationWarning",
+    # SWIG 生成的包装类型缺 __module__，pymupdf 1.28 在 Python 3.14 上必报
+    "ignore:builtin type .* has no __module__ attribute:DeprecationWarning",
 ]
 
 [tool.coverage.run]

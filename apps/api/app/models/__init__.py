@@ -5,6 +5,16 @@
 """
 
 from app.models.base import Base
+from app.models.source import DocumentChunk, Source, SourceStatus, SourceType
 from app.models.user import Account, Provider, User
 
-__all__ = ["Account", "Base", "Provider", "User"]
+__all__ = [
+    "Account",
+    "Base",
+    "DocumentChunk",
+    "Provider",
+    "Source",
+    "SourceStatus",
+    "SourceType",
+    "User",
+]

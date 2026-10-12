@@ -38,3 +38,7 @@ htmlcov/
 *.db-journal
 *.sqlite
 *.sqlite3
+# 用户上传的原始文件（services/storage.py 的 source_upload_dir 默认值）
+# 绝对不能入库：体积大，且里面是用户的私有资料
+apps/api/uploads/
+uploads/

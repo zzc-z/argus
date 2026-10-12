@@ -11,9 +11,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Account, Base, Provider, User
 
 
-def test_metadata_registers_both_tables() -> None:
-    """Base.metadata 里能同时看到 users 与 accounts。"""
-    assert sorted(Base.metadata.tables) == ["accounts", "users"]
+def test_metadata_registers_all_tables() -> None:
+    """Base.metadata 收录全部四张表。
+
+    Alembic autogenerate 靠遍历这份注册表比对实际结构，少 import 一个模块
+    就等于该表不进迁移——所以这里断言的是全集，不只是新增的那两张。
+    """
+    assert sorted(Base.metadata.tables) == [
+        "accounts",
+        "document_chunks",
+        "sources",
+        "users",
+    ]
 
 
 def test_user_columns_and_nullability() -> None:

@@ -14,7 +14,7 @@ import pytest_asyncio
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-from app.db import get_session
+from app.db import _enable_sqlite_foreign_keys, get_session
 from app.gateway.auth import OAUTH_STATE_COOKIE
 from app.main import app
 from app.models import Base
@@ -33,6 +33,9 @@ def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """内存 SQLite + 完整 schema，测试结束即销毁。"""
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    # 与 app.db 同理：SQLite 默认不执行外键，不开 pragma 的话
+    # CASCADE 相关的测试会「通过」而实际什么都没删。
+    _enable_sqlite_foreign_keys(engine.sync_engine)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
