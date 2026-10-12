@@ -1,37 +1,103 @@
 # Argus API 开发工作日志
 
 > 用途：上下文压缩后据此恢复开发状态。最新在底部。
-> 最后更新：2026-10-09
+> 最后更新：2026-10-12
 
-## 当前进度：W1 Day 2 完成（含登录闭环 3 项），Day 3 待开始
+## 当前进度：W1 Day 4 完成（单 agent + tool calling + SSE 全链路已通）
 
-### 已提交的 commit（本地master，领先 origin/master 4 个）
+### 已提交（本地 master，领先 origin/master 7 个）
 
 | commit | 内容 |
 |---|---|
-| `d2dfb14` | GitHub OAuth 登录 + argus JWT（Day 2 下半③） |
-| （未提交） | 登录闭环：`get_current_user` / `GET /api/v1/me` / `POST /api/v1/auth/logout` |
-| `6d64f03` | OAuth 登录编排：找或建用户 + 账号自动关联（Day 2 下半②） |
-| `756a3dd` | users/accounts 两层身份模型 + Alembic（Day 2 下半①） |
-| `a0eed9a` | 路由下沉到 app/gateway/，main.py 只做装配 |
-| `1bd1c41` | config / db / 健康检查骨架（Day 2 上半） |
+| `4d877a0` | **LLM client 单例 + Tavily 配置**（`app/services/llm.py`） |
+| `c4bae5c` | **工具层：`tavily_search` + `dedup`**（`app/services/tools.py`） |
+| `7b6784b` | **agent 主循环 + 事件契约 + 打字机切片**（`agent.py` / `stream.py`） |
+| `90756fc` | **SSE 端点 `POST /api/v1/research/ask`**（`gateway/research.py`） |
 
-**GitHub 推送失败**：网络连不上 github.com:443（75s timeout）。所有 commit 均已在本地，联网后 `git push origin master` 即可。
+前端 3 个 commit（`d584dbe` / `a260805` / `2b4027c` 等）把 explore 页接到上面
+这个端点上，已实跑验证。
 
-### 质量门状态（全绿）
+
+### 质量门（全绿）
 
 ```
 ruff    ✅ All checks passed
-mypy    ✅ Success: no issues found in 18 source files
-pytest  ✅ 49 passed
+mypy    ✅ no issues found in 24 source files（strict）
+pytest  ✅ 157 passed
 ```
 
-命令（在 `apps/api/` 下）：
-```bash
-uv run ruff check app/ tests/ alembic/
-uv run mypy app/
-uv run pytest tests/ -q --no-header -p no:cacheprovider
-```
+## ⚠️ 接续开发必读：本次会话的实测结论
+
+这些是**跑真实模型测出来的**，不是从文档推断的。重写相关代码前先看这段。
+
+### 1. LLM 服务商是「llmapi.pro 中转站」，不是 Anthropic 官方
+
+`ANTHROPIC_BASE_URL=https://llmapi.pro`。它的行为和官方 API 有两处**实测差异**，照官方文档写会踩：
+
+| 现象 | 官方 API | 中转站实测 |
+|---|---|---|
+| 文本流式粒度 | 逐 token | **整段缓冲**，243 字符只给 1 个 `text_delta` |
+| `model_dump()` 带 null 字段 | 严格模式会拒 | **接受**（`citations: null` 照发不误） |
+
+所以后端的打字机效果是**自己切的**（`TextSlicer`，见下），不是依赖上游分块。
+
+`exclude_none=True` 仍然保留——理由从「不这样会 400」改成「直连官方 API 更保守，当前零成本」。
+
+### 2. Sonnet 5 会返回 `thinking` block，且必须原样回传
+
+实测返回结构：`['thinking', 'text', 'tool_use']`。
+
+- **必须回传**：thinking 里带 `signature`，改动会被上游拒
+- **绝不能发给用户**：前端只要研究结论，原始 CoT 不该出站
+
+代码里 `messages.append({"role": "assistant", "content": result.content})` 就是干这个的，`agent.py` 顶部 docstring 写了完整理由。**这条约束由 `tests/test_turn_request.py` 守护**（12 个测试专门测 `_run_turn` 的请求构造与响应解析）。
+
+### 3. `_run_turn` 是最脆的一环，别改它不测
+
+它是 agent 与 SDK 之间**唯一**的接缝（`agent.py:292` 附近）。行覆盖率看不出来——大部分测试用 `monkeypatch` 把它替换掉了，coverage 会把「import 期执行过」算成已覆盖。
+
+代码审查时用**变异测试**发现的：把 signature 字段删掉，125 个测试照样全绿。
+
+### 4. `_is_word_char` 必须限定 ASCII
+
+修「`100,000` 被劈成两半」时用了 `isalnum()`——但**中文的 `isalnum()` 也是 `True`**，导致所有中文标点的切分全被跳过，退化成硬切，连 `QPS` 都劈成 `Q` + `PS`。
+
+现在有 `isascii()` 守卫，且 `LONG_TEXT` 测试数据里同时含中文和千分位。
+
+**教训**：修 bug 的测试必须覆盖**受影响的主路径**（中文），不能只覆盖触发场景（数字）。
+
+## 本次新增的代码约定
+
+| 位置 | 约定 |
+|---|---|
+| `services/llm.py` | client 单例用 `@lru_cache`，配 `clear_client_cache()` 供测试重置。缺 key 抛 `LLMNotConfiguredError`，不返回 `None` |
+| `services/tools.py` | 工具执行失败**不抛异常**，返回 `ok=False`。`except Exception` 分两类：网络类给「外部服务不可用」，其余给「工具内部出错，请勿重试」——代码 bug 不能报成用户参数问题 |
+| `services/stream.py` | 事件用 JSON envelope（`{"type": "...", "v": {...}}`）而非 SSE 原生 `event:` 行，消费端一条 `split("\n\n")` + `JSON.parse` 就能统一分发 |
+| `gateway/research.py` | 并发上限 4（信号量），超了直接 503 不开流。`X-Accel-Buffering: no` 防 Nginx 缓冲 |
+| `services/stream.py::TextSlicer` | 标点贪心切片，窗口放宽到 `chunk_size * 1.5`，搜索范围是窗口内**最靠后**的标点。粒度 24 字 |
+
+## 未完成 / 待办
+
+1. **`tool_call` 事件驱动 InspectorDrawer 的 Input/Output/Prompt/Tabs** —— 现在 Tools 标签页有数据了，另外三个标签仍共用同一份 `jsonText`
+2. **`ToolCall` 类型与后端 `ToolCallEvent` 的映射**已做，但 citation 溯源（`Citation`）还没接 SSE
+3. **`apps/api/scripts/dev_login.py`** —— 调试脚本（生成 JWT），未提交也未 gitignore
+4. **7 个 commit 未推送** —— 代理（APNetwork）需用户手动启动
+5. **Day 5-7**：W1 Demo + 前端剩余接线
+
+## 下一步：W1 Day 5-7 或 W2
+
+- **W1 收尾**：citation 溯源接 SSE、`DAG_STATS` 静态 import 清理、W1 Demo
+- **W2（重头）**：RAG 管线（PyMuPDF / Trafilatura / chunking / embedding）+ 多 agent 编排
+
+### W2 换 LangGraph 的判断依据（已与用户确认）
+
+现在手写的是「单循环」，`agent.py` 里 `_run_turn` 那 44 行胶水是唯一能被框架替代的部分。`tools.py`（365 行）和 `stream.py`（221 行）LangGraph 完全用不上——前端要的事件格式不是 LangGraph 的回调格式。
+
+**W2 换的理由**：状态在节点间传递、条件边、断点续跑、并行调度。这些手写就是几百行状态机。`prd/multi-agent-design.md` 已定义好 `ResearchState`。
+
+**换的时候保留**：`tools.py` 整个、`stream.py` 整个、`llm.py` 的 client 单例可复用。只重写 `agent.py` 的循环部分。
+
+⚠️ **W2 的一个已知冲突**：现在 `NodeTracker` 强制「任一时刻只有一个节点 active」（前端 `AgentDAG` 用 `findIndex` 算高亮轨道位置）。LangGraph 并行调度会天然产生多个 active，**这个约束要先解决**。
 
 ## 目录结构现状
 
@@ -129,13 +195,88 @@ pydantic-settings 走 python-dotenv 能容忍，功能正常；但 `grep '^\([A-
 - 外部 HTTP 用 `monkeypatch` 替换，不用 respx
 - OAuth 相关请求要加 `follow_redirects=False`
 
-## Day 3 预告（sprint-plan.md）
+## 本次会话的实测结论（重新开发前必读）
 
-单 agent + tool calling：
-| 内容 | 新概念 |
+### 1. 中转站 llmapi.pro 的真实行为
+
+不是照文档猜的，是实测的（`AsyncAnthropic(base_url=...)`）：
+
+| 事实 | 影响 |
 |---|---|
-| Anthropic SDK 接中转站 | async client、`base_url` 配置 |
-| 2 个工具（tavily_search / dedup） | tool calling 协议、JSON schema 定义 |
-| `/api/v1/research/ask` 端点 | SSE 流式（前端 explore 页要用） |
+| **支持 tool calling**，`stop_reason: tool_use` | 可用 |
+| **支持流式**，但会把 243 字符缓冲成 1 个 `text_delta` | 打字机效果必须后端自己补，已由 `TextSlicer` 承担 |
+| 流式能收到 `input_json_delta`（工具入参增量） | 可用 |
+| **模型返回 `thinking` block**（Sonnet 5 扩展思考） | 必须原样回传，见下条 |
+| `model_dump()` 漏 `exclude_none` **不会 400**（中转站接受 `citations: null`） | 但仍保留 `exclude_none=True`：直连官方 API 更保守 |
 
-模型配置已在 `config.py`：complex走 `claude-sonnet-5`，default 走 `claude-haiku-4-5`（Haiku 4.5 在 2026-10-15 退役，之后须升 Haiku 5）。
+**thinking + signature 是硬约束**：`signature` 是上游的防篡改签名，改一个字节下一轮就拒。
+必须 `final.model_dump(exclude_none=True)` 原样回传进 messages；但**不能**转发给用户
+（Anthropic 不建议向非受信端暴露原始 CoT）。这就是「不转发但必须存」的原因。
+
+### 2. `tavily-python` 0.8.5
+
+- `AsyncTavilyClient` 是真协程（`inspect.iscoroutinefunction` 为 True），不用自己包线程池
+- 支持注入 `httpx.AsyncClient` 复用连接池
+- 无 `py.typed`，已在 `pyproject.toml` 加 mypy override
+
+### 3. 前端硬约束：任一时刻最多一个节点 `active`
+
+前端 `AgentDAG` 用 `findIndex(n => n.lifecycle === 'active')` 算高亮轨道位置，
+两个 active 会直接算错。`NodeTracker.activate` 里的 `assert` 是强制这个约束的，
+不是装饰代码。
+
+**W2 接 LangGraph 时会冲突**——并行调度天然产生多个 active，必须先解决。
+
+### 4. 节点 id 会重复出现
+
+实测模型「先说话再调工具」时，事件序列是：
+`researcher → researcher → writer → researcher → writer...`
+（同一个 `researcher` 出现 3 次）。
+
+前端契约必须写死：**按到达顺序追加，不得按 id 去重**。
+
+### 5. SSE 协议
+
+单行 JSON envelope，不用 SSE 原生的多路 `event:`：
+
+```
+data: {"type": "delta", "v": {"node_id": "writer", "text": "..."}}
+
+data: {"type": "done", "v": {"session_id": "...", "elapsed_ms": 5432}}
+```
+
+五类事件：`node` / `delta` / `tool_call` / `error` / `done`。
+
+**开流后 HTTP 状态码改不了**——鉴权、参数校验都必须在开流前完成；
+开流后的失败只能走 `error` 事件。
+
+必须加 `X-Accel-Buffering: no`，否则 Nginx 会缓冲，SSE 攒成一坨最后吐出来。
+
+### 6. 未解决 / 待办
+
+| 事项 | 状态 |
+|---|---|
+| `TAVILY_API_KEY` | **未申请**。`tavily_search` 返回错误字符串，agent 照常跑完但搜不到东西 |
+| `stop_reason == "max_tokens"` 且同时有 tool_calls 时，`truncated` 标记走不到 | 已知 bug，未修（`agent.py`） |
+| service 层引入了 logger | 与既有约定「logging 归 gateway」冲突，**待用户定夺** |
+| 「打字机」无节奏控制 | `_slice_for_display` 是同步函数，片段同 tick 吐完 |
+| `tool_call` 事件驱动 InspectorDrawer | 已做（前端 `bd4e232`） |
+| W2 换 LangGraph | 保留 `tools.py`(365 行) / `stream.py`(221 行) / `llm.py` client 单例，只重写循环 |
+
+### 7. 代码审查发现并已修的 bug（别再犯）
+
+1. **`_is_word_char` 用 `isalnum()`，中文也算** → 所有中文标点切分失效，退化成硬切，连 `QPS` 都劈成 `Q` + `PS`。
+   必须限定 `isascii()`。
+2. **模块级 `_tool_results` 全局变量** → SSE 并发时两个用户的搜索结果互相污染。已改局部变量。
+3. **`canonicalize_url` 遇畸形 URL 抛 ValueError** → 一条坏 URL 让整批 dedup 结果消失。
+4. **截断计数 off-by-one**，且把「requested 裁掉的」和「字符预算裁掉的」混算 → 模型被告知错误数字。
+5. **`RunState` 死代码**：加了 `'error'` 但从不赋值，已删。
+6. **heredoc 在本环境会被 shell 截断**（含中文/长字符串时）→ 批量替换多次写坏代码。
+   长文本改用 Edit/Write 工具。
+
+### 8. 环境
+
+- 后端 venv 在 `apps/api/.venv`，**不在仓库根**
+- uvicorn 启动：`cd apps/api && uv run uvicorn app.main:app --port 8000`
+- 调 GitHub API 需要代理 `HTTP_PROXY=http://127.0.0.1:62531`（APNetwork 未运行时不要设）
+- `/tmp/jwt.txt` 等临时文件：`rm` 被 `dangerous-cmd-block` hook 拦，需手动删
