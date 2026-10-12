@@ -31,6 +31,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType
+from app.services import bm25
 from app.services.chunker import Chunk, ChunkingError, TextChunker
 from app.services.embedder import embed_or_none
 from app.services.parser import (
@@ -147,22 +148,25 @@ async def _store(
     chunks: Sequence[Chunk],
     vectors: list[list[float]] | None,
 ) -> None:
-    """落库：先写正文切片，再写向量。
+    """落库：正文切片 → BM25 全文索引 → 向量。
 
-    顺序有讲究——向量表用 ``document_chunks.id`` 当主键，必须先拿到
-    chunk 的自增 id。反过来做不到。
+    顺序有讲究——后两路的索引都用 ``document_chunks.id`` 当 key，
+    必须先拿到 chunk 的自增 id。反过来做不到。
+
+    BM25 索引在「没有向量」的分支**之前**建：全文检索不依赖嵌入服务，
+    没配 key 时它照样能用。只被 ``vectors is None`` 挡住的话，
+    未配置嵌入的部署就只剩向量一路，而那一路是空的——等于没建索引。
     """
-    # 建表要在最前面，不受「有没有向量」影响。没配 key 的那次摄取
-    # 也会建出空表，否则之后配好了 key 重跑，管线会在「表不存在」上崩。
-    await ensure_vector_table(vec_engine)
+    # 建表要在最前面，不受「有没有向量」影响。
+    await ensure_index_tables(vec_engine)
 
     # 重跑摄取时清掉旧切片。否则 chunk_index 唯一约束会撞车。
-    # 向量要**先**删：向量表没有外键，等 chunk 行没了就再也查不出
-    # 哪些 id 该清，只会留下永远查不到也删不掉的孤儿向量。
-    stale = await db.scalars(
-        select(DocumentChunk.id).where(DocumentChunk.source_id == source.id)
+    # 两张索引表都要**先**删：它们没有外键，等 chunk 行没了就再也查不出
+    # 哪些 id 该清，只会留下永远查不到也删不掉的孤儿数据。
+    stale = list(
+        await db.scalars(select(DocumentChunk.id).where(DocumentChunk.source_id == source.id))
     )
-    await purge_chunks_for_source(vec_engine, list(stale))
+    await purge_index_entries(vec_engine, stale)
     await db.execute(delete(DocumentChunk).where(DocumentChunk.source_id == source.id))
     await db.commit()
 
@@ -181,8 +185,10 @@ async def _store(
     db.add_all(records)
     await db.commit()
 
+    await bm25.index_chunks(vec_engine, [(r.id, r.content) for r in records])
+
     if vectors is None:
-        # 未配置嵌入 key：正文已入库，只是检索不到。
+        # 未配置嵌入 key：正文与全文索引已入库，只有语义检索是空的。
         # 不当失败——用户可能只想存档，等配好 key 再重跑摄取。
         logger.info("source %s 未生成向量（嵌入服务未配置）", source.id)
         return
@@ -193,10 +199,24 @@ async def _store(
     )
 
 
-async def purge_chunks_for_source(vec_engine: AsyncEngine, chunk_ids: Sequence[int]) -> None:
-    """删掉正文切片时同步删向量。向量表无外键，必须显式清。"""
+async def ensure_index_tables(vec_engine: AsyncEngine) -> None:
+    """确保两张虚表存在——摄取与检索的**唯一**建表入口。
+
+    虚表是运行时建的（Alembic 不认虚表），所以每个碰它们的入口都得先调这个。
+    之前分散在 ingest / retriever 两处各写一遍，已经漏了三次
+    （「no such table: chunk_embeddings」×2、「no such table: chunk_fts」×1），
+    所以收口成这一个函数。
+    """
+    await ensure_vector_table(vec_engine)
+    await bm25.ensure_fts_table(vec_engine)
+
+
+async def purge_index_entries(vec_engine: AsyncEngine, chunk_ids: Sequence[int]) -> None:
+    """删正文切片时同步清两张索引表。都没有外键，必须显式清。"""
     if not chunk_ids:
         return
+    await ensure_index_tables(vec_engine)
     ids = ",".join(str(i) for i in chunk_ids)
     async with vec_engine.begin() as conn:
         await conn.exec_driver_sql(f"DELETE FROM chunk_embeddings WHERE chunk_id IN ({ids})")
+        await conn.exec_driver_sql(f"DELETE FROM chunk_fts WHERE rowid IN ({ids})")

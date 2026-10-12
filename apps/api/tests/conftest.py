@@ -12,12 +12,18 @@ from urllib.parse import parse_qs, urlparse
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.db import _enable_sqlite_foreign_keys, get_session
 from app.gateway.auth import OAUTH_STATE_COOKIE
 from app.main import app
 from app.models import Base
+from app.services.vectorstore import create_vector_engine
 
 pytest_plugins: list[str] = []
 
@@ -42,6 +48,29 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         yield session
+
+    await engine.dispose()
+
+
+@pytest_asyncio.fixture
+async def shared_db(tmp_path) -> AsyncGenerator[tuple[AsyncSession, AsyncEngine], None]:
+    """业务表与向量索引在**同一个** SQLite 文件里。
+
+    混合检索的 ``source_ids`` 过滤是在向量库的 ``document_chunks`` 上做子查询，
+    两边不同库的话子查询永远查不到行——症状是「索引明明有数据却一条都检索不到」。
+    所以这两个 fixture 必须共用一个库，不能各自造。
+    """
+    db_path = tmp_path / "shared.db"
+    # 用 create_vector_engine 而不是 create_async_engine：它加载了 sqlite-vec 扩展，
+    # 而 vec0 虚表建在同一文件里。普通 engine 建 document_chunks 没问题，
+    # 但一旦碰到 ensure_vector_table 就报 "no such module: vec0"。
+    engine = create_vector_engine(f"sqlite+aiosqlite:///{db_path}")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        yield session, engine
 
     await engine.dispose()
 

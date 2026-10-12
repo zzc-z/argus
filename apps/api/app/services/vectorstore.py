@@ -157,6 +157,8 @@ async def knn_search(
 ) -> list[tuple[int, float]]:
     """KNN 检索，返回 [(chunk_id, distance)]，**distance 越小越近**。
 
+    表不存在时返回空而不是报错：一份资料都没摄取过的部署就该检索到 0 条。
+
     ## distance 是 L2 欧氏距离，不是余弦距离
 
     实测（sqlite-vec 0.1.9，单位向量，真实 cos=0.5304）：
@@ -180,6 +182,7 @@ async def knn_search(
     """
     if len(query) != EMBEDDING_DIM:
         raise ValueError(f"查询向量维度应为 {EMBEDDING_DIM}，收到 {len(query)}")
+    await ensure_vector_table(engine)
 
     params: dict[str, object] = {
         "vec": json.dumps(list(query)),
