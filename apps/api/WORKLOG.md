@@ -1,11 +1,197 @@
 # Argus API 开发工作日志
 
 > 用途：上下文压缩后据此恢复开发状态。最新在底部。
-> 最后更新：2026-10-12
+> 最后更新：2026-10-12（W2 Day 9 完成）
 
-## 当前进度：W1 Day 4 完成（单 agent + tool calling + SSE 全链路已通）
+---
 
-### 已提交（本地 master，领先 origin/master 7 个）
+# 🔴 最新：W2 Day 9 完成（RAG 摄取管线已通）
+
+## 进度
+
+W1 全部完成（单 agent + tool calling + SSE）。W2 Day 9 完成：RAG 摄取管线
+四步（解析 → 切片 → 嵌入 → 落库）已端到端跑通，HTTP 端点已就绪。
+
+```
+ruff    ✅ All checks passed
+mypy    ✅ no issues found in 33 source files（strict）
+pytest  ✅ 264 passed（W1 结束时 157）
+```
+
+## 新增文件
+
+| 文件 | 行数 | 职责 |
+|---|---|---|
+| `app/models/source.py` | 180 | Source / DocumentChunk / SourceType / SourceStatus |
+| `app/services/vectorstore.py` | 190 | sqlite-vec 接入：建表、写入、KNN 检索 |
+| `app/services/parser.py` | 140 | PDF / HTML / 纯文本三个解析器 |
+| `app/services/chunker.py` | 115 | 512 字切片 + 偏移量定位 |
+| `app/services/embedder.py` | 130 | 嵌入调用、批处理、维度校验 |
+| `app/services/ingest.py` | 180 | 四步编排 + 状态机 + 失败落库 |
+| `app/services/storage.py` | 75 | 上传文件落盘 |
+| `app/gateway/sources.py` | 200 | 6 个 HTTP 端点 |
+| `app/schemas/source.py` | 77 | 请求/响应模型 |
+| `alembic/versions/500a268181fc_*.py` | — | 建 sources / document_chunks |
+
+## ⚠️ 接续开发必读：本次的实测结论
+
+### 1. 嵌入走阿里云百炼，不走 OpenAI 官方
+
+**OpenAI 官方这条路走不通**（实测）：
+
+- `https://platform.openai.com` 屏蔽中国大陆 IP
+- 开通后 429 `credit_balance_exhausted`——key 有效但余额为 0
+- OpenAI **只收境外信用卡**，支付宝/微信/银联都不行
+
+**百炼能用**（实测）：OpenAI 兼容端点，支付宝可付，新用户送 100 万 token
+（90 天有效）。单价 0.0005 元/千 token，一份 50 页研报约 **2 毛钱**。
+实测 4 条文本 0.32 秒，跨语言检索正常（中文查询命中中文内容，英文查询也能中）。
+
+配置全走 `.env`，换服务商不改代码：
+
+```
+EMBEDDING_API_KEY = "sk-..."          # 百炼的 key
+EMBEDDING_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+EMBEDDING_MODEL = "text-embedding-v4"
+```
+
+**tokenPlus 查过了，不行**：`/embeddings` 端点存在但模型广场「向量」分类是 0，
+没有可用的嵌入模型。
+
+### 2. 百炼的 text-embedding-v4 必须显式传 dimensions
+
+不传时默认返回 **1024 维**，与索引表的 1536 不符 → `DimensionMismatchError`。
+显式传 `dimensions=1536` 才行（实测 1536 / 1024 都支持）。
+
+这正是维度校验的价值：没这道校验会把 1024 维向量写进 1536 维的 vec0 表，
+然后**检索结果全是乱码但不报任何错**。
+
+### 3. sqlite-vec 的加载：唯一可行入口是 `async_creator`
+
+**不能用 SQLAlchemy 的 `connect` 事件加载扩展**——这是本次最大的坑。
+
+事件回调里拿到的 `dbapi_conn.driver_connection` 是 `aiosqlite.Connection`，
+它的 `enable_load_extension` 是 **async** 方法。同步回调里调用只造一个协程对象
+就被丢弃，扩展**静默不加载**，之后所有 `vec_*` 调用报
+`no such function: vec_version`，且加载期一句错都没有。
+
+唯一可行入口：
+
+```python
+create_async_engine("sqlite+aiosqlite://", async_creator=lambda: _open(path))
+```
+
+### 4. vec0 返回的是 L2 欧氏距离，不是余弦距离
+
+实测（单位向量，真实 cos=0.5304）：`distance=0.9692`，而 `1-cos=0.4696`、
+`√(2-2cos)=0.9692`——与 L2 **逐位吻合**。
+
+排序不受影响：单位向量下 `L2 = √(2-2cos)` 是 cos 的单调递减变换。
+但**阈值不能跨度量套用**——「distance < 0.5」在两种度量下含义完全不同。
+换 pgvector 时记得改。
+
+由 `tests/test_vectorstore.py::test_distance_is_l2_not_cosine` 锁住。
+
+### 5. 嵌入不是确定性的
+
+同一段文本两次调嵌入服务，向量有 ~1e-3 量级浮点差异（累加顺序不同）。
+实测中三个切片两两余弦接近时（0.4679 vs 0.4485），这点噪声足以让 top1/top2 互换。
+
+**不要断言排名的绝对值**，只断言「正确答案在前列」。真实场景 top50 召回
+再 rerank，单条抖动不影响结果。
+
+### 6. 切片：不要传 PRD 那串自定义 separators
+
+PRD §4.1 写的 `["\n\n", "\n", "。", ...]` 在「中文研报段落 + chunk_size=50」
+时会切出一片孤立的 `。`——单字符片变成垃圾 embedding。
+
+注意这不是普遍现象（换尺寸/换文本都不出现），但默认配置没这个问题。
+用默认配置还有个好处：**overlap 看起来才正常**。自定义 separators 把标点留在
+片头，会吃掉重叠窗口（实测 `test_overlap_repeats_text_between_chunks` 失败）。
+
+### 7. SQLite 默认不执行外键——踩过
+
+`PRAGMA foreign_keys` 默认 **0**。不开它，模型里所有 `ondelete="CASCADE"`
+形同虚设：删用户会留下一堆孤儿 `sources` / `document_chunks`，而且**测试不会报警**
+（我第一个 CASCADE 测试就是这么「通过」的，实际什么都没删）。
+
+已在两处打开：`app/db.py::_enable_sqlite_foreign_keys`（挂 connect 事件）
+与 `tests/conftest.py::db_session`。对 Postgres 是 no-op，不用分支。
+
+### 8. pytest 的 faulthandler 插件与 pymupdf 在 Python 3.14 上冲突
+
+`-p no:faulthandler` 写进了 `pyproject.toml` 的 `addopts`。不加的话
+一 import pymupdf 就段错误，且崩在 C 扩展初始化期——faulthandler 打的栈
+也定位不到根因。它本来只在崩溃时打栈，对我们没净收益。
+
+同时加了 filterwarnings 规则忽略 SWIG 的 `has no __module__ attribute`。
+
+### 9. pymupdf 的实测行为（1.28.2）
+
+| 场景 | 行为 |
+|---|---|
+| 损坏文件 | `FileDataError` |
+| 加密文件 | `needs_pass` 为真；直接读报 `ValueError: document closed or encrypted` |
+| 空白页 | `get_text()` 返回空串，跳过即可（不是错误） |
+| 全无文字 | 要单独报「需 OCR」，不能含糊成「解析失败」 |
+
+`Document` 声明成 `Iterable[Never]`（没写 `__iter__` 签名），用
+`range(doc.page_count)` + `doc[i]` 绕开可迭代协议，mypy 就自洽了。
+
+### 10. 偏移量靠 `str.find` 顺序扫描定位
+
+langchain 的 `create_documents` 不返回字符偏移，而引用高亮必须要有。
+实测（中文/无分隔符连续字符/中英混排/重复段落）每个 chunk 都能在原文定位成功。
+
+必须用**带 cursor 的顺序 find**，朴素 `find` 会让重复段落全部贴到文首。
+
+### 11. `python-multipart` 是 FastAPI 收上传的硬依赖
+
+不装的话 FastAPI 启动即报错。已加进 `pyproject.toml`。
+
+## 设计决策（勿推翻）
+
+1. **向量库用 sqlite-vec，W3 换 pgvector**——dev 环境无 Docker、5432 未开。
+   向量逻辑全部收口在 `app/services/vectorstore.py`，换库只改这一个文件。
+   模型/parser/chunker/embedder/ingest 都不碰数据库细节。
+2. **向量不进 ORM 表**——存 `document_chunks`（正文，给全文检索）+ `chunk_embeddings`
+   （vec0 虚拟表）两处，靠 `document_chunks.id == chunk_embeddings.chunk_id` 对齐。
+   vec0 表没有列能放业务字段。
+3. **摄取状态逐阶段 commit**——前端要显示「正在切片 142/180」，状态存内存
+   刷新就没了。多几次写换可观测进度。
+4. **摄取是后台任务，不阻塞 HTTP**——50 页 PDF 要 30-60 秒。端点只建源就返回 201，
+   前端轮询状态端点。与 research 的 SSE 是两套机制（摄取不需要逐 token 反馈）。
+5. **失败要落库**——`status=failed` + `error_message`，不能只抛异常。
+   否则用户只看到请求超时就结束，无从重试。
+6. **解析器抽不出文字时抛错，不返回空串**——空串会让摄取「成功」入库，
+   然后检索时静默地什么都搜不到。扫描件单独报「需 OCR」。
+7. **上传文件名用 uuid4 + 净化后的扩展名**——绝不用用户上传的原名
+   （可能有 `../`、中文、超长、撞车）。
+8. **越权一律 404 不是 403**——403 等于确认了这个 id 存在，是信息泄露。
+
+## 已知缺口（不是设计，是没做）
+
+1. **`DELETE /sources/{id}` 不清原始文件与向量**——向量表没外键，DB 级联删不到。
+   当前用量下不影响正确性（检索按 chunk_id 回查，查不到就丢弃），但要补。
+2. **URL 建源只登记不抓取**——抓取要接 Tavily/Firecrawl，W2 Day 10 做。
+3. **没有任务队列**——进程重启会丢正在跑的摄取（status 卡在中间态）。
+   YAGNI：先这样，真需要时接 Redis + worker。
+4. **没有 BM25 混合检索与 rerank**——W2 Day 10 的事（PRD §7 / §8）。
+5. **`Source.chunks` 的 lazy='selectin'** 会让每次查 source 都带出全部切片。
+   列表页 `list_owned` 用不上，应该改成 `lazy='raise'` 或 `raiseload` + 显式查询。
+
+## 下一步：W2 Day 10
+
+- 检索服务：向量 + BM25 混合，RRF（k=60）合并去重
+- Citation Builder：给每条加 doc_id / chunk_id / page，前端引用可点击溯源
+- URL 抓取：接 Tavily 或 Firecrawl
+- explore 页接上检索——现在它只走 Tavily 搜索，没用本地资料
+
+---
+
+## 历史：W1 Day 4 完成（单 agent + tool calling + SSE 全链路已通）
+
+### 已提交（W1 Day 4 时的状态）
 
 | commit | 内容 |
 |---|---|
@@ -84,7 +270,7 @@ pytest  ✅ 157 passed
 4. **7 个 commit 未推送** —— 代理（APNetwork）需用户手动启动
 5. **Day 5-7**：W1 Demo + 前端剩余接线
 
-## 下一步：W1 Day 5-7 或 W2
+## 下一步（当时的，已完成）：W1 Day 5-7 或 W2
 
 - **W1 收尾**：citation 溯源接 SSE、`DAG_STATS` 静态 import 清理、W1 Demo
 - **W2（重头）**：RAG 管线（PyMuPDF / Trafilatura / chunking / embedding）+ 多 agent 编排
