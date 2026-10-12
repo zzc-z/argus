@@ -29,6 +29,14 @@ dependencies = [
     "itsdangerous>=2.2.0",
     "tavily-python>=0.8",
     "python-multipart>=0.0.20",   # FastAPI 收 multipart 上传必需，缺了启动即报错
+    # 中文分词：SQLite FTS5 自带分词器对中文全不可用（实测见 app/services/bm25.py）
+    "jieba>=0.42",
+    # ── RAG 管线（W2 Day 9/10）──
+    # 这三个早先是用 `uv pip install` 装的，没写进 pyproject——结果
+    # `uv sync` 会把它们卸掉，换台机器整个 RAG 直接 import 失败。
+    "pymupdf>=1.24",              # PDF 文本抽取
+    "langchain-text-splitters>=1.0",  # 递归字符切片
+    "sqlite-vec>=0.1.6",          # 向量检索扩展
 ]
 
 [project.optional-dependencies]
@@ -103,6 +111,11 @@ ignore_missing_imports = true
 module = ["aiosqlite.*", "sqlite_vec.*"]
 ignore_missing_imports = true
 disallow_untyped_calls = false
+
+# jieba 没发 py.typed。只用它的 cut()，无类型风险。
+[[tool.mypy.overrides]]
+module = ["jieba.*"]
+ignore_missing_imports = true
 
 # pymupdf 1.28 带 py.typed（所以走 follow_imports 分析路径而非 ignore_missing_imports），
 # 但 Document.__iter__ 与 Page.get_text 都没有类型签名。mypy 的模块级 override
