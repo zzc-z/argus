@@ -1,11 +1,94 @@
 # Argus API 开发工作日志
 
-> 用途：上下文压缩后据此恢复开发状态。最新在底部。
-> 最后更新：2026-10-12（W2 Day 9 完成）
+> 用途：上下文压缩后据此恢复开发状态。**最新的章节在顶部**。
+> 最后更新：2026-10-13（W2 Day 10 完成）
 
 ---
 
-# 🔴 最新：W2 Day 9 完成（RAG 摄取管线已通）
+# 🔴 最新：W2 Day 10 完成（混合检索已通）
+
+## 进度
+
+W1 全完成，W2 Day 9 + Day 10 完成。**296 tests 全绿**（W1 结束时 157）。
+
+```
+ruff    ✅
+mypy    ✅ 35 source files
+pytest  ✅ 296 passed
+```
+
+已推送到 origin/master（`ce7830c..78124dd`）。
+
+| commit | 内容 |
+|---|---|
+| `3ae4549` | **fix**：补齐 RAG 依赖声明 |
+| `fac9e5c` | BM25 全文检索（jieba + FTS5） |
+| `78124dd` | 混合检索（RRF k=60） |
+
+## ⚠️ Day 10 的实测结论（都是跑出来的，不是照文档）
+
+### 1. SQLite FTS5 自带分词器对中文全不可用——必须 jieba 预分词
+
+| 分词器 | 「能效」「营收」「算力」「功耗」 |
+|---|---|
+| `unicode61`（默认） | 整句当一个词，**0 命中** |
+| `trigram` | 要求 ≥3 字符，**所有 2 字词 0 命中** |
+
+2 字词恰好是中文技术词汇的主力。jieba 预分词后全部命中。
+PRD §7.2 写的是 Postgres 的 `to_tsvector('simple')`，在 SQLite 上完全用不上。
+
+### 2. contentless FTS5 不支持 DELETE
+
+`content=''` 省存储，但实测报 `cannot DELETE from contentless fts5 table`。
+重跑摄取必须能删旧条目，所以用普通 FTS5。
+
+### 3. BM25 漏同义词、向量漏专有名词——混合检索不是可选项
+
+jieba 把「营业收入」切成「营业 收入」，查「营收」交集为空，一条命中不了
+（2 字滑窗也救不了：原文滑窗是「业收」不是「营收」）。这类靠向量兜。
+
+反过来问「H200 的实测 QPS」，BM25 靠专有名词命中、向量排第二——靠 BM25 兜。
+端到端实测四组查询全对，这个互补关系是实测出来的，不是推演。
+
+### 4. RRF 而不是加权平均
+
+向量给 L2 距离（实测 0.0–1.3），BM25 给负分（−1 到 −10，**随语料规模漂移**）。
+归一化参数（min-max 要看当次候选集、z-score 要看语料统计）在两路各自的
+分布上都不稳定。RRF 只用排名，天然免疫量纲差异。
+
+### 5. 虚表是运行时建的（Alembic 不认），入口必须收口
+
+这个坑在 Day 10 **重复踩了三次**：`no such table: chunk_embeddings` ×2、
+`no such table: chunk_fts`、`no such module: vec0`。全新部署上用户一份资料
+都没摄取时必崩。现收口成 `ensure_index_tables()`，且 `bm25.search` /
+`index_chunks` / `vectorstore.knn_search` 各自兜底。
+
+### 6. `from x import f` 会让 monkeypatch 失效
+
+导入时绑定了函数对象，patch 模块属性对它无效。`retriever.py` 改成
+`embedder.embed_texts(...)` 模块级调用。**写测试打桩时要记住这条。**
+
+## Day 10 的设计决策
+
+1. **jieba 而非纯向量**——理由见实测 1
+2. **RRF k=60**——PRD §7.1 指定值
+3. **BM25 索引在「没有向量」的分支之前建**——全文检索不依赖嵌入服务，
+   没配 key 时照样能用。只被 `vectors is None` 挡住的话，未配置嵌入的
+   部署只剩空的那一路，等于没建索引
+4. **`shared_db` 测试 fixture**——业务表与向量索引必须在**同一个** SQLite
+   文件里，否则 `source_ids` 的过滤子查询永远查不到行。症状是「索引明明
+   有数据却一条都检索不到」
+5. **`retr...da` (PRIVATE_URL) `bm25.py` 的 `tokenize` 丢掉无字母数字的 token**——
+   纯标点（`，。%`）在 FTS5 里是分隔符，留着只会让 MATCH 表达式变脏
+
+### 变异测试（确认测试真在保护设计）
+
+- 去掉 `source_ids` 过滤 → **3 个测试失败**（泄露别人的 chunk）
+- 去掉 BM25 融合 → **2 个测试失败**
+
+---
+
+# W2 Day 9 完成（RAG 摄取管线已通）
 
 ## 进度
 
@@ -172,20 +255,82 @@ langchain 的 `create_documents` 不返回字符偏移，而引用高亮必须�
 ## 已知缺口（不是设计，是没做）
 
 1. **`DELETE /sources/{id}` 不清原始文件与向量**——向量表没外键，DB 级联删不到。
-   当前用量下不影响正确性（检索按 chunk_id 回查，查不到就丢弃），但要补。
-2. **URL 建源只登记不抓取**——抓取要接 Tavily/Firecrawl，W2 Day 10 做。
+   当前用量下不影响正确��（检索按 chunk_id 回查，查不到就丢弃），但要补。
+2. **URL 建源只登记不抓取**——抓取要接 Tavily/Firecrawl。
 3. **没有任务队列**——进程重启会丢正在跑的摄取（status 卡在中间态）。
    YAGNI：先这样，真需要时接 Redis + worker。
-4. **没有 BM25 混合检索与 rerank**——W2 Day 10 的事（PRD §7 / §8）。
+4. **没有 rerank**——PRD §8 的 cross-encoder 重排。当前 top-50 直接给模型，
+   精度够用，要提精度再上（`_rrf_fuse` 已按 PRD 预留 top-50 召回）。
 5. **`Source.chunks` 的 lazy='selectin'** 会让每次查 source 都带出全部切片。
    列表页 `list_owned` 用不上，应该改成 `lazy='raise'` 或 `raiseload` + 显式查询。
 
-## 下一步：W2 Day 10
+## 下一步：W2 Day 11-12（citation 溯源 + 前端接线）
 
-- 检索服务：向量 + BM25 混合，RRF（k=60）合并去重
-- Citation Builder：给每条加 doc_id / chunk_id / page，前端引用可点击溯源
-- URL 抓取：接 Tavily 或 Firecrawl
-- explore 页接上检索——现在它只走 Tavily 搜索，没用本地资料
+Day 10 的混合检索已完成（见上），剩下的：
+
+1. **Citation Builder**——给每条检索结果加 doc_id / chunk_id / page，
+   让前端引用能点回原文。`Retrieved` 已经带了 chunk + source，
+   缺的只是把它序列化进 SSE / agent 上下文
+2. **explore 页接上检索**——现在只走 Tavily 搜索，没用本地资料。
+   `app/gateway/research.py` 要加一个 `search_sources` 工具
+3. **URL 抓取**——`POST /api/v1/sources/url` 现在只登记不抓取，
+   要接 Tavily extract 或 Firecrawl
+4. **rerank**（PRD §8）——可选，先不做
+
+⚠️ 前端 citation 契约要看 `explore/components/InspectorDrawer` 的
+`buildCitationPayload`，别自己另立一套字段。
+
+---
+
+## W2 Day 10：混合检索（已提交）
+
+### 实测结论（都是跑出来的，不是照文档）
+
+**1. SQLite FTS5 的分词器对中文全不可用**
+
+| 分词器 | 「能效」「营收」「算力」「功耗」 |
+|---|---|
+| `unicode61`（默认） | 整句当一个词，0 命中 |
+| `trigram` | 要求 ≥3 字符，**所有 2 字词 0 命中** |
+
+2 字词恰好是中文技术词汇的主体。必须 **jieba 预分词 → FTS5 存词**
+（`app/services/bm25.py`）。装好后全部命中。
+
+**2. 不能用 contentless FTS5（`content=''`）**
+
+实测报 `cannot DELETE from contentless fts5 table`——它不支持 DELETE，
+而重跑摄取必须能删旧条目。
+
+**3. RRF 是对的选择，不是因为「业界流行」**
+
+两路量纲完全不同：向量给 **L2 距离**（实测 0.0-1.3），BM25 给**负分**
+（−1 到 −10，且随语料规模漂移）。加权平均要先归一化，而归一化参数
+（min-max 要看当次候选集、z-score 要看语料统计）在两路各自的分布上都不稳定。
+RRF 只用**排名**，天然免疫量纲差异。
+
+**4. 混合检索不是可选项**
+
+端到端实测：
+- 问「H200 的实测 QPS」→ BM25 靠**专有名词 H200** 命中
+- 问「股价最高到过多少」→ BM25 **完全没命中**（`b-`），全靠向量兜
+- 问「revenue grew」→ BM25 命中不了「营业收入」（jieba 切出「营业 收入」，
+  与「营收」交集为空）
+
+**向量漏专有名词，BM25 漏同义词。** 两路都要。
+
+### 踩过的坑
+
+| 坑 | 说明 |
+|---|---|
+| **虚表要 ensure，已漏三次** | 虚表运行时建（Alembic 不认），原先 4 个调用点各自 ensure，结果报过 `no such table: chunk_embeddings` / `chunk_fts` / `no such module: vec0`。现收口成 `ingest.ensure_index_tables()` 单一入口，且 `bm25.search` / `index_chunks` / `knn_search` 各自兜底 |
+| **`shared_db` fixture** | 业务表与向量索引必须在**同一个** SQLite 文件里。分两个库的话 `source_ids` 的过滤子查询永远查不到行——症状是「索引明明有数据却检索不到」 |
+| **`from x import f` 打桩无效** | 函数对象在导入时绑定，monkeypatch 模块属性对它没用。改用 `embedder.embed_texts(...)` 调用形式 |
+| **RAG 依赖装漏** | `pymupdf` / `langchain-text-splitters` / `sqlite-vec` 当初用 `uv pip install` 装的，没写进 `pyproject.toml`。`uv sync` 会卸掉它们——开发机正常，干净环境 import 失败。已补 |
+
+### 变异测试（确认测试真在保护设计）
+
+- 去掉 `source_ids` 过滤 → **3 个测试失败**（泄露别人的 chunk）
+- 去掉 BM25 融合 → **2 个测试失败**
 
 ---
 
