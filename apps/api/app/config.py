@@ -92,6 +92,34 @@ class Settings(BaseSettings):
     anthropic_critic_model: str | None = Field(default=None)
     anthropic_summarizer_model: str | None = Field(default=None)
 
+    # ── Embedding（RAG 检索用）────────────────────────────────
+    # 嵌入模型与聊天模型是两回事：它把文字变成 1536 个数字，不生成内容。
+    # OpenAI 官方只收境外信用卡，所以默认走阿里云百炼的 OpenAI 兼容端点
+    # （支付宝可付，新用户送 100 万 token，90 天有效）。
+    # 想换回官方把 base_url 留空、key 换成 sk- 开头的即可，代码不用动。
+    embedding_api_key: SecretStr | None = Field(default=None)
+    embedding_base_url: str | None = Field(
+        default="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        description="OpenAI 兼容端点。留空则用官方 https://api.openai.com/v1",
+    )
+    embedding_model: str = Field(
+        default="text-embedding-v4",
+        description="百炼的 text-embedding-v4 可选维度 1536；"
+        "OpenAI 官方对应模型名是 text-embedding-3-small",
+    )
+    embedding_dimensions: int = Field(
+        default=1536,
+        description="必须与 vectorstore.EMBEDDING_DIM 一致——维度写在建表 DDL 里，"
+        "改了要重建索引表",
+    )
+
+    # 原始文件存哪。存文件是因为摄取失败后用户要能重跑（可能只是没配 key），
+    # 不存就只能让用户重新上传。W3 换 S3/MinIO 时只改 services/storage.py。
+    source_upload_dir: str = Field(
+        default="./uploads",
+        description="上传文件目录，相对路径以 process cwd 为基准",
+    )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
