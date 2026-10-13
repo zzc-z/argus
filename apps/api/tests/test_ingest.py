@@ -7,12 +7,13 @@
 from typing import Any
 
 import pytest
+from sqlalchemy.exc import PendingRollbackError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
 from app.services import bm25, vectorstore
 from app.services.chunker import TextChunker
-from app.services.ingest import IngestError, ingest, parser_for
+from app.services.ingest import IngestError, _clear_stored, ingest, parser_for
 from app.services.vectorstore import create_vector_engine
 
 PDF_BYTES = b""  # 占位；PDF 路径在 test_ingest_pdf 里现场生成
@@ -472,3 +473,31 @@ async def test_reingest_after_compensation_recovers_fully(
     assert len(chunks) == baseline
     assert len(hits) == baseline
     assert await _fts_row_count(vec_engine) == baseline
+
+
+async def test_compensation_resets_chunk_count(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """补偿要归零 chunk_count——它在 CHUNKING 阶段就已提交，不复位就自相矛盾。
+
+    实测（CR 抓到）：重跑失败后 status=failed、chunk_count=21、实际 0 行。
+    状态实际落在四个地方（正文行 / FTS / 向量 / sources.chunk_count），
+    补了三处漏了一处。而 chunk_count 是 SourceResponse 的对外字段，
+    前端队列监视器直接读它——用户看到「失败」却配着「21 块」。
+    """
+    db_session, vec_engine = shared_db
+    source, baseline = await _seed_and_count(db_session, vec_engine, monkeypatch)
+    assert baseline > 0
+
+    async def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("向量写入失败")
+
+    monkeypatch.setattr("app.services.ingest.upsert_embeddings", _boom)
+    with pytest.raises(IngestError):
+        await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
+
+    await db_session.refresh(source)
+    assert source.status == SourceStatus.FAILED
+    assert source.chunk_count == 0
+    assert await DocumentChunk.list_for_source(db_session, source.id) == []

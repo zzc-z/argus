@@ -27,7 +27,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType
@@ -194,7 +194,12 @@ async def _store(
             vec_engine,
             [(r.id, v) for r, v in zip(records, vectors, strict=True)],
         )
-    except Exception:
+    except BaseException:
+        # BaseException 而非 Exception：CancelledError 在 Python 3.8+ 起继承自
+        # BaseException，进程关闭 / 任务被 cancel 时走不到上面的分支。
+        # 那正是运维最常见的操作（滚动重启），而此时旧切片已删、新切片已提交、
+        # 索引可能只写了一半——不留补偿就是货真价实的半截状态，且没有日志
+        # （异常直接穿到 asyncio，只留下一句 "Task exception was never retrieved"）。
         await _clear_stored(db, vec_engine, source.id)
         raise
 
@@ -238,22 +243,46 @@ async def _replace_chunks(
 async def _clear_stored(db: AsyncSession, vec_engine: AsyncEngine, source_id: int) -> None:
     """把一份资料退回「零切片」状态。失败时调用，本身不抛异常。
 
+    ## rollback 必须在 try 之前
+
+    原始异常很可能就来自 ``db`` 本身（commit 撞 IntegrityError、库被锁、
+    磁盘满）。SQLAlchemy 2.0 在那种失败后把 session 标记为
+    ``is_active=False``，此后**任何** db 操作都抛 ``PendingRollbackError``。
+
+    所以 rollback 放在 try 里第一行是不够的——它自己也会抛，整个补偿一行
+    都不跑。把 rollback 提到 try 之前：它是唯一能把 session 救回可用状态的
+    操作，必须先做完再进 try。
+
     ## 为什么是零切片而不是旧切片
 
     想做到「失败也不影响旧版本」，新切片得与旧切片并存——但
     ``ux_document_chunks_source_index`` (source_id, chunk_index) 唯一，
     新旧同序号直接撞车。真要并存得给切片加版本号，那是动 schema 的改造，
-    超出「补上补偿」的范围。零切片是有损但**确定**的状态：重传即恢复。
+    超出「补上补偿」的范围。
 
-    补偿自己失败时只记日志——它跑在异常处理里，再抛一次会把原始错误
-    盖掉，而原始错误才是排查要的。剩下的不一致留给下一次重传清理。
+    零切片是**有损**的：重跑在插新切片那步失败，旧版本已经没了（`_replace_chunks`
+    第一步就是删旧）。这是「先删后插」这个顺序的固有代价，唯一索引挡住了
+    「先插后删」。用户重传即恢复。
+
+    ## 为什么按 source_id 删而不是按本轮 records 的 id 删
+
+    按 id 精确删更安全——不会误伤并发摄取的另一份写入。但当前 HTTP 面没有
+    「对已有 source 重跑」的入口，每次建源只调度一次，所以并发写同一
+    source 走不到。按 source_id 删能让补偿在「异常发生前 records 还没算完」
+    的场景下也有意义（那时手上没有 id 列表）。若将来加了重跑端点，必须同时
+    给摄取加 per-source 锁，否则这里会删掉别人刚提交的成功数据。
     """
+    await db.rollback()
     try:
         stale = list(
             await db.scalars(select(DocumentChunk.id).where(DocumentChunk.source_id == source_id))
         )
         await purge_index_entries(vec_engine, stale)
         await db.execute(delete(DocumentChunk).where(DocumentChunk.source_id == source_id))
+        # chunk_count 必须一起归零：它在 ingest 流程里已随 CHUNKING 阶段提交，
+        # 不复位就留下「status=failed 但 chunk_count=21、实际 0 行」的自相矛盾，
+        # 而 SourceResponse.chunk_count 是直接下发给前端队列监视器的对外契约。
+        await db.execute(update(Source).where(Source.id == source_id).values(chunk_count=0))
         await db.commit()
     except Exception:
         await db.rollback()
