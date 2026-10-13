@@ -7,7 +7,7 @@
 from typing import Any
 
 import pytest
-from sqlalchemy.exc import PendingRollbackError
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
@@ -501,3 +501,47 @@ async def test_compensation_resets_chunk_count(
     assert source.status == SourceStatus.FAILED
     assert source.chunk_count == 0
     assert await DocumentChunk.list_for_source(db_session, source.id) == []
+
+
+async def test_compensation_survives_failing_rollback(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """rollback 自己抛时，补偿仍要跑完，且异常不外泄。
+
+    ## 为什么必须这样测
+
+    ``db.rollback()`` 会抛——SQLAlchemy 的 ``_rollback_impl`` 末尾显式重抛
+    连接层错误。而 DB 真挂（磁盘满、连接被 kill）恰恰是最需要补偿的场景。
+
+    第一版修复把 rollback 提到 try 之外，在这里直接反转：rollback 抛 →
+    补偿一行不跑 → 裸 ``raise`` 拿不到原始异常 → ``ingest`` 的 except
+    接不住 CancelledError → ``mark_failed`` 不跑 → source 卡在中间态且
+    error_message 为空。**修复在它唯一有意义的场景下静默失效。**
+
+    正确做法是包住而不是挪出去（见 ``_rollback_quietly``）。
+    """
+    db_session, vec_engine = shared_db
+    user = await _make_user(db_session)
+    source = await _make_source(db_session, user)
+    _patch_embed(monkeypatch, "vectors")
+    await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
+    assert source.chunk_count > 0
+
+    real_rollback = AsyncSession.rollback
+    state = {"first": True}
+
+    async def _flaky_rollback(self: AsyncSession) -> None:
+        # 只让第一次 rollback 抛，模拟「DB 刚挂、随后恢复」。
+        if state["first"]:
+            state["first"] = False
+            raise OperationalError("ROLLBACK", {}, Exception("connection killed"))
+        return await real_rollback(self)
+
+    monkeypatch.setattr(AsyncSession, "rollback", _flaky_rollback)
+
+    await _clear_stored(db_session, vec_engine, source.id)  # 不得抛
+
+    assert await DocumentChunk.list_for_source(db_session, source.id) == []
+    await db_session.refresh(source)
+    assert source.chunk_count == 0

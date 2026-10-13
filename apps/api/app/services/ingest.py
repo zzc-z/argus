@@ -241,17 +241,29 @@ async def _replace_chunks(
 
 
 async def _clear_stored(db: AsyncSession, vec_engine: AsyncEngine, source_id: int) -> None:
-    """把一份资料退回「零切片」状态。失败时调用，本身不抛异常。
+    """把一份资料退回「零切片」状态。失败时调用，**绝不向外抛**。
 
-    ## rollback 必须在 try 之前
+    ## rollback 的正确位置：包住，不是挪出去
 
-    原始异常很可能就来自 ``db`` 本身（commit 撞 IntegrityError、库被锁、
-    磁盘满）。SQLAlchemy 2.0 在那种失败后把 session 标记为
-    ``is_active=False``，此后**任何** db 操作都抛 ``PendingRollbackError``。
+    这里改过两次，两次都是错的：
 
-    所以 rollback 放在 try 里第一行是不够的——它自己也会抛，整个补偿一行
-    都不跑。把 rollback 提到 try 之前：它是唯一能把 session 救回可用状态的
-    操作，必须先做完再进 try。
+    1. 原版 rollback 在 try 里第一行。原始异常来自 ``db`` 本身时
+       （commit 撞 IntegrityError、库被锁、磁盘满），SQLAlchemy 2.0 会把
+       session 标记 ``is_active=False``，此后任何 db 操作都抛
+       ``PendingRollbackError``——包括 rollback 自己。补偿一行不跑。
+    2. 改成「提到 try 之前」。方向反了：``_rollback_impl`` 末尾显式重抛
+       连接层错误，DB 真挂时 rollback 照样抛 → 补偿一行不跑 + 裸 ``raise``
+       拿不到原始异常 → ``ingest`` 的 except 接不住 CancelledError →
+       ``mark_failed`` 不跑 → source 卡在中间态且 error_message 为空。
+
+    正确做法是让 rollback 走 :func:`_rollback_quietly`：调用要早（先救回
+    session 才有资格查），但失败必须吞（清理代码不能顶掉原始异常）。
+
+    ## 绝不外抛
+
+    它跑在 ``except`` 里，任何逸出的异常都会替换掉原始异常——而那正是
+    排查要的。同时也是取消信号能传到 ``asyncio`` 的前提（见
+    ``gateway/research.py`` 里的同类告诫）。
 
     ## 为什么是零切片而不是旧切片
 
@@ -272,7 +284,7 @@ async def _clear_stored(db: AsyncSession, vec_engine: AsyncEngine, source_id: in
     的场景下也有意义（那时手上没有 id 列表）。若将来加了重跑端点，必须同时
     给摄取加 per-source 锁，否则这里会删掉别人刚提交的成功数据。
     """
-    await db.rollback()
+    await _rollback_quietly(db)
     try:
         stale = list(
             await db.scalars(select(DocumentChunk.id).where(DocumentChunk.source_id == source_id))
@@ -285,8 +297,34 @@ async def _clear_stored(db: AsyncSession, vec_engine: AsyncEngine, source_id: in
         await db.execute(update(Source).where(Source.id == source_id).values(chunk_count=0))
         await db.commit()
     except Exception:
-        await db.rollback()
+        await _rollback_quietly(db)
         logger.exception("source %s 补偿清理失败，可能残留半截切片", source_id)
+
+
+async def _rollback_quietly(db: AsyncSession) -> None:
+    """回滚，失败也吞掉。
+
+    ## 为什么必须吞
+
+    补偿跑在异常处理里，它抛出的异常会**顶掉原始异常**——而原始异常才是
+    排查要的。更糟的是 ``db.rollback()`` 真的会抛：SQLAlchemy 的
+    ``SessionTransaction._rollback_impl`` 末尾显式重抛连接层错误
+    （``session.py`` 里 ``if rollback_err and rollback_err[1]: raise``）。
+
+    而 DB 真挂（磁盘满、连接被 kill）恰恰是最需要补偿的场景。于是最初
+    那版「把 rollback 提到 try 之外」在这里反转：rollback 抛 → 补偿一行
+    不跑 → 裸 ``raise`` 拿不到原始异常 → ``ingest`` 的 except 接不住
+    CancelledError → ``mark_failed`` 不跑 → source 卡在中间态且
+    ``error_message`` 为空，用户看不到任何可诊断信息。
+
+    对比 ``gateway/research.py`` 里同类的告诫（「别把 except 改成
+    BaseException：那会吞掉取消信号」）——那里靠裸 ``raise`` 保住信号，
+    这里则是靠**不让清理代码把信号吃掉**。
+    """
+    try:
+        await db.rollback()
+    except Exception:
+        logger.debug("回滚失败，session 已不可用", exc_info=True)
 
 
 async def ensure_index_tables(vec_engine: AsyncEngine) -> None:
