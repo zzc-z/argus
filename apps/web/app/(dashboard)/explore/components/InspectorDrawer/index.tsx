@@ -31,7 +31,9 @@ export type SourceTextState =
 export interface InspectorDrawerProps {
   open: boolean
   payload: InspectorPayload
-  sourceText?: SourceTextState
+  /** 必填——「不显示」由 `SourceTextState` 的 `{kind:'none'}` 表达，
+   *  再叠一层 undefined 等于同一语义两种写法，且新调用方忘传就静默不显示。 */
+  sourceText: SourceTextState
   onClose: () => void
 }
 
@@ -143,7 +145,7 @@ interface ContentAreaProps {
   tab: InspectorTab
   jsonText: string
   toolCalls: ToolCall[]
-  sourceText?: SourceTextState
+  sourceText: SourceTextState
 }
 
 function ContentArea({ tab, jsonText, toolCalls: calls, sourceText }: ContentAreaProps) {
@@ -177,9 +179,7 @@ function ContentArea({ tab, jsonText, toolCalls: calls, sourceText }: ContentAre
       </div>
 
       {/* 原文区。只在点开角标后出现——它是引用溯源的一部分，不是常驻控件。 */}
-      {sourceText && sourceText.kind !== 'none' && (
-        <SourceTextBlock state={sourceText} />
-      )}
+      {sourceText.kind !== 'none' && <SourceTextBlock state={sourceText} />}
 
       {/* JSON viewer (Output tab primary, others also show for brevity) */}
       <div className={styles.jsonBlock}>

@@ -40,7 +40,7 @@ import {
 } from './components/InspectorDrawer'
 import { PromptInput } from './components/PromptInput'
 import { apiStream } from '@/lib/api/client'
-import { fetchChunks } from '@/lib/api/sources'
+import { clearChunkCache, fetchChunks } from '@/lib/api/sources'
 import type {
   DoneEventV,
   NodeEventV,
@@ -128,6 +128,10 @@ export default function ExplorePage() {
   // 引用表：后端 reference 事件下发。初始给 mock 的 CITATIONS，让未提问
   // 时的静态段落仍有可点角标；一旦流开始就会被真实数据整体替换。
   const [citations, setCitations] = useState<Citation[]>(CITATIONS)
+  // 引用表是否已来自真实 reference 事件。mock 的 source_id / chunk_id 全是
+  // 假值（17 / 4211），真去拉只会得到 404——于是演示态和真出错在界面上
+  // 一模一样，评审时无法区分「这是 mock」和「这是 bug」。
+  const [citationsLive, setCitationsLive] = useState(false)
 
   // 原文区：点角标后按 chunk_id 拉全文。三态而非 null——「不显示」与
   // 「加载中」「拉取失败」要显示的东西完全不同，合并成一个值就会把
@@ -140,10 +144,19 @@ export default function ExplorePage() {
 
   // 中断用的 AbortController：用户重问或卸载页面时取消上一次请求。
   const abortRef = useRef<AbortController | null>(null)
+  // 原文拉取单独一个 controller。不复用 abortRef——那个的命周期是「一轮
+  // 研究」，原文拉取是「一次点击」，两者该在不同的时机取消。共用一个会让
+  // 重问时把仍在飞的原文请求也 abort 掉（虽然令牌已经拦住了写 state，
+  // 但带宽还在白跑，一个长文档的 payload 能有十几 MB）。
+  const sourceAbortRef = useRef<AbortController | null>(null)
 
   const handleSelectNode = useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
     setInspectorOpen(true)
     setInspectorPayload({ ...buildNodePayload(node), toolCalls })
+    // 令牌也要自增：清了原文区不等于作废在飞的请求。不自增的话，
+    // 「点角标 → 点 DAG 节点」会让请求回来后把原文写到节点检查器里，
+    // 抽屉上半是节点 B 的 JSON、下半是引用 [1] 的原文。
+    sourceTextToken.current += 1
     setSourceText({ kind: 'none' })
   }, [toolCalls])
 
@@ -152,10 +165,22 @@ export default function ExplorePage() {
       setInspectorOpen(true)
       setInspectorPayload(buildCitationPayload(citation))
 
+      // mock 引用的 source_id 是编出来的，真去拉必然 404。不拦的话，
+      // 未提问时的静态段落点角标会显示「原文拉取失败：资料不存在」——
+      // 与真出错一模一样，评审时没法分辨。
+      if (!citationsLive) {
+        sourceTextToken.current += 1
+        setSourceText({ kind: 'none' })
+        return
+      }
+
       const token = (sourceTextToken.current += 1)
+      sourceAbortRef.current?.abort()
+      const controller = new AbortController()
+      sourceAbortRef.current = controller
       setSourceText({ kind: 'loading' })
       try {
-        const chunks = await fetchChunks(citation.source_id)
+        const chunks = await fetchChunks(citation.source_id, controller.signal)
         if (sourceTextToken.current !== token) return
         const chunk = chunks.find((c) => c.id === citation.chunk_id)
         if (!chunk) {
@@ -164,11 +189,12 @@ export default function ExplorePage() {
           setSourceText({ kind: 'error', message: '该切片已不存在，资料可能已被重新摄取' })
           return
         }
-        // page 与 chunk_index 对纯文本是同一回事（parser 按 \f 分页并从 1
-        // 编号），两者都显示会变成「第 1 段 · 第 1 块」。有 page 时用它，
-        // 那是原文作者的分页边界，比我们自己的切片序号更有意义。
+        // 两个都显示，不做取舍。PDF 的 page 是真实页码（parser.py:77 取
+        // index+1），而 PDF 是这个功能的主要场景——把它改叫「第 N 段」会让
+        // 用户拿着报告去找「第 3 页」时找不到。纯文本的 page 来自 \f 分页
+        // （parser.py:137），叫「页」同样准确；HTML 的 page 为 null，只显示块号。
         const label = chunk.page != null
-          ? `第 ${chunk.page} 段`
+          ? `第 ${chunk.page} 页 · 第 ${chunk.chunk_index + 1} 块`
           : `第 ${chunk.chunk_index + 1} 块`
         setSourceText({ kind: 'ready', title: label, body: chunk.content })
       } catch (err) {
@@ -180,7 +206,7 @@ export default function ExplorePage() {
         })
       }
     },
-    [],
+    [citationsLive],
   )
 
   const handleToggleInspector = useCallback(() => {
@@ -205,9 +231,14 @@ export default function ExplorePage() {
     // 引用表和工具轨迹一样属于单次运行的产物，重问时必须清空——否则上一轮
     // 的编号会跟这一轮的正文对不上。
     setCitations(CITATIONS)
+    setCitationsLive(false)
     setToolCalls([])
     // 令牌自增作废旧请求：上一轮点开的原文属于上一轮的 chunk_id，
-    // 而 chunk_id 是自增主键，新一轮很可能命中不同的 id。
+    // 而 chunk_id 是自增主键，新一轮很可能命中不同的 id。令牌拦的是
+    // 「写进 state」，abort 拦的是「继续下载」——长文档的 payload 有十几 MB，
+    // 光靠令牌它会一路跑到完。
+    sourceAbortRef.current?.abort()
+    clearChunkCache()
     sourceTextToken.current += 1
     setSourceText({ kind: 'none' })
 
@@ -253,6 +284,13 @@ export default function ExplorePage() {
             // 整体替换而非 append：后端 ReferenceTable.all 每次下发的是
             // 已编号的全表，append 会让编号重复。
             setCitations(rv.references)
+            setCitationsLive(true)
+            // 编号含义变了，在飞的原文请求必须作废。reference 帧一次流里
+            // 会发多次（每次工具调用命中就发一帧），重新编号后角标 [1]
+            // 指的是另一个 chunk——不失效的话抽屉会给出旧编号的全文，
+            // 而正文角标已指向新切片，恰好是这个功能要防的事。
+            sourceTextToken.current += 1
+            setSourceText({ kind: 'none' })
             break
           }
           default:
@@ -283,7 +321,13 @@ export default function ExplorePage() {
   )
 
   // 卸载时中断挂起的请求，否则组件没了 fetch 还在跑。
-  useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(
+    () => () => {
+      abortRef.current?.abort()
+      sourceAbortRef.current?.abort()
+    },
+    [],
+  )
 
   return (
     <div className={`${styles.shell} ${inter.className}`}>
