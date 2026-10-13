@@ -22,31 +22,33 @@ class UtcDateTime(TypeDecorator[datetime]):
 
     ``DateTime(timezone=True)`` 只在**方言支持**时才有意义。Postgres 有
     ``timestamptz``，列本身带时区；**SQLite 没有**——它只存一串字符串，
-    ``timezone=True`` 这个参数被静默忽略。实测 `server_default=func.now()`
-    在 SQLite 下存的是 ``'2026-10-13 04:20:31'``（本机时区），
-    读回是 **naive** datetime：没有 tzinfo，也没有「它是 UTC」的标记。
+    ``timezone=True`` 这个参数被静默忽略。落库的值是对的（实测 SQLite
+    的 ``CURRENT_TIMESTAMP`` 与 ``datetime.now(UTC)`` 逐秒一致，它按定义
+    就是 UTC，与机器时区无关），但**读回来是 naive**：没有 tzinfo，
+    也没有「它是 UTC」的标记。
 
-    这个洞平时不咬人——直到有代码按 aware 来用。``token.py`` 的
-    ``datetime.now(UTC)`` 与库里的 naive 值一比就 ``TypeError``；
-    换成 ``datetime.now()`` 又会在换季时差出一个小时，而偏移量没有任何
-    地方记着，没法事后判断是几点的记录。
-
-    所以语义在本层钉死：**数据库里一律 UTC，ORM 层一律 aware**。
-    写入前统一转 UTC，读出后统一补 ``tzinfo=UTC``。
+    问题就在这个标记上。Python 侧 ``aware - naive`` 直接抛 ``TypeError``，
+    而 ``naive - naive`` 会静默给出一个没有意义的差值——换季时还能对得上，
+    跨时区就差 8 小时，而偏移量没有任何地方记着，事后无从判断是几点的
+    记录。所以语义在本层钉死：**数据库里一律 UTC，ORM 层一律 aware**。
 
     ## 为什么按方言分支
 
-    Postgres 的 ``timestamptz`` 自己就会把值归一到 UTC 并在读回时附带
-    会话时区，套一层转换只是多两次字符串拼接；而非 UTC 的 Postgres
-    会话（``SET TIMEZONE 'Asia/Shanghai'``）下，反而是这一层保证读回
-    的一定是 UTC——否则同一张表在不同 worker 上读出不同的偏移量。
-    两条分支的对外契约一致：进去 aware，出来 aware + UTC。
+    Postgres 的 ``timestamptz`` 自己会把值归一到 UTC 并在读回时附带会话
+    时区，套一层转换只是多两次字符串拼接；而非 UTC 的 Postgres 会话
+    （``SET TIMEZONE 'Asia/Shanghai'``）下，反而是这一层保证读回的一定是
+    UTC——否则同一张表在不同 worker 上读出不同的偏移量。两条分支的对外
+    契约一致：进去 aware，出来 aware + UTC。
 
     ## 历史数据
 
-    装饰器不迁移已有行。切换前写入的值按 UTC 解读——这个假设成立的前提
-    是数据库一直跑在 UTC 容器里；``func.now()`` 那批行若是在非 UTC 机器上
-    生成的，需要单独 ``UPDATE`` 修正后再上线。
+    **无需迁移。** SQLite 的 ``CURRENT_TIMESTAMP`` 与 Postgres 的 ``now()``
+    都返回 UTC，装饰器只是补回 Python 侧丢掉的 tzinfo 标记，读出来的
+    值与之前完全一致，只是多了个 UTC 标注。
+
+    （此前这里写着「若在非 UTC 机器上生成需 UPDATE 修正」，那是错的——
+    ``CURRENT_TIMESTAMP`` 与机器时区无关。照那条做会把所有历史时间戳
+    平移一个时区偏移，把正确的数据改坏。）
     """
 
     impl = DateTime(timezone=True)
@@ -59,15 +61,17 @@ class UtcDateTime(TypeDecorator[datetime]):
     ) -> datetime | None:
         if value is None:
             return None
-        if value.tzinfo is None:
-            # 裸 datetime 按 UTC 解读。静默假设比直接拒绝好：拒绝会让
-            # 所有手写 `datetime(2026, 1, 1)` 的调用方（测试、脚本）全炸。
-            return value
+        # naive 按 UTC 解读后再归一。**不能**在 naive 时直接 return：
+        # SQLite 侧原样返回确实等价于「按 UTC 解读」，但 Postgres 会按会话
+        # 的 TimeZone GUC 解释裸 datetime（``SET TIMEZONE 'Asia/Shanghai'``
+        # 下写 datetime(2026,3,1,12,0) 会落成 04:00+00，静默差 8 小时）。
+        # 补上 UTC 再走方言分支，两边才真的是同一个语义。
+        aware = value.replace(tzinfo=UTC) if value.tzinfo is None else value
         if dialect.name == "sqlite":
             # SQLite 的 DATETIME 绑定格式里没有偏移量位置，塞进去会
             # 直接写入字面量 '+00:00'，读回时解析失败。
-            return value.astimezone(UTC).replace(tzinfo=None)
-        return value.astimezone(UTC)
+            return aware.astimezone(UTC).replace(tzinfo=None)
+        return aware.astimezone(UTC)
 
     def process_result_value(
         self,
