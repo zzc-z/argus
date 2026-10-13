@@ -7,6 +7,7 @@
 """
 
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -19,20 +20,78 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.config import get_settings
 from app.db import _enable_sqlite_foreign_keys, get_session
 from app.gateway.auth import OAUTH_STATE_COOKIE
 from app.main import app
 from app.models import Base
+from app.services.llm import LLMNotConfiguredError, get_anthropic_client, get_tavily_client
 from app.services.vectorstore import create_vector_engine, get_vector_engine
 
 pytest_plugins: list[str] = []
 
 
+def _tavily_unavailable() -> object:
+    """``get_tavily_client`` 的测试替身：永远报「未配置」。
+
+    与 ``tests/test_tools.py`` 里那个同名函数是同一件事，但那份只服务于
+    那个文件；conftest 这份是 autouse 的，保证**任何**测试碰不到真网络。
+    """
+    raise LLMNotConfiguredError("TAVILY_API_KEY 未配置")
+
+
 @pytest.fixture(autouse=True)
 def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """确保测试不依赖真实 env vars。"""
+    """确保测试不依赖真实 env vars。
+
+    ## 为什么不读 .env（关键）
+
+    pydantic-settings 的配置来自**文件**，不是进程环境——所以
+    ``monkeypatch.delenv("TAVILY_API_KEY")`` 对它完全无效。2026-10-13
+    配上真 key 后症状是 ``test_tool_use_produces_tool_call_events`` 报
+    ``BadRequestError: Query is too short``：看着像产品 bug，其实是测试
+    在联网（它用的查询词是 ``x``）。
+
+    真正的隔离是把 ``Settings.env_file`` 指向一个空文件——见
+    ``app/config.py`` 里 ``ARGUS_ENV_FILE`` 那段。要依赖 Tavily 的用例
+    自己显式声明（``test_tools._with_tavily_key`` 只替换
+    ``get_tavily_client``，真正发请求的 ``_search`` 仍需各自 monkeypatch）。
+
+    ## 为什么还要 cache_clear
+
+    三个 ``lru_cache(maxsize=1)`` 单例：``get_settings``（config.py:124）
+    与 ``get_anthropic_client`` / ``get_tavily_client``（llm.py:45,70）。
+    第一次调用就把值缓存了，之后 ``monkeypatch.setenv`` 对它们**完全无效**。
+
+    只清 ``get_settings`` 不够——``get_tavily_client`` 同样会缓存住带 key
+    的客户端，``available_tools`` 拿到的仍是「已配置」。症状是
+    ``test_tool_use_produces_tool_call_events`` 断言「搜索工具未配置」
+    却拿到「工具内部错误」（它真的发了一次请求，被 Tavily 拒了）。
+    config.py 早就写了「测试里 cache_clear() 可重置」，但没人真的调。
+    """
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("LOG_LEVEL", "warning")
+    # 单例缓存：第一次调用就把值锁住，之后 setenv / setattr 对它无效。
+    # 三个都要清——只清 get_settings 的话 get_tavily_client 仍握着带 key
+    # 的客户端（症状：单跑通过、全量跑失败）。
+    get_settings.cache_clear()
+    get_anthropic_client.cache_clear()
+    get_tavily_client.cache_clear()
+    # get_tavily_client 默认抛「未配置」。这是**唯一**能让测试不联网的
+    # 钩子：pydantic-settings 的配置来自文件而不是进程环境，清掉进程里的
+    # TAVILY_API_KEY 对它无效；而把 env_file 整体换掉又会让 JWT_SECRET_KEY
+    # 之类测试确实需要的配置一起变占位符（实测 73 个用例当场炸）。
+    #
+    # 要用 Tavily 的测试自己 monkeypatch 回去（见 test_tools._with_tavily_key）。
+    #
+    # 只替换 **tools 模块里那份引用**，不碰 llm 模块的属性：后者被
+    # ``llm.clear_client_cache()`` 按名字查找（llm.py:89），换成普通函数
+    # 会让 test_llm_client 的 setup 直接报 AttributeError。tools 侧是
+    # ``from ... import get_tavily_client`` 的独立引用，替换它不影响别处。
+    monkeypatch.setattr(
+        "app.services.tools.get_tavily_client",
+        _tavily_unavailable,
+    )
 
 
 @pytest_asyncio.fixture

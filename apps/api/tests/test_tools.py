@@ -23,9 +23,7 @@ from app.services.tools import (
 @pytest.fixture
 def _with_tavily_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """让 get_tavily_client 返回真客户端（配置齐全的场景）。"""
-    monkeypatch.setattr(
-        tools_module, "get_tavily_client", lambda: object()
-    )
+    monkeypatch.setattr(tools_module, "get_tavily_client", lambda: object())
 
 
 def _raise_not_configured() -> object:
@@ -164,6 +162,7 @@ async def test_tavily_search_timeout_becomes_failed_outcome(
     monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
 ) -> None:
     """超时要变成给模型看的重试提示。"""
+
     async def _hang(client: Any, query: str, max_results: int) -> Any:
         await asyncio.sleep(99)
 
@@ -238,7 +237,9 @@ async def test_max_results_clamped(monkeypatch: pytest.MonkeyPatch, _with_tavily
     assert seen["n"] == tools_module.SEARCH_MAX_RESULTS
 
 
-async def test_max_results_garbage_falls_back(monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None) -> None:
+async def test_max_results_garbage_falls_back(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
     """max_results 传了非数字时退回默认，不抛异常。"""
     seen: dict[str, int] = {}
 
@@ -288,9 +289,7 @@ def test_available_tools_drops_local_without_db(
 
 def test_available_tools_drops_tavily_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tavily 没配时摘掉搜索工具，但本地检索要留着。"""
-    monkeypatch.setattr(
-        tools_module, "get_tavily_client", _raise_not_configured
-    )
+    monkeypatch.setattr(tools_module, "get_tavily_client", _raise_not_configured)
     names = {t.name for t in available_tools(has_local=True)}
     assert names == {"local_search", "dedup"}
 
@@ -313,3 +312,43 @@ def test_tool_schemas_shape() -> None:
         assert set(schema) == {"name", "description", "input_schema"}
         assert schema["input_schema"]["type"] == "object"
 
+
+async def test_formats_real_tavily_response_shape(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
+    """字段名以**真实 Tavily 响应**为准，不是照文档猜的。
+
+    2026-10-13 拿真 key 实测：顶层键是
+    ``answer/follow_up_questions/images/query/request_id/response_time/results``，
+    每条 result 是 ``content/id/raw_content/score/title/url``。
+
+    此前所有测试都用 mock 字典，字段名对不对从没验证过——真把
+    ``snippet`` 当 content 读，格式化出来全是空块，而测试照样全绿。
+    """
+    real_item = {
+        "content": "The NVIDIA GB200 NVL72 is a liquid-cooled, rack-scale solution.",
+        "id": "abc123",
+        "raw_content": None,
+        "score": 0.87,
+        "title": "CoreWeave launches NVIDIA GB200 NVL72 instances",
+        "url": "https://www.investing.com/news/coreweave-gb200",
+    }
+
+    async def _fake(client: Any, query: str, max_results: int) -> Any:
+        return {
+            "answer": None,
+            "follow_up_questions": None,
+            "images": None,
+            "query": query,
+            "request_id": "req-1",
+            "response_time": 1.23,
+            "results": [real_item],
+        }
+
+    monkeypatch.setattr(tools_module, "_search", _fake)
+    outcome = await execute_tool("tavily_search", {"query": "GB200"})
+
+    assert outcome.ok is True
+    assert real_item["title"] in outcome.content
+    assert real_item["url"] in outcome.content
+    assert "liquid-cooled" in outcome.content
