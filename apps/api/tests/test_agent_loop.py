@@ -115,9 +115,31 @@ async def test_thinking_only_response_emits_error(
     assert len(errors) == 1
     assert errors[0].code == "empty_response"
     assert errors[0].retryable is True
-    # 不能有 done——前端会优先按「已完成」收尾
-    assert not [e for e in events if isinstance(e, DoneEvent)]
     assert not [e for e in events if isinstance(e, DeltaEvent)]
+    # error 必须是最后一个事件——前端靠它收尾，否则一直转圈
+    assert isinstance(events[-1], ErrorEvent)
+
+
+async def test_empty_response_still_reports_consumed_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """空正文也要发 DoneEvent：这条路径可能已经烧掉几十万 token。
+
+    模型可以连着几轮只调工具、最后才回 thinking 或 refusal，那几轮的
+    usage 是真实开销。缺了 DoneEvent，session_id 与 token 数都上报不
+    出去——用量统计里出现一个「跑了很久但什么数据都没有」的空洞。
+    """
+    _stub_turns(
+        monkeypatch,
+        [_turn(tool_calls=[_tool_call()]) for _ in range(2)] + [_turn(text="")],
+    )
+    events = await _collect()
+
+    done = next(e for e in events if isinstance(e, DoneEvent))
+    assert done.turns == 3
+    assert done.input_tokens == 300
+    assert done.output_tokens == 150
+    assert done.session_id
 
 
 async def test_done_carries_stats(monkeypatch: pytest.MonkeyPatch) -> None:

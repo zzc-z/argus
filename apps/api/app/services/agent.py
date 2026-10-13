@@ -16,12 +16,14 @@
   高亮轨道，两个 active 会让它算错位置。由 ``NodeTracker`` 断言保证。
 """
 
+from __future__ import annotations
+
 import logging
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, Self, cast
 from uuid import uuid4
 
 from anthropic import AsyncAnthropic
@@ -58,7 +60,13 @@ no_tools: tuple[ToolSpec, ...] = ()
 
 # 强制收尾指令。占位符 {} 会被填成 MAX_TURNS，让模型知道自己是被上限
 # 打断的而不是自己选择收尾——否则它会再解释一轮为什么不早停。
-FINALIZE_INSTRUCTION = "你已达到 {} 次检索上限。请基于已有信息直接给出最终答案，不要再调用工具。"
+# 强制收尾指令。措辞必须说「轮」而不是「检索次数」：一轮里模型可以并行发
+# 多个 tool_use，6 轮完全可能对应 15 次检索。告诉模型「你已达到 6 次检索
+# 上限」会误导它自己判断证据够不够，进而在答案里加「检索不足，可信度有限」
+# 这种画蛇添足的免责声明——而报告正文是用户直接读的东西。
+FINALIZE_INSTRUCTION = (
+    "你已达到本轮研究的调用轮数上限（共 {} 轮）。请基于已有信息直接给出最终答案，不要再调用工具。"
+)
 
 # 只写**跨工具的编排规则**，不写「有工具 X 可用」——那些已经在各自的
 # description 里了（见 app/services/tools.py 的 *_SPEC.description）。
@@ -131,7 +139,7 @@ class TurnResult:
     output_tokens: int
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class TurnLedger:
     """一次研究的用量与产出记账。
 
@@ -139,6 +147,16 @@ class TurnLedger:
     ``turns`` / token 数在异常路径上要读，已经在 try 块外赋过值；
     ``produced_text`` 在循环外的收尾分支要读。摊平成局部变量时，
     读到的值到底是「哪一次请求累加的」只有读代码的人知道。
+
+    ## 为什么 frozen
+
+    每个更新方法都返回**新的**账本对象，调用方重新绑定。这样「谁改了什么」
+    一眼可见——可变版本里 ``ledger.truncated = True`` 在主循环内有 3 处分散的
+    写入点，读代码时得先找出全部写点才知道这个值被谁设成什么。
+
+    代价是调用点要 ``ledger = ledger.record(result)`` 而不是 ``ledger.record(result)``。
+    值得：那行多出来的赋值本身就是「这里更新了账本」的显式标记，
+    而可变版本里的静默 mutation 恰恰是 AGENTS.md 要防的东西。
     """
 
     session_id: str
@@ -149,21 +167,26 @@ class TurnLedger:
     truncated: bool = False
     produced_text: bool = False
 
-    def begin_turn(self) -> None:
-        """占用一轮额度。
+    def begin_turn(self) -> Self:
+        """占用一轮额度，返回新账本。
 
         计数在**请求发出之前**递增：崩溃的那一轮同样烧掉了额度，
         少算一轮就等于告诉用量统计「这次几乎没花钱」，重试时
         也就看不到上次真正的开销。
         """
-        self.turns += 1
+        return replace(self, turns=self.turns + 1)
 
-    def record(self, result: TurnResult) -> None:
+    def record(self, result: TurnResult) -> Self:
         """累加一轮的 token 用量，并记住是否产出了正文。"""
-        self.input_tokens += result.input_tokens
-        self.output_tokens += result.output_tokens
-        if result.text:
-            self.produced_text = True
+        return replace(
+            self,
+            input_tokens=self.input_tokens + result.input_tokens,
+            output_tokens=self.output_tokens + result.output_tokens,
+            produced_text=self.produced_text or bool(result.text),
+        )
+
+    def mark_truncated(self) -> Self:
+        return replace(self, truncated=True)
 
     def done(self) -> DoneEvent:
         return DoneEvent(
@@ -265,9 +288,9 @@ async def run_agent(
 
     try:
         for turn in range(MAX_TURNS):
-            ledger.begin_turn()
+            ledger = ledger.begin_turn()
             result = await _run_turn(client, messages, tools)
-            ledger.record(result)
+            ledger = ledger.record(result)
 
             # thinking block 原样回传——带 signature，改动会被上游拒绝。
             messages.append({"role": "assistant", "content": result.content})
@@ -280,7 +303,8 @@ async def run_agent(
                     yield DeltaEvent(node_id=Stage.WRITER.value, text=piece)
 
             if not result.tool_calls:
-                ledger.truncated = result.stop_reason == "max_tokens"
+                if result.stop_reason == "max_tokens":
+                    ledger = ledger.mark_truncated()
                 break
 
             # 还要继续调工具：切回 researcher 节点。
@@ -300,7 +324,7 @@ async def run_agent(
             if turn == MAX_TURNS - 1:
                 # 最后一轮还在要工具：强制收尾，让模型基于现有信息作答，
                 # 用户仍能拿到答案，只是没有新的检索。
-                ledger.truncated = True
+                ledger = ledger.mark_truncated()
                 # 收尾指令作为**同一条** user 消息的第二个 block，不能另起
                 # 一条 user 消息——那会构造出连续同角色消息，上游可能拒收。
                 messages[-1]["content"] = [
@@ -308,11 +332,14 @@ async def run_agent(
                     {"type": "text", "text": FINALIZE_INSTRUCTION.format(MAX_TURNS)},
                 ]
                 async for finalize_event in _finalize(client, ledger, messages, tracker):
-                    yield finalize_event
+                    if isinstance(finalize_event, TurnLedger):
+                        ledger = finalize_event
+                    else:
+                        yield finalize_event
                 break
     except Exception as exc:
         logger.warning("agent 循环异常中止（已完成 %d 轮）", ledger.turns, exc_info=exc)
-        ledger.truncated = True
+        ledger = ledger.mark_truncated()
         for event in _close(tracker):
             yield event
         # 崩溃也要发 DoneEvent：它是唯一带 session_id 与 token 数的事件。
@@ -322,15 +349,21 @@ async def run_agent(
         yield ErrorEvent(code="llm_unavailable", message="模型服务暂时不可用，请稍后重试")
         return
 
-    # 一个字的正文都没产出时，必须发 error 而不是让 done 带空正文收尾。
+    # 一个字的正文都没产出时，必须发 error 让前端显示失败。
     #
     # 触发场景：模型只回 thinking（stop_reason="end_turn"）或直接 refusal。
     # 实测那种情况下 stop_reason 是正常的、tool_calls 为空，循环照常
     # break，truncated 也是 False——前端于是把一份空白报告标成「已完成」，
     # DAG 上 writer 节点从未 activate，用户看不到任何错误提示。
+    #
+    # 但 DoneEvent 仍然要发，理由与崩溃路径相同：这条路径可能已经跑满
+    # 几轮、烧掉几十万 token，只发 ErrorEvent 就等于 session_id 与用量
+    # 一个都上报不出去。前端两条都处理（error 显横幅、done 显示统计），
+    # 两条同时到不会让报告被标成正常——error 事件排在最后，前端据此收尾。
     if not ledger.produced_text:
         for event in _close(tracker):
             yield event
+        yield ledger.done()
         yield ErrorEvent(
             code="empty_response",
             message="模型未产出内容，请重试",
@@ -349,22 +382,28 @@ async def _finalize(
     ledger: TurnLedger,
     messages: list[dict[str, Any]],
     tracker: NodeTracker,
-) -> AsyncIterator[AgentEvent]:
+) -> AsyncIterator[AgentEvent | TurnLedger]:
     """轮数用尽后的强制收尾：关掉工具，再基于已有信息作答。
 
-    ``messages`` 在调用前已被就地追加了收尾指令，这里不再回传 assistant
+    产出**新账本**（而不是就地改传入的那个）——账本是 frozen 的，就地改
+    不到；而这轮请求的 token 用量必须回到主循环的账本上，否则强制收尾
+    那一次就是白烧的。所以流的最后一项固定是账本，调用方取出后不再使用。
+
+    ``messages`` 在调用前已被就地追加了收尾指令，这里不回传 assistant
     内容——主循环随即 break，``messages`` 不再被读，多存一份只是让人
     以为它还有用。
     """
-    ledger.begin_turn()
+    ledger = ledger.begin_turn()
     final = await _run_turn(client, messages, no_tools)
-    ledger.record(final)
+    ledger = ledger.record(final)
     if not final.text:
+        yield ledger
         return
     for event in tracker.switch(Stage.WRITER):
         yield event
     for piece in _slice_for_display(final.text):
         yield DeltaEvent(node_id=Stage.WRITER.value, text=piece)
+    yield ledger
 
 
 def _close(tracker: NodeTracker) -> list[NodeEvent]:
