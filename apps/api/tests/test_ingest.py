@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
-from app.services import vectorstore
+from app.services import bm25, vectorstore
 from app.services.chunker import TextChunker
 from app.services.ingest import IngestError, ingest, parser_for
 from app.services.vectorstore import create_vector_engine
@@ -141,7 +141,10 @@ async def test_without_embedding_key_still_indexes_text(
 
     assert source.status == SourceStatus.INDEXED
     assert len(await DocumentChunk.list_for_source(db_session, source.id)) > 0
-    assert await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=10, source_ids=[source.id]) == []
+    assert (
+        await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=10, source_ids=[source.id])
+        == []
+    )
 
 
 # ── 重跑 ───────────────────────────────────────────────────
@@ -175,12 +178,17 @@ async def test_reingest_purges_orphan_vectors(
     _patch_embed(monkeypatch, "vectors")
 
     await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
-    stale_count = len(await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id]))
+    stale_count = len(
+        await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id])
+    )
 
     _patch_embed(monkeypatch, "no_vectors")
     await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
 
-    assert await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id]) == []
+    assert (
+        await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id])
+        == []
+    )
     assert stale_count > 0
 
 
@@ -291,3 +299,176 @@ async def test_ingest_pdf(
     chunks = await DocumentChunk.list_for_source(db_session, source.id)
     assert chunks
     assert "Blackwell" in "".join(c.content for c in chunks)
+
+
+# ── 跨连接写入的补偿 ─────────────────────────────────────────
+async def _seed_and_count(
+    db: AsyncSession,
+    vec_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[Source, int]:
+    """先成功摄取一遍，返回 source 与切片数。用作重跑被破坏前的基线。"""
+    user = await _make_user(db)
+    source = await _make_source(db, user)
+    _patch_embed(monkeypatch, "vectors")
+    await ingest(db, vec_engine, source, SAMPLE_TEXT.encode())
+    return source, source.chunk_count
+
+
+@pytest.mark.parametrize("broken_step", ["bm25", "vectors"])
+async def test_failed_reingest_leaves_no_partial_chunks(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+    broken_step: str,
+) -> None:
+    """重跑中途失败，不能留下「有正文、没索引」的半截状态。
+
+    正文行在第 2 步就已提交，索引在第 3、4 步才写进**另一条连接**。
+    失败时没有跨连接事务可回滚，只能由补偿把这份资料退回零切片。
+
+    半截状态比零切片危险：source 会被标成 failed，但库里明明还有正文行，
+    检索时正文查得到、向量查不到，两路结果对不上，且没有任何报错指向它。
+    """
+    db_session, vec_engine = shared_db
+    source, baseline = await _seed_and_count(db_session, vec_engine, monkeypatch)
+    assert baseline > 0
+
+    async def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("索引写入失败")
+
+    target = (
+        "app.services.ingest.bm25.index_chunks"
+        if broken_step == "bm25"
+        else "app.services.ingest.upsert_embeddings"
+    )
+    monkeypatch.setattr(target, _boom)
+
+    with pytest.raises(IngestError):
+        await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
+
+    assert await DocumentChunk.list_for_source(db_session, source.id) == []
+
+
+async def _fts_row_count(vec_engine: AsyncEngine) -> int:
+    """直接数 FTS 虚表里的行数——经 ``bm25.search`` 查会漏掉孤儿。
+
+    检索按 ``source_ids`` 走 ``document_chunks`` 子查询，孤儿行天然查不到，
+    所以「搜不到」证明不了「不存在」。这里绕开检索直接读表。
+    """
+    from sqlalchemy import text
+
+    async with vec_engine.connect() as conn:
+        result = await conn.execute(text(f"SELECT count(*) FROM {bm25.FTS_TABLE}"))
+        return int(result.scalar_one())
+
+
+async def test_failed_reingest_leaves_no_orphan_index_entries(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """补偿要同时清两张索引表——它们没有外键，清不掉的行永远查不到也删不掉。
+
+    断点选在**向量写入**失败：此时正文行已提交、BM25 索引已写入，
+    只有向量是空的。补偿若只清正文不清索引，FTS 里就留下一批指向
+    已删 chunk_id 的行——它们永远不会被检索命中，却一直占着表，
+    且让「FTS 行数 == 正文行数」这个不变式彻底失效。
+
+    断点不选 bm25：它失败时两张索引表都还是上一轮的（已被 purge 清空），
+    断言「为空」会无条件通过，测不到任何东西。
+    """
+    db_session, vec_engine = shared_db
+    source, baseline = await _seed_and_count(db_session, vec_engine, monkeypatch)
+    assert await _fts_row_count(vec_engine) == baseline
+
+    async def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("向量写入失败")
+
+    monkeypatch.setattr("app.services.ingest.upsert_embeddings", _boom)
+    with pytest.raises(IngestError):
+        await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
+
+    assert await _fts_row_count(vec_engine) == 0
+    assert (
+        await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id])
+        == []
+    )
+
+
+async def test_compensation_does_not_touch_other_sources(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """补偿只清失败的那份资料，别人的资料必须完好。
+
+    单 source 的用例看不见这类越界：库里只有一份资料时，「全清」与
+    「精确清」结果完全一样。但用户库里同时躺着几十份资料，一份重传失败
+    把别人的索引全purge 掉——那些资料的正文行还在、向量索引没了，
+    两路检索结果对不上，且没有任何报错指向它。
+
+    比这更隐蔽的是正文：``delete(...).where(source_id == ...)`` 写对了
+    就不会波及，而索引那一步走的是 ``chunk_id`` 列表，少一个 where 就
+    变成按整表清。
+    """
+    db_session, vec_engine = shared_db
+    user = await _make_user(db_session)
+    victim = await _make_source(db_session, user, title="受害者")
+    bystander = await _make_source(db_session, user, title="旁观者")
+    _patch_embed(monkeypatch, "vectors")
+
+    await ingest(db_session, vec_engine, victim, SAMPLE_TEXT.encode())
+    await ingest(db_session, vec_engine, bystander, SAMPLE_TEXT.encode())
+    bystander_chunks = bystander.chunk_count
+    assert bystander_chunks > 0
+
+    async def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("向量写入失败")
+
+    monkeypatch.setattr("app.services.ingest.upsert_embeddings", _boom)
+    with pytest.raises(IngestError):
+        await ingest(db_session, vec_engine, victim, SAMPLE_TEXT.encode())
+
+    assert await DocumentChunk.list_for_source(db_session, victim.id) == []
+    assert len(await DocumentChunk.list_for_source(db_session, bystander.id)) == bystander_chunks
+    assert (
+        len(
+            await vectorstore.knn_search(
+                vec_engine, [0.5] * 1536, limit=100, source_ids=[bystander.id]
+            )
+        )
+        == bystander_chunks
+    )
+
+
+async def test_reingest_after_compensation_recovers_fully(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """补偿之后重传要能完全恢复，且两份索引与正文重新对齐。
+
+    原本这里只断言「重传成功」——那测不到补偿，因为重传路径**本来**就能
+    自己清干净（purge 旧行、按新 id 写索引）。补偿写坏了也不影响重传成功，
+    用户不会卡住，只是拿到一份切片 id 与索引对不上的资料。
+
+    所以断言落在不变式上：FTS 行数 == 正文行数 == 向量命中数。
+    少了是补偿清过头（重传后少了一部分切片可检索），多了是残留孤儿
+    （切片在库里却永远搜不到）。两种错位都不会以任何方式报错。
+    """
+    db_session, vec_engine = shared_db
+    source, baseline = await _seed_and_count(db_session, vec_engine, monkeypatch)
+
+    async def _boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("向量写入失败")
+
+    monkeypatch.setattr("app.services.ingest.upsert_embeddings", _boom)
+    with pytest.raises(IngestError):
+        await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
+
+    monkeypatch.undo()
+    _patch_embed(monkeypatch, "vectors")
+    await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
+
+    chunks = await DocumentChunk.list_for_source(db_session, source.id)
+    hits = await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id])
+    assert len(chunks) == baseline
+    assert len(hits) == baseline
+    assert await _fts_row_count(vec_engine) == baseline

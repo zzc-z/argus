@@ -162,13 +162,55 @@ async def _store(
     BM25 索引在「没有向量」的分支**之前**建：全文检索不依赖嵌入服务，
     没配 key 时它照样能用。只被 ``vectors is None`` 挡住的话，
     未配置嵌入的部署就只剩向量一路，而那一路是空的——等于没建索引。
+
+    ## 跨连接写入只能补偿，不能回滚
+
+    ``db`` 与 ``vec_engine`` 是两条独立连接（后者加载了 sqlite-vec 扩展，
+    不能并进业务连接）。跨连接就没有一个 SQLite 事务能同时覆盖它们，
+    所以任一步失败时都**不能回滚**——已经提交的 chunk 行收不回来。
+
+    这不是可以接受的：``ingest`` 捕获异常后把 source 标成 failed，用户
+    重传就好；但旧切片在第 1 步就被删了。失败一次，这份资料就变成
+    「一条正文都没有、但状态是 failed」——重传之前它彻底不可检索，
+    而用户看到的是「之前能搜到的资料突然搜不到了」。
+
+    代价由 :func:`_clear_stored` 兜住：任何一步失败都退回到**这份资料
+    一条切片都没有**的状态。比半截状态好——至少「没有就是没有」，
+    用户重传即刻恢复。做不到的是「失败不影响旧版本」，那需要新旧共存，
+    而 ``ux_document_chunks_source_index`` 唯一索引恰好禁止（见 ``_clear_stored``）。
     """
     # 建表要在最前面，不受「有没有向量」影响。
     await ensure_index_tables(vec_engine)
 
-    # 重跑摄取时清掉旧切片。否则 chunk_index 唯一约束会撞车。
-    # 两张索引表都要**先**删：它们没有外键，等 chunk 行没了就再也查不出
-    # 哪些 id 该清，只会留下永远查不到也删不掉的孤儿数据。
+    try:
+        records = await _replace_chunks(db, vec_engine, source, chunks)
+        await bm25.index_chunks(vec_engine, [(r.id, r.content) for r in records])
+        if vectors is None:
+            # 未配置嵌入 key：正文与全文索引已入库，只有语义检索是空的。
+            # 不当失败——用户可能只想存档，等配好 key 再重跑摄取。
+            logger.info("source %s 未生成向量（嵌入服务未配置）", source.id)
+            return
+        await upsert_embeddings(
+            vec_engine,
+            [(r.id, v) for r, v in zip(records, vectors, strict=True)],
+        )
+    except Exception:
+        await _clear_stored(db, vec_engine, source.id)
+        raise
+
+
+async def _replace_chunks(
+    db: AsyncSession,
+    vec_engine: AsyncEngine,
+    source: Source,
+    chunks: Sequence[Chunk],
+) -> list[DocumentChunk]:
+    """把这份资料的切片整个换成新的，返回落库后的记录（含自增 id）。
+
+    重跑摄取必须先删旧的，否则 chunk_index 唯一约束会撞车。
+    两张索引表都要**先**删：它们没有外键，等 chunk 行没了就再也查不出
+    哪些 id 该清，只会留下永远查不到也删不掉的孤儿数据。
+    """
     stale = list(
         await db.scalars(select(DocumentChunk.id).where(DocumentChunk.source_id == source.id))
     )
@@ -190,19 +232,32 @@ async def _store(
     ]
     db.add_all(records)
     await db.commit()
+    return records
 
-    await bm25.index_chunks(vec_engine, [(r.id, r.content) for r in records])
 
-    if vectors is None:
-        # 未配置嵌入 key：正文与全文索引已入库，只有语义检索是空的。
-        # 不当失败——用户可能只想存档，等配好 key 再重跑摄取。
-        logger.info("source %s 未生成向量（嵌入服务未配置）", source.id)
-        return
+async def _clear_stored(db: AsyncSession, vec_engine: AsyncEngine, source_id: int) -> None:
+    """把一份资料退回「零切片」状态。失败时调用，本身不抛异常。
 
-    await upsert_embeddings(
-        vec_engine,
-        [(r.id, v) for r, v in zip(records, vectors, strict=True)],
-    )
+    ## 为什么是零切片而不是旧切片
+
+    想做到「失败也不影响旧版本」，新切片得与旧切片并存——但
+    ``ux_document_chunks_source_index`` (source_id, chunk_index) 唯一，
+    新旧同序号直接撞车。真要并存得给切片加版本号，那是动 schema 的改造，
+    超出「补上补偿」的范围。零切片是有损但**确定**的状态：重传即恢复。
+
+    补偿自己失败时只记日志——它跑在异常处理里，再抛一次会把原始错误
+    盖掉，而原始错误才是排查要的。剩下的不一致留给下一次重传清理。
+    """
+    try:
+        stale = list(
+            await db.scalars(select(DocumentChunk.id).where(DocumentChunk.source_id == source_id))
+        )
+        await purge_index_entries(vec_engine, stale)
+        await db.execute(delete(DocumentChunk).where(DocumentChunk.source_id == source_id))
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception("source %s 补偿清理失败，可能残留半截切片", source_id)
 
 
 async def ensure_index_tables(vec_engine: AsyncEngine) -> None:
