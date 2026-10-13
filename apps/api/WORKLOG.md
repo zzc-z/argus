@@ -1,9 +1,59 @@
 # Argus API 开发工作日志
 
 > 用途：上下文压缩后据此恢复开发状态。**最新的章节在顶部**。
-> 最后更新：2026-10-13（补 CR 三轮完成）
+> 最后更新：2026-10-13（TAVILY_KEY 已配，联网搜索实测跑通）
 
 ---
+
+# 🔴 最新：TAVILY_API_KEY 已配——联网搜索第一次真正工作
+
+## 进度
+
+W2 Day 9/10/11 完成 + 补 CR 三轮完成，**430 tests 全绿**。
+`TAVILY_API_KEY` 从 Day 9 起就挂在「未申请」栏里，现在申请到了，实测跑通。
+
+## 实测（真实中转站 + 真实 Tavily + 真实本地资料）
+
+提问「NVIDIA Blackwell 的能效提升和部署散热要求分别是什么？」，
+本地存了一份只有两句话的技术笔记（能效 2.5 倍、GB200 120kW 液冷）：
+
+```
+节点: supervisor → researcher → writer → researcher → writer → ...
+      researcher → researcher → researcher → researcher → writer
+      → analyst → critic
+工具: local_search(ok 470ms), local_search(ok 156ms),
+      tavily_search(ok 3285ms), tavily_search(ok 5859ms),
+      tavily_search(ok 3232ms), dedup(ok 0ms)
+引用: 2 条，都来自本地资料（向量+BM25 / 向量）
+done: turns=4 in=8747 out=2249 truncated=False
+正文: 2304 字
+```
+
+模型表现值得记：联网之后它主动**修正了本地资料的口径**——本地只说
+「能效提升 2.5 倍」，它查完补充「单芯片 TDP 其实是上升的（H100 700W →
+Blackwell 1000W），能效增益来自单位能耗下的工作量而非单芯片更省电」，
+并区分了系统级宣传口径与芯片级。这种「用外部证据修正内部资料」的行为
+是 prompt 与检索都通了才会出现的。
+
+## 中转站断连的实测行为
+
+跑第二遍时撞上 `httpx2.RemoteProtocolError: peer closed connection
+without sending complete message body`。**服务端行为是对的**：
+`truncated=True` + `ErrorEvent(llm_unavailable)` 正常发出，连接没裸断。
+`gateway/research.py` 的「所有异常都转 ErrorEvent」在真实故障下生效了。
+
+（第一次观察到的「已收到的正文全丢」是测试脚本的问题——
+用 `ASGITransport` 同步读全量响应，断连时客户端侧整个 buffer 没了。
+真实浏览器是流式读，不会这样。别把客户端测试工具的缺陷记成服务端 bug。）
+
+## 待办更新
+
+| 事项 | 状态 |
+|---|---|
+| ~~`TAVILY_API_KEY` 未申请~~ | ✅ 已配，实测搜索与完整 agent 链路均跑通 |
+
+---
+
 
 # 🔴 最新：补 CR 三轮（对 Day 9/10/11 回头审查）
 
@@ -920,7 +970,7 @@ data: {"type": "done", "v": {"session_id": "...", "elapsed_ms": 5432}}
 
 | 事项 | 状态 |
 |---|---|
-| `TAVILY_API_KEY` | **未申请**。`tavily_search` 返回错误字符串，agent 照常跑完但搜不到东西 |
+| ~~`TAVILY_API_KEY` 未申请~~ | ✅ 已配（见顶部章节） |
 | `stop_reason == "max_tokens"` 且同时有 tool_calls 时，`truncated` 标记走不到 | 已知 bug，未修（`agent.py`） |
 | service 层引入了 logger | 与既有约定「logging 归 gateway」冲突，**待用户定夺** |
 | 「打字机」无节奏控制 | `_slice_for_display` 是同步函数，片段同 tick 吐完 |
