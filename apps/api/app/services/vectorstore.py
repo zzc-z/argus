@@ -26,6 +26,7 @@ import sqlite_vec
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from app.config import get_settings
 
@@ -34,6 +35,11 @@ from app.config import get_settings
 # 1536 = OpenAI text-embedding-3-small 的原始维度。不降维：512 维版本是
 # PRD 早期估算，1536 检索质量更好，且 sqlite-vec 的 float[N] 存的是 float32。
 EMBEDDING_DIM = 1536
+
+# 向量 engine 的连接数。给 4 是配合 gateway/research.py 的
+# MAX_CONCURRENT_STREAMS：并发研究请求各自占一个连接，摄取任务再要几个。
+# 不能配 1——那会让并发摄取直接死锁（见 create_vector_engine 的说明）。
+VECTOR_POOL_SIZE = 4
 
 VEC_TABLE = "chunk_embeddings"
 CHUNK_TABLE = "document_chunks"
@@ -74,13 +80,35 @@ def create_vector_engine(url: str, *, echo: bool = False) -> AsyncEngine:
 
     与 ``app.db.engine`` 分开：那个是通用 SQLite 连接，这个专供向量查询，
     避免每个普通请求都拖着扩展的开销。
+
+    ## 必须显式指定池类型，否则是死锁不是慢
+
+    传了 ``async_creator`` 之后，SQLAlchemy 对 SQLite 方言的默认选择是
+    :class:`StaticPool`——**全进程共用同一条连接**。实测（本函数创建出来的
+    engine）：``StaticPool``；而 ``app.db.engine`` 是 ``AsyncAdaptedQueuePool``。
+
+    单连接的 checkout 不排他，于是两个并发 ``engine.begin()`` 落在同一个
+    SQLite 事务里：一个提交、另一个回滚，谁先提交谁被吞。更糟的是两个
+    事务各自持有同一把连接又互相等对方释放，直接死锁——实测 8 个并发
+    ``upsert_embeddings`` 的脚本是**挂住**的，不是报错退出。
+
+    生产触发路径很普通：用户同时上传两份资料 → ``_schedule_ingest`` 起两个
+    摄取任务 → 两者都调 ``upsert_embeddings``，内部是 DELETE + INSERT 两个
+    await 点。而测试抓不到，因为 ``shared_db`` fixture 让 ORM session 与向量
+    engine 共用同一个 engine，连接数恒为 1，且用例全部串行 await。
+
+    所以这里显式给 ``AsyncAdaptedQueuePool``，让每个并发调用方拿到自己的
+    连接。SQLite 本身靠文件锁保证写串行，那正是我们要的——要串行的是
+    **写入**，不是「让所有人挤一条连接」。
     """
     path = _sqlite_path(url)
     return create_async_engine(
         "sqlite+aiosqlite://",
         async_creator=lambda: _open_with_extension(path),
         echo=echo,
-        connect_args={"check_same_thread": False},
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=VECTOR_POOL_SIZE,
+        max_overflow=0,
     )
 
 
@@ -153,7 +181,7 @@ async def knn_search(
     engine: AsyncEngine,
     query: Sequence[float],
     limit: int,
-    source_ids: Sequence[int] | None = None,
+    source_ids: Sequence[int],
 ) -> list[tuple[int, float]]:
     """KNN 检索，返回 [(chunk_id, distance)]，**distance 越小越近**。
 
@@ -177,8 +205,14 @@ async def knn_search(
     和 top2 互换。所以**不要断言排名的绝对值**，只断言「正确答案在前列」。
     真实场景靠 top-k 取多条（我们要 top50 召回再 rerank），单条抖动不影响结果。
 
-    ``source_ids`` 给定时只在这个文档集合里搜——用户私有资料必须先按
-    source_id 收窄，否则会检索到别人的文档。
+    ## ``source_ids`` 是必填，不是可选
+
+    用户私有资料必须先按 source_id 收窄，否则会检索到别人的文档。
+    这里**故意不给默认值**：默认 ``None`` 等于「不传就搜全库」，而漏传
+    恰恰是最容易犯的错误——它不会报错，只会让 A 用户的资料出现在 B 用户的
+    研报里。必填参数把「忘了收窄」从静默事故变成 TypeError。
+
+    传空列表时返回空：该用户一份资料都没有。
     """
     if len(query) != EMBEDDING_DIM:
         raise ValueError(f"查询向量维度应为 {EMBEDDING_DIM}，收到 {len(query)}")
@@ -194,10 +228,9 @@ async def knn_search(
         f"FROM {VEC_TABLE} v "
         f"WHERE v.embedding MATCH :vec AND k = :k "
     )
-    if source_ids is not None:
-        if not source_ids:
-            return []
-        sql += f"AND v.chunk_id IN (SELECT id FROM {CHUNK_TABLE} WHERE source_id IN ({_ids(source_ids)})) "
+    if not source_ids:
+        return []
+    sql += f"AND v.chunk_id IN (SELECT id FROM {CHUNK_TABLE} WHERE source_id IN ({_ids(source_ids)})) "
     sql += "ORDER BY v.distance"
 
     async with engine.connect() as conn:

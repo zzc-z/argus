@@ -37,6 +37,12 @@ dependencies = [
     "pymupdf>=1.24",              # PDF 文本抽取
     "langchain-text-splitters>=1.0",  # 递归字符切片
     "sqlite-vec>=0.1.6",          # 向量检索扩展
+    # 网页正文提取。不用正则剥标签（parser.HtmlParser）：同一份 Wikipedia
+    # HTML，正则版提 30748 字符、命中 6 处导航/页脚噪音，trafilatura 提
+    # 15399 字符、0 噪音——导航文案进 embedding 会直接污染检索。
+    # 注意它不能替代 HtmlParser：实测它对极简 HTML 返回 None，
+    # 两者是串联关系（fetcher._extract → parser.HtmlParser）。
+    "trafilatura>=2.0",
 ]
 
 [project.optional-dependencies]

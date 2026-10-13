@@ -11,14 +11,25 @@
 
 代价是进程重启会丢正在跑的摄取（status 停在中间态）。当前没有任务队列，
 YAGNI：先这样，真需要时接 Redis + worker。
+
+## URL 建源走同一条路
+
+``POST /url`` 同样只建源、抓取放后台——抓一个站可能耗满 20 秒超时，
+同步做等于让前端转圈 20 秒才拿到一个必然失败的 4xx。
+
+抓取失败（超时 / 404 / 非公网地址）与摄取失败对用户是**同一种事**，
+所以都写进 ``sources.error_message`` + ``status=failed``，
+轮询端点不需要区分。URL 合法性也故意不在请求里校验：
+放在后台让它落到 error_message，前端处理「建源失败」和「摄取失败」用同一套逻辑。
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Coroutine
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,7 +44,8 @@ from app.schemas.source import (
     SourceResponse,
 )
 from app.services import storage
-from app.services.ingest import IngestError, ingest
+from app.services.fetcher import FetchError, fetch_for_ingest
+from app.services.ingest import IngestError, ingest, mark_failed
 from app.services.vectorstore import get_vector_engine
 
 logger = logging.getLogger(__name__)
@@ -101,7 +113,12 @@ async def create_from_url(
     user: CurrentUser,
     db: DbSession,
 ) -> SourceResponse:
-    """用 URL 建源。当前只登记不抓取——抓取要接 Tavily/Firecrawl，W2 Day 10 做。"""
+    """用 URL 建源。立刻返回，抓取在后台跑。
+
+    与 upload_source 同构：抓一个站可能要 20 秒（超时上限），不能占着 HTTP
+    连接让前端转圈。URL 合法性也留给后台——让它落到 error_message 而不是
+    HTTP 状态码，前端轮询时两种失败的处理动作是同一个。
+    """
     source = Source(
         user_id=user.id,
         title=payload.title,
@@ -112,6 +129,7 @@ async def create_from_url(
     db.add(source)
     await db.commit()
     await db.refresh(source)
+    _schedule_url_ingest(source.id, payload.url, payload.source_type)
     return SourceResponse.model_validate(source)
 
 
@@ -173,30 +191,90 @@ def _schedule_ingest(source_id: int, payload: bytes) -> None:
 
     刻意**不复用**请求的 db session——它随请求结束关闭。后台任务自己开
     一个 session，否则跑到一半 session 已关，错误还很难看出来。
-
-    ``payload`` 在闭包里持有引用，任务结束前不会被回收。
     """
-    vec_engine = get_vector_engine()
+    _spawn(_ingest_with_payload(source_id, payload))
 
-    async def _task() -> None:
-        async with SessionLocal() as bg_db:
-            source = await bg_db.get(Source, source_id)
-            if source is None:  # pragma: no cover — 建源与后台任务之间不该被删
-                logger.warning("source %s 在摄取启动前已被删除", source_id)
-                return
-            try:
-                await ingest(bg_db, vec_engine, source, payload)
-            except IngestError:
-                # 详情已由 ingest 写进 sources.error_message，这里只留一行索引
-                logger.warning("source %s 摄取失败（见 error_message）", source_id)
-            except Exception:
-                logger.exception("source %s 摄取时发生未预期错误", source_id)
 
-    task = asyncio.create_task(_task())
-    # 保持强引用：asyncio 只持弱引用，GC 可能在任务跑完前把它回收掉，
-    # 症状是「偶尔摄取没开始，也没报错」。
+def _schedule_url_ingest(source_id: int, url: str, source_type: str) -> None:
+    """URL 建源的后台入口：先抓，再走同一条摄取管线。
+
+    刻意复用 :func:`_ingest_with_payload` 而不是另写一份摄取逻辑——
+    「抓到的字节怎么入库」与「上传的字节怎么入库」没有任何区别，
+    两条路各写一遍必然漂移。
+    """
+    _spawn(_fetch_then_ingest(source_id, url, source_type))
+
+
+async def _fetch_then_ingest(source_id: int, url: str, source_type: str) -> None:
+    """抓取 → 落盘 → 摄取。
+
+    抓到的字节要落盘，理由与上传路径一致：摄取失败（常见于没配 embedding key）
+    后用户重跑时不该再依赖那个站点还在线、还返回同样的内容。
+    """
+    async with SessionLocal() as bg_db:
+        source = await bg_db.get(Source, source_id)
+        if source is None:  # pragma: no cover — 建源与后台任务之间不该被删
+            logger.warning("source %s 在抓取启动前已被删除", source_id)
+            return
+        try:
+            payload = await fetch_for_ingest(url, source_type)
+        except FetchError as exc:
+            # FetchError 的 message 是写给用户看的，直接落库。
+            await mark_failed(bg_db, source, str(exc))
+            logger.warning("source %s 抓取失败：%s", source_id, exc)
+            return
+        except Exception:
+            # 网络栈的意外异常（DNS 抖动、连接重置）不带用户可读信息，
+            # 只给一句概括——细节留在日志里。
+            logger.exception("source %s 抓取时发生未预期错误", source_id)
+            await mark_failed(bg_db, source, "抓取时发生内部错误")
+            return
+
+        source.storage_path = storage.save_upload(payload, f"url{_suffix_for(source_type)}")
+        source.size_bytes = len(payload)
+        await bg_db.commit()
+        await _ingest_now(bg_db, source_id, payload)
+
+
+async def _ingest_with_payload(source_id: int, payload: bytes) -> None:
+    """上传路径的后台任务体。"""
+    async with SessionLocal() as bg_db:
+        await _ingest_now(bg_db, source_id, payload)
+
+
+async def _ingest_now(db: AsyncSession, source_id: int, payload: bytes) -> None:
+    """在已开好的 session 里跑摄取管线。两条入口共用。"""
+    source = await db.get(Source, source_id)
+    if source is None:  # pragma: no cover — 建源与后台任务之间不该被删
+        logger.warning("source %s 在摄取启动前已被删除", source_id)
+        return
+    try:
+        await ingest(db, get_vector_engine(), source, payload)
+    except IngestError:
+        # 详情已由 ingest 写进 sources.error_message，这里只留一行索引
+        logger.warning("source %s 摄取失败（见 error_message）", source_id)
+    except Exception:
+        logger.exception("source %s 摄取时发生未预期错误", source_id)
+
+
+def _spawn(coro: Coroutine[Any, Any, None]) -> None:
+    """建后台任务并保住强引用。
+
+    asyncio 只持弱引用，GC 可能在任务跑完前把它回收掉，症状是
+    「偶尔摄取没开始，也没报错」。
+    """
+    task = asyncio.create_task(coro)
     _BACKGROUND_TASKS.add(task)
     task.add_done_callback(_BACKGROUND_TASKS.discard)
+
+
+def _suffix_for(source_type: str) -> str:
+    """URL 建源落盘时的扩展名。
+
+    只为让 storage 生成的路径可辨认；``save_upload`` 只取扩展名做净化，
+    不按它选解析器（选解析器的是 sources.source_type）。
+    """
+    return ".pdf" if source_type == SourceType.PDF else ".html"
 
 
 # 强引用集合，见 _schedule_ingest 的注释。

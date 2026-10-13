@@ -78,10 +78,10 @@ SAMPLE_TEXT = (
 
 # ── 正常路径 ───────────────────────────────────────────────
 async def test_ingest_indexes_text_source(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
     _patch_embed(monkeypatch, "vectors")
@@ -96,10 +96,10 @@ async def test_ingest_indexes_text_source(
 
 
 async def test_ingest_writes_vectors(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
     _patch_embed(monkeypatch, "vectors")
@@ -107,15 +107,15 @@ async def test_ingest_writes_vectors(
     await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
 
     chunks = await DocumentChunk.list_for_source(db_session, source.id)
-    hits = await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100)
+    hits = await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id])
     assert len(hits) == len(chunks)
 
 
 async def test_chunks_carry_page_numbers(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     """页码要一路带到 chunk 上——引用写 [1, p.3] 全靠它。"""
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
@@ -128,10 +128,10 @@ async def test_chunks_carry_page_numbers(
 
 
 async def test_without_embedding_key_still_indexes_text(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     """没配 key 时正文仍要入库——用户可能只想存档，不该整份失败。"""
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
@@ -141,15 +141,15 @@ async def test_without_embedding_key_still_indexes_text(
 
     assert source.status == SourceStatus.INDEXED
     assert len(await DocumentChunk.list_for_source(db_session, source.id)) > 0
-    assert await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=10) == []
+    assert await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=10, source_ids=[source.id]) == []
 
 
 # ── 重跑 ───────────────────────────────────────────────────
 async def test_reingest_replaces_chunks_not_duplicates(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     """重跑要替换而不是叠加——chunk_index 唯一约束会撞车。"""
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
@@ -165,22 +165,22 @@ async def test_reingest_replaces_chunks_not_duplicates(
 
 
 async def test_reingest_purges_orphan_vectors(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     """重跑时旧向量要清掉——向量表没有外键，留着就是永久孤儿。"""
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
     _patch_embed(monkeypatch, "vectors")
 
     await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
-    stale_count = len(await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100))
+    stale_count = len(await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id]))
 
     _patch_embed(monkeypatch, "no_vectors")
     await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
 
-    assert await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100) == []
+    assert await vectorstore.knn_search(vec_engine, [0.5] * 1536, limit=100, source_ids=[source.id]) == []
     assert stale_count > 0
 
 
@@ -202,10 +202,10 @@ async def test_parse_failure_is_recorded_on_source(
 
 
 async def test_embedding_failure_marks_failed(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
     _patch_embed(monkeypatch, RuntimeError("上游炸了"))
@@ -218,10 +218,10 @@ async def test_embedding_failure_marks_failed(
 
 
 async def test_failure_does_not_leak_internal_details(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     """未预期的错误不能把内部异常信息透给用户。"""
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
@@ -236,10 +236,10 @@ async def test_failure_does_not_leak_internal_details(
 
 
 async def test_failed_source_can_be_retried(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     """失败后重传要能成功——error_message 要被清掉。"""
     user = await _make_user(db_session)
     source = await _make_source(db_session, user)
@@ -269,10 +269,10 @@ def test_parser_for_unknown_type_raises() -> None:
 
 
 async def test_ingest_pdf(
-    db_session: AsyncSession,
-    vec_engine: AsyncEngine,
+    shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    db_session, vec_engine = shared_db
     """PDF 端到端。现场生成真 PDF，不用固定字节流。"""
     import pymupdf
 

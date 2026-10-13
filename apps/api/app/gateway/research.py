@@ -23,7 +23,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.db import get_session
 from app.gateway.deps import CurrentUser
@@ -37,20 +37,28 @@ router = APIRouter(prefix="/api/v1/research", tags=["research"])
 
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 
+# 向量 engine 必须走 Depends 注入，不能在函数体里直接调 get_vector_engine()。
+#
+# dependency_overrides 只对依赖**求解器**生效：它把「声明过的依赖」映射到
+# 替代实现，而模块级函数直接调用是普通函数调用，覆盖表根本不会被查。
+# Day 11 的 CR 抓过同一类问题的 get_session 版本——自己 SessionLocal() 开
+# session，测试静悄悄连上开发库 argus.db 而全部测试绿灯。向量 engine 是
+# 同一个坑的第二个实例：潜伏至今是因为路由测试都换成了假 agent，一旦有人
+# 写一个「真实 agent + local_search」的端到端测试就会踩到。
+VecEngineDep = Annotated[AsyncEngine, Depends(get_vector_engine)]
+
 # 并发上限。SSE 是长连接，一个研究请求要跑 30-60 秒；不设上限的话
 # 几十个并发就能把连接池和上游额度吃满，而每个请求其实只占一个协程。
 MAX_CONCURRENT_STREAMS = 4
 
 logger = logging.getLogger(__name__)
 
-# 每开一扇门就 +1，关门时 -1。用 Semaphore 而不是裸计数器，是因为它
-# 在并发释放时不会丢计数，而「先 +1 再判断」的写法在竞争下会超发。
 _slots = asyncio.Semaphore(MAX_CONCURRENT_STREAMS)
 
 
 @router.post("/ask", summary="提问并流式返回研究过程")
 async def ask(
-    payload: AskRequest, user: CurrentUser, db: DbSession
+    payload: AskRequest, user: CurrentUser, db: DbSession, vec_engine: VecEngineDep
 ) -> StreamingResponse:
     """发起一次研究，返回 SSE 事件流。
 
@@ -58,46 +66,81 @@ async def ask(
     reference / done / error。每帧是 ``data: {json}\\n\\n`` 单行 envelope，
     前端 ``split("\\n\\n")`` + ``JSON.parse`` 即可统一解析。
     """
-    _reject_if_full()
+    # 抢槽位与判定必须在**同一个同步块**里完成，否则是 TOCTOU：
+    # 第一版先 _reject_if_full() 检查、真正 acquire 放到生成器里，
+    # 中间隔着「响应开始发送」的 await。实测 10 个并发请求全部拿到 200，
+    # 503 一次都不触发，闸门等于不存在；而排队请求各自 pin 住一条 DB
+    # 连接（CurrentUser 的 session.get() 已开事务），十几条就能打爆池子，
+    # 把 /api/v1/me、OAuth、上传全部饿死。
+    #
+    # acquire 在开流**之前**：满了要能发 503，前端读 detail。
+    # release 在生成器 **finally**：客户端提前断开时 finally 仍会执行
+    # （已实测 aclose() 触发），否则槽位会逐次泄漏到全部 503。
+    if not await _try_acquire_slot():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "当前并发查询已满，请稍后重试",
+            headers={"Retry-After": "5"},
+        )
     _reject_if_llm_unconfigured()
 
     return StreamingResponse(
-        _stream(payload.question, user.id, db),
+        _stream(payload.question, user.id, db, vec_engine),
         media_type="text/event-stream",
         headers={
             # 关掉 nginx / 反向代理的缓冲。不关的话事件会被攒成一坨
             # 在响应结束时一次性吐出，前端完全看不到流式效果。
             "X-Accel-Buffering": "no",
-            "Cache-Control": "no-cache",
+            # no-store 而非 no-cache：no-cache 是「可缓存但需重新验证」，
+            # 对 SSE 没有意义且允许中间层存一份。no-transform 阻止 gzip
+            # 之类变换，避免缓冲重新被引入。
+            "Cache-Control": "no-store, no-transform",
         },
     )
 
 
-def _reject_if_full() -> None:
-    """并发已满时直接 503，不进生成器。
+async def _try_acquire_slot() -> bool:
+    """原子地抢一个并发槽位。满则返回 False，**绝不排队等**。
 
-    必须在开流之前判断——占了流再告诉前端「满了」，前端已经收到了 200，
-    只能靠 error 事件才知道，多绕一圈。
+    ``asyncio.Semaphore.acquire()`` 在有槽位时走快路径——源码第一句就是
+    ``if not self.locked(): self._value -= 1; return True``，**一个 await
+    都没有**。在协程里调它，有槽位就是立即返回，因此「检查 + 获取」是原子的。
+
+    满了它会去等（登记 waiter 然后 await future），而排队正是我们要避免的：
+    排队请求已经通过了鉴权、已经 checkout 了一条 DB 连接，等一轮就是
+    30-60 秒 × N 条连接。所以先用 ``locked()`` 挡掉，挡掉之后调用
+    ``acquire()`` 必然走快路径，不存在「判断后又被抢走」的窗口——
+    单协程在两次调用之间不会被打断。
+
+    第一版是这个逻辑的镜像错误：判断在端点、获取在生成器，中间隔着
+    「响应开始发送」的 await，于是 10 个并发请求全部拿到 200，503 一次
+    都不触发。**判断和获取必须在同一个同步块里。**
     """
     if _slots.locked():
-        raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "当前并发查询已满，请稍后重试",
-        )
+        return False
+    await _slots.acquire()  # 必然走快路径立即返回
+    return True
 
 
 def _reject_if_llm_unconfigured() -> None:
-    """模型未配置时 503，同样要赶在开流之前。"""
+    """模型未配置时 503，同样要赶在开流之前。
+
+    注意它跑在 ``_try_acquire_slot()`` **之后**：抛异常时槽位已经被占了，
+    必须释放，否则每次「模型未配置」都会永久扣掉一个槽位。
+    """
     try:
         get_anthropic_client()
     except LLMNotConfiguredError as exc:
+        _slots.release()
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
             "模型服务未配置",
         ) from exc
 
 
-async def _stream(question: str, user_id: int, db: AsyncSession) -> AsyncIterator[bytes]:
+async def _stream(
+    question: str, user_id: int, db: AsyncSession, vec_engine: AsyncEngine
+) -> AsyncIterator[bytes]:
     """把 agent 事件编码成 SSE 帧。
 
     ## 端点注入的 session 在流期间是可用的（实测结论）
@@ -139,10 +182,20 @@ async def _stream(question: str, user_id: int, db: AsyncSession) -> AsyncIterato
     首次调用才会建连接，而 sqlite-vec 扩展加载失败 / 数据库文件不可写
     都在这一步抛。放在 try 外的话，那类部署问题会变成裸 500——
     前端连 ``error`` 事件都收不到，只能一直转圈。
+
+    ## release 放在 finally，不放在 except 之后
+
+    客户端提前断开时生成器收到 GeneratorExit，``except Exception`` 捕不到
+    （3.8+ 起 CancelledError/GeneratorExit 都继承 BaseException）。
+    只在正常路径和 ``except Exception`` 里 release 的话，断连一次漏一个
+    槽，几次之后全部请求 503——而且症状指向「并发闸门坏了」，真正原因
+    在几十行外的 finally 里。
+
+    **别把 except 改成 BaseException**：那会吞掉取消信号，
+    槽位和 DB 连接一起泄漏。
     """
-    async with _slots:
+    try:
         try:
-            vec_engine = get_vector_engine()
             async for event in run_agent(
                 question, user_id=user_id, db=db, vec_engine=vec_engine
             ):
@@ -158,3 +211,5 @@ async def _stream(question: str, user_id: int, db: AsyncSession) -> AsyncIterato
                     retryable=False,
                 )
             )
+    finally:
+        _slots.release()

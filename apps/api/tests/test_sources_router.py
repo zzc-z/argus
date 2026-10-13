@@ -7,6 +7,7 @@
 只覆盖「HTTP 边界 + 鉴权 + 参数校验」。管线行为由 tests/test_ingest.py 负责。
 """
 
+from collections.abc import Coroutine
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +15,15 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.gateway import sources as sources_mod
 from app.models import Source, SourceStatus, SourceType, User
 
 TXT = "第一章 绪论。本文讨论检索增强生成的实现路径与评估方法。"
+
+# 在 autouse fixture 把它换成空实现**之前**抓住真身。
+# 用模块级常量而不是 monkeypatch.undo()——后者会把 conftest 的
+# _reset_env（APP_ENV=test）一起撤掉，等于绕过测试的环境约定。
+_REAL_SCHEDULE_URL_INGEST = sources_mod._schedule_url_ingest
 
 
 # ── fixtures ───────────────────────────────────────────────
@@ -30,8 +37,12 @@ def _tmp_upload_dir(tmp_path: Path) -> None:
 
 @pytest.fixture(autouse=True)
 def _no_background_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
-    """把后台摄取换成空实现——端点测试不该跑管线。"""
+    """把后台摄取换成空实现——端点测试不该跑管线。
+
+    URL 建源的后台任务同样要停：它会真去发网络请求。
+    """
     monkeypatch.setattr("app.gateway.sources._schedule_ingest", lambda _sid, _p: None)
+    monkeypatch.setattr("app.gateway.sources._schedule_url_ingest", lambda *_a: None)
 
 
 # ── helpers ───────────────────────────────────────────────
@@ -249,6 +260,81 @@ async def test_create_from_url_rejects_blank_title(
     resp = client.post("/api/v1/sources/url", json={"title": "  ", "url": "https://x.test"})
 
     assert resp.status_code == 422
+
+
+async def test_create_from_url_schedules_fetch(
+    client: TestClient, api_db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """建源后必须排上抓取任务，否则 source 永远停在 pending。
+
+    这正是本任务修的缺口：端点原来只登记不抓取。
+    """
+    user = await _user(api_db, "url3@t.local")
+    _auth(client, user)
+    recorded: list[tuple[int, str, str]] = []
+    monkeypatch.setattr(
+        "app.gateway.sources._schedule_url_ingest",
+        lambda sid, url, stype: recorded.append((sid, url, stype)),
+    )
+
+    resp = client.post(
+        "/api/v1/sources/url",
+        json={"title": "报道", "url": "https://example.com/a", "source_type": "html"},
+    )
+
+    assert recorded == [(resp.json()["id"], "https://example.com/a", "html")]
+
+
+async def test_create_from_url_delegates_to_spawner(
+    client: TestClient, api_db: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """端点只负责「排上任务」，不负责跑任务。
+
+    抓一个慢站点要耗满 20 秒超时；端点里同步跑等于让前端转圈 20 秒
+    才拿到一个必然失败的响应。这里断言端点把活交给 _spawn——
+    _spawn 内部用 create_task，不阻塞调用方。
+    """
+    user = await _user(api_db, "url4@t.local")
+    _auth(client, user)
+    # autouse fixture 把 _schedule_url_ingest 换成了空实现，
+    # 不还原的话端点走不到 _spawn，测的是 fixture 而不是端点。
+    monkeypatch.setattr("app.gateway.sources._schedule_url_ingest", _REAL_SCHEDULE_URL_INGEST)
+    spawned: list[int] = []
+
+    def _fake_spawn(coro: Coroutine[Any, Any, None]) -> None:
+        spawned.append(1)
+        # 不 await 的话协程会被 GC 掉并抛 RuntimeWarning；
+        # 本项目的 filterwarnings=error 会把它升级成失败。显式 close 掉。
+        coro.close()
+
+    monkeypatch.setattr("app.gateway.sources._spawn", _fake_spawn)
+
+    resp = client.post("/api/v1/sources/url", json={"title": "x", "url": "https://x.test"})
+
+    assert resp.status_code == 201
+    assert len(spawned) == 1
+
+
+async def test_spawn_returns_before_coroutine_finishes() -> None:
+    """_spawn 必须立即返回，不等被排的协程跑完。
+
+    这是「端点不等抓取」真正成立的地方。用 Event 而不是 sleep 计时：
+    协程被确定地卡在 Event 上，_spawn 若同步等它就必然死锁/超时，
+    测试失败是确定的，不受机器快慢影响。
+    """
+    import asyncio
+
+    gate = asyncio.Event()
+    started = asyncio.Event()
+
+    async def _blocked() -> None:
+        started.set()
+        await gate.wait()
+
+    sources_mod._spawn(_blocked())
+    await asyncio.wait_for(started.wait(), timeout=2.0)
+    assert not gate.is_set()  # 协程确实还卡着，而 _spawn 已经返回了
+    gate.set()
 
 
 # ── 读与删 ─────────────────────────────────────────────────

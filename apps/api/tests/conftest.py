@@ -23,7 +23,7 @@ from app.db import _enable_sqlite_foreign_keys, get_session
 from app.gateway.auth import OAUTH_STATE_COOKIE
 from app.main import app
 from app.models import Base
-from app.services.vectorstore import create_vector_engine
+from app.services.vectorstore import create_vector_engine, get_vector_engine
 
 pytest_plugins: list[str] = []
 
@@ -77,15 +77,29 @@ async def shared_db(tmp_path) -> AsyncGenerator[tuple[AsyncSession, AsyncEngine]
 
 @pytest.fixture
 async def api_db(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]:
-    """把路由里的 get_session 依赖换成测试库，避免写 dev 库。"""
+    """把路由里的 get_session 依赖换成测试库，避免写 dev 库。
+
+    **向量 engine 也要一起换。** ``get_vector_engine()`` 是模块级函数，
+    直接调用的话 ``dependency_overrides`` 对它无效——于是路由里拿到的
+    向量库会指向开发者的真实 ``argus.db``，测试会在那边建虚表、读数据，
+    而全部测试依然绿灯。
+
+    这是 Day 11 CR 抓过两次的同一类问题（第一次是 ``get_session``，
+    第二次是这个），所以两条一起覆盖，缺一条就等于没修。
+    """
     assert db_session is not None  # 让 mypy 认出这是个 async fixture
 
     async def _override() -> AsyncIterator[AsyncSession]:
         yield db_session
 
     app.dependency_overrides[get_session] = _override
-    yield db_session
-    app.dependency_overrides.clear()
+    # 向量库必须与业务表同库：混合检索的 source_ids 过滤是在向量库的
+    # document_chunks 上做子查询，两边不同库的话子查询永远查不到行。
+    app.dependency_overrides[get_vector_engine] = lambda: db_session.get_bind()
+    try:
+        yield db_session
+    finally:
+        app.dependency_overrides.clear()
 
 
 @pytest.fixture

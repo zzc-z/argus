@@ -79,38 +79,48 @@ async def test_ensure_table_is_idempotent(vec_engine: AsyncEngine) -> None:
 async def test_knn_returns_nearest_first(vec_engine: AsyncEngine) -> None:
     """三个权重递减的同向向量，最近的必须是权重最大的那个。"""
     await ensure_vector_table(vec_engine)
+    async with vec_engine.begin() as conn:
+        sid, cids = await _seed_source_with_chunks(conn, 3)
     await vectorstore.upsert_embeddings(
         vec_engine,
-        [(1, _vec(1.0, seed=0)), (2, _vec(0.8, seed=0)), (3, _vec(0.5, seed=0))],
+        [(cids[0], _vec(1.0, seed=0)), (cids[1], _vec(0.8, seed=0)), (cids[2], _vec(0.5, seed=0))],
     )
 
-    hits = await vectorstore.knn_search(vec_engine, _vec(1.0, seed=0), limit=3)
+    hits = await vectorstore.knn_search(
+        vec_engine, _vec(1.0, seed=0), limit=3, source_ids=[sid]
+    )
 
-    assert [cid for cid, _ in hits] == [1, 2, 3]
+    assert [cid for cid, _ in hits] == cids
     assert hits[0][1] == pytest.approx(0.0, abs=1e-5)
 
 
 async def test_knn_distance_increases(vec_engine: AsyncEngine) -> None:
     """距离必须递增，否则排序逻辑是错的。"""
     await ensure_vector_table(vec_engine)
+    async with vec_engine.begin() as conn:
+        sid, cids = await _seed_source_with_chunks(conn, 2)
     await vectorstore.upsert_embeddings(
         vec_engine,
-        [(1, _vec(1.0, seed=0)), (2, _vec(0.5, seed=0))],
+        [(cids[0], _vec(1.0, seed=0)), (cids[1], _vec(0.5, seed=0))],
     )
 
-    hits = await vectorstore.knn_search(vec_engine, _vec(1.0, seed=0), limit=2)
+    hits = await vectorstore.knn_search(
+        vec_engine, _vec(1.0, seed=0), limit=2, source_ids=[sid]
+    )
 
     assert hits[0][1] < hits[1][1]
 
 
 async def test_knn_limit_respected(vec_engine: AsyncEngine) -> None:
     await ensure_vector_table(vec_engine)
+    async with vec_engine.begin() as conn:
+        sid, cids = await _seed_source_with_chunks(conn, 20)
     await vectorstore.upsert_embeddings(
         vec_engine,
-        [(i + 1, _vec(1.0 - i / EMBEDDING_DIM)) for i in range(20)],
+        [(cids[i], _vec(1.0 - i / EMBEDDING_DIM)) for i in range(20)],
     )
 
-    hits = await vectorstore.knn_search(vec_engine, _vec(1.0), limit=5)
+    hits = await vectorstore.knn_search(vec_engine, _vec(1.0), limit=5, source_ids=[sid])
 
     assert len(hits) == 5
 
@@ -118,16 +128,20 @@ async def test_knn_limit_respected(vec_engine: AsyncEngine) -> None:
 async def test_knn_on_empty_table_returns_nothing(vec_engine: AsyncEngine) -> None:
     await ensure_vector_table(vec_engine)
 
-    assert await vectorstore.knn_search(vec_engine, _vec(), limit=5) == []
+    assert await vectorstore.knn_search(vec_engine, _vec(), limit=5, source_ids=[1]) == []
 
 
 async def test_upsert_replaces_existing(vec_engine: AsyncEngine) -> None:
     """重跑摄取会重复写同一 chunk_id，旧向量必须被替换而不是重复插入。"""
     await ensure_vector_table(vec_engine)
-    await vectorstore.upsert_embeddings(vec_engine, [(1, _vec(1.0, seed=0))])
-    await vectorstore.upsert_embeddings(vec_engine, [(1, _vec(1.0, seed=1))])
+    async with vec_engine.begin() as conn:
+        sid, cids = await _seed_source_with_chunks(conn, 1)
+    await vectorstore.upsert_embeddings(vec_engine, [(cids[0], _vec(1.0, seed=0))])
+    await vectorstore.upsert_embeddings(vec_engine, [(cids[0], _vec(1.0, seed=1))])
 
-    hits = await vectorstore.knn_search(vec_engine, _vec(1.0, seed=1), limit=5)
+    hits = await vectorstore.knn_search(
+        vec_engine, _vec(1.0, seed=1), limit=5, source_ids=[sid]
+    )
 
     assert len(hits) == 1
     assert hits[0][1] == pytest.approx(0.0, abs=1e-5)
@@ -145,7 +159,7 @@ async def test_knn_rejects_wrong_dimension(vec_engine: AsyncEngine) -> None:
     await ensure_vector_table(vec_engine)
 
     with pytest.raises(ValueError, match="维度"):
-        await vectorstore.knn_search(vec_engine, [0.1, 0.2, 0.3], limit=5)
+        await vectorstore.knn_search(vec_engine, [0.1, 0.2, 0.3], limit=5, source_ids=[1])
 
 
 async def test_knn_filters_by_source_ids(vec_engine: AsyncEngine) -> None:
@@ -200,9 +214,11 @@ async def test_distance_is_l2_not_cosine(vec_engine: AsyncEngine) -> None:
     query = _vec(1.0, seed=0)
     stored = _vec(0.5, seed=0)  # 单位向量，与 query 夹角固定
     await ensure_vector_table(vec_engine)
-    await vectorstore.upsert_embeddings(vec_engine, [(1, stored)])
+    async with vec_engine.begin() as conn:
+        sid, cids = await _seed_source_with_chunks(conn, 1)
+    await vectorstore.upsert_embeddings(vec_engine, [(cids[0], stored)])
 
-    hits = await vectorstore.knn_search(vec_engine, query, limit=1)
+    hits = await vectorstore.knn_search(vec_engine, query, limit=1, source_ids=[sid])
     reported = hits[0][1]
 
     assert reported == pytest.approx(_l2(query, stored), abs=1e-5)
@@ -218,11 +234,13 @@ async def test_l2_and_cosine_give_same_ranking(vec_engine: AsyncEngine) -> None:
     query = _vec(1.0, seed=0)
     candidates = [_vec(1.0), _vec(0.8), _vec(0.6), _vec(0.4)]
     await ensure_vector_table(vec_engine)
+    async with vec_engine.begin() as conn:
+        sid, cids = await _seed_source_with_chunks(conn, 4)
     await vectorstore.upsert_embeddings(
-        vec_engine, [(i + 1, v) for i, v in enumerate(candidates)]
+        vec_engine, [(cids[i], v) for i, v in enumerate(candidates)]
     )
 
-    hits = await vectorstore.knn_search(vec_engine, query, limit=4)
+    hits = await vectorstore.knn_search(vec_engine, query, limit=4, source_ids=[sid])
     by_cos = sorted(
         range(len(candidates)),
         key=lambda i: -_cosine(query, candidates[i]),
@@ -232,6 +250,19 @@ async def test_l2_and_cosine_give_same_ranking(vec_engine: AsyncEngine) -> None:
 
 
 # ── 建数据的辅助 ────────────────────────────────────────────
+async def _seed_source_with_chunks(conn, n: int, user_id: int = 1) -> tuple[int, list[int]]:
+    """建一个 user + 一个 source + n 条切片，返回 (source_id, [chunk_id...])。
+
+    必须建 source：``knn_search`` 的 ``source_ids`` 过滤是子查询
+    ``document_chunks``，chunk 没挂 source 就永远查不出来——而
+    ``source_ids`` 是必填参数，不存在「不传就搜全库」这条路径。
+    """
+    user_id = await _seed_source(conn, "u", user_id)
+    source_id = await _seed_source(conn, "资料", user_id)
+    chunk_ids = [await _seed_chunk(conn, source_id, i) for i in range(n)]
+    return source_id, chunk_ids
+
+
 async def _seed_source(conn, title: str, user_id: int = 1) -> int:
     """裸 SQL 建 source。
 
@@ -258,3 +289,17 @@ async def _seed_chunk(conn, source_id: int, index: int) -> int:
         {"s": source_id, "i": index},
     )
     return int(result.lastrowid or 0)
+
+
+async def _seed_chunks(vec_engine: AsyncEngine, n: int) -> tuple[int, list[int]]:
+    """建一个资料 + n 条切片，返回 (source_id, [chunk_id, ...])。
+
+    ``knn_search`` 的 source_ids 是**必填**（漏传会串库，见函数 docstring），
+    所以每条要检索的切片都必须挂在一个真实 source 下——光往向量表塞裸
+    chunk_id 检索不到，因为 source 过滤是子查询 document_chunks。
+    """
+    async with vec_engine.begin() as conn:
+        user_id = await _seed_source(conn, "u")
+        source_id = await _seed_source(conn, "资料", user_id)
+        chunk_ids = [await _seed_chunk(conn, source_id, i) for i in range(n)]
+    return source_id, chunk_ids

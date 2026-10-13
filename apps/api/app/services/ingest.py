@@ -95,11 +95,11 @@ async def ingest(
         # 统一抛 IngestError 而非原样 raise：调用方（HTTP 层）靠这一个类型
         # 区分「用户可见的处理失败」和「代码 bug」。裸 raise 会把 ParseError
         # 漏出去，调用方只能靠字符串猜。
-        await _mark_failed(db, source, str(exc))
+        await mark_failed(db, source, str(exc))
         raise IngestError(str(exc)) from exc
     except Exception as exc:
         logger.exception("摄取 source %s 时发生未预期错误", source.id)
-        await _mark_failed(db, source, "处理时发生内部错误")
+        await mark_failed(db, source, "处理时发生内部错误")
         raise IngestError("处理时发生内部错误") from exc
 
     await _set_status(db, source, SourceStatus.INDEXED, chunk_count=len(chunks))
@@ -133,8 +133,14 @@ async def _set_status(
     await db.commit()
 
 
-async def _mark_failed(db: AsyncSession, source: Source, message: str) -> None:
-    """写入失败状态。回滚后单独开一次提交，避免污染调用方的事务。"""
+async def mark_failed(db: AsyncSession, source: Source, message: str) -> None:
+    """写入失败状态。回滚后单独开一次提交，避免污染调用方的事务。
+
+    对外暴露而不只给管线自己用：URL 建源在**抓取**阶段就可能失败
+    （超时、404、非 200），那一刻管线还没开始，没人来写 error_message。
+    抓取失败与摄取失败对用户是同一种事——「这份资料失败了，原因是 X」，
+    所以必须写进同一个字段，轮询端点才能一视同仁。
+    """
     await db.rollback()
     source.status = SourceStatus.FAILED
     source.error_message = message
