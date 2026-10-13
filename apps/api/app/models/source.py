@@ -19,7 +19,6 @@ from typing import Self
 
 from sqlalchemy import (
     JSON,
-    DateTime,
     Float,
     ForeignKey,
     Index,
@@ -32,7 +31,7 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, UtcDateTime
 
 
 class SourceType(StrEnum):
@@ -88,11 +87,11 @@ class Source(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         server_default=func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         server_default=func.now(),
         onupdate=func.now(),
     )
@@ -158,7 +157,7 @@ class DocumentChunk(Base):
     meta: Mapped[dict[str, object]] = mapped_column(JSON, default=dict)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        UtcDateTime(),
         server_default=func.now(),
     )
 
@@ -173,11 +172,7 @@ class DocumentChunk(Base):
     @classmethod
     async def list_for_source(cls, session: AsyncSession, source_id: int) -> list[Self]:
         """取某资料的全部切片，按序号排。"""
-        stmt = (
-            select(cls)
-            .where(cls.source_id == source_id)
-            .order_by(cls.chunk_index)
-        )
+        stmt = select(cls).where(cls.source_id == source_id).order_by(cls.chunk_index)
         return list((await session.scalars(stmt)).all())
 
     @classmethod

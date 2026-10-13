@@ -4,6 +4,8 @@
 别人的 source_id 就能被读到。
 """
 
+from datetime import UTC, datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -166,3 +168,93 @@ async def test_deleting_source_cascades_to_chunks(db_session: AsyncSession) -> N
     await db_session.commit()
 
     assert await DocumentChunk.list_for_source(db_session, source.id) == []
+
+
+# ── 时间语义 ─────────────────────────────────────────────────
+async def test_server_default_timestamps_come_back_utc_aware(db_session: AsyncSession) -> None:
+    """server_default 写的行也必须是 aware。
+
+    这条路径与显式赋值不同：``func.now()`` 在**数据库侧**求值，根本不经过
+    ``process_bind_param``。装饰器只挡住了 Python 侧显式赋值的那一半，
+    读回那一半（``process_result_value``）才决定这两种写法是否一致。
+    两边不一致时，同一列里的值取决于当时用了哪种写法。
+    """
+    user = await _make_user(db_session, "tz@test.local")
+    source = await _make_source(db_session, user)
+
+    for label, value in (
+        ("source.created_at", source.created_at),
+        ("source.updated_at", source.updated_at),
+        ("user.created_at", user.created_at),
+    ):
+        assert value is not None, label
+        assert value.utcoffset() == UTC.utcoffset(None), label
+
+
+async def test_timestamps_are_comparable_with_aware_now(db_session: AsyncSession) -> None:
+    """库里读出的时间能与 ``datetime.now(UTC)`` 直接相减。
+
+    这是 naive 值最常见的炸点：``aware - naive`` 抛 TypeError，而调用点
+    通常是个看起来无害的「算一下过期了没有」。token.py 的签发时间就是
+    这么和库里的记录对上的。
+    """
+    user = await _make_user(db_session, "cmp@test.local")
+
+    age = datetime.now(UTC) - user.created_at
+
+    assert timedelta(0) <= age < timedelta(minutes=5)
+
+
+async def test_explicit_aware_value_normalized_to_utc(db_session: AsyncSession) -> None:
+    """写入带时区的时间，取回时是同一个瞬间、UTC 标注。
+
+    存进去的是 +08:00 的值，取回来必须是等价的 UTC 值——不能是原样带
+    +08:00 读出（跨时区展示会错），更不能是被当成本地时间改写（数据漂移）。
+    """
+    user = await _make_user(db_session, "tz8@test.local")
+    shanghai = timezone(timedelta(hours=8))
+    moment = datetime(2026, 3, 1, 12, 0, tzinfo=shanghai)
+
+    source = Source(
+        user_id=user.id,
+        title="跨时区",
+        source_type=SourceType.TEXT,
+        status=SourceStatus.PENDING,
+        created_at=moment,
+    )
+    db_session.add(source)
+    await db_session.commit()
+
+    # populate_existing：identity map 里躺着的还是刚插入的那个 Python 对象，
+    # 直接 get() 拿到它就绕过了 process_result_value，测不到任何东西。
+    row = await db_session.get(Source, source.id, populate_existing=True)
+    assert row is not None
+    assert row.created_at == moment
+    assert row.created_at.utcoffset() == UTC.utcoffset(None)
+
+
+async def test_naive_explicit_value_kept_as_is(db_session: AsyncSession) -> None:
+    """显式写入 naive 值不被拒绝，也不被静默改写。
+
+    刻意如此：拒绝会让所有手写 ``datetime(2026, 1, 1)`` 的调用方（脚本、
+    测试夹具）全炸；静默改写会让「我以为存的是 UTC」变成无法验证的假设。
+    这里的契约是「按 UTC 解读」，读回来就是带 UTC 的那个瞬间。
+    """
+    user = await _make_user(db_session, "naive@test.local")
+    moment = datetime(2026, 3, 1, 12, 0)
+
+    source = Source(
+        user_id=user.id,
+        title="裸时间",
+        source_type=SourceType.TEXT,
+        status=SourceStatus.PENDING,
+        created_at=moment,
+    )
+    db_session.add(source)
+    await db_session.commit()
+
+    # populate_existing：identity map 里躺着的还是刚插入的那个 Python 对象，
+    # 直接 get() 拿到它就绕过了 process_result_value，测不到任何东西。
+    row = await db_session.get(Source, source.id, populate_existing=True)
+    assert row is not None
+    assert row.created_at == moment.replace(tzinfo=UTC)
