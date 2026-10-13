@@ -5,6 +5,7 @@
 """
 
 import pytest
+from sqlalchemy.exc import InvalidRequestError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
@@ -74,6 +75,28 @@ async def test_list_owned_empty_for_new_user(db_session: AsyncSession) -> None:
     user = await _make_user(db_session, "fresh@test.local")
 
     assert await Source.list_owned(db_session, user.id) == []
+
+
+async def test_list_owned_does_not_load_chunk_content(db_session: AsyncSession) -> None:
+    """列资料不能把切片正文拖回来——列表页只显示 title/status。
+
+    ``Source.chunks`` 曾经是 ``lazy="selectin"``，无条件 eager：查任何
+    Source 都会连带 SELECT 它的全部切片（含 content）。实测 list_owned
+    会发出两条 SQL，第二条把整份资料的正文拉进内存，一个字符都用不上。
+
+    现在是 ``lazy="raise"``——碰它直接报错，逼调用方显式查询。这比
+    「默默加载一大坨用不上的东西」安全得多。
+    """
+    user = await _make_user(db_session, "eager@test.local")
+    source = await _make_source(db_session, user)
+    db_session.add(DocumentChunk(source_id=source.id, chunk_index=0, content="正文"))
+    await db_session.commit()
+
+    loaded = await Source.list_owned(db_session, user.id)
+
+    assert len(loaded) == 1
+    with pytest.raises(InvalidRequestError):
+        _ = loaded[0].chunks
 
 
 # ── 默认值 ─────────────────────────────────────────────────

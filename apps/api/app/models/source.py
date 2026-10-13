@@ -100,7 +100,17 @@ class Source(Base):
     chunks: Mapped[list["DocumentChunk"]] = relationship(
         back_populates="source",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        # selectin 是无条件 eager：查任何 Source 都会连带拉它全部切片的
+        # **正文**。实测 `list_owned`（列表页只显示 title/status）发出两条
+        # SQL，第二条把整份资料的正文拖进内存，一个字符都用不上。
+        #
+        # 改成 lazy="raise"：默认不加载，碰它就报错而不是悄悄发一条
+        # SELECT。文档里的说法是 "raise"，"raiseload" 是 1.x 的旧写法，
+        # SQLAlchemy 2.x 会报 "Can't find strategy (('lazy', 'raiseload'),)"。
+        #
+        # 真要用切片时显式查（DocumentChunk.list_for_source）；摄取流程
+        # 需要它，那里有明确的显式查询。
+        lazy="raise",
     )
 
     __table_args__ = (Index("ix_sources_user_id", "user_id"),)

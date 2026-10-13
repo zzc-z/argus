@@ -98,6 +98,28 @@ async def test_single_turn_produces_text_and_done(monkeypatch: pytest.MonkeyPatc
     assert deltas[0].text == "这是答案。"
 
 
+async def test_thinking_only_response_emits_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """只回 thinking 时必须发 error，不能拿空正文当「已完成」。
+
+    实测这种响应 stop_reason 是正常的 "end_turn"、tool_calls 为空，
+    循环照常 break。不加这道守卫的话前端会把一份空白报告标成完成，
+    且没有任何错误提示——用户只看到一个空页面。
+    """
+    _stub_turns(monkeypatch, [_turn(text="")])
+
+    events = await _collect()
+
+    errors = [e for e in events if isinstance(e, ErrorEvent)]
+    assert len(errors) == 1
+    assert errors[0].code == "empty_response"
+    assert errors[0].retryable is True
+    # 不能有 done——前端会优先按「已完成」收尾
+    assert not [e for e in events if isinstance(e, DoneEvent)]
+    assert not [e for e in events if isinstance(e, DeltaEvent)]
+
+
 async def test_done_carries_stats(monkeypatch: pytest.MonkeyPatch) -> None:
     """done 必须带 session_id 与 token 数——前端 DAG 头部要显示。"""
     _stub_turns(monkeypatch, [_turn(text="答案")])

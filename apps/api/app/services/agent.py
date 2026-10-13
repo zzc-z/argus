@@ -220,6 +220,9 @@ async def run_agent(
     # 全局变量会让两个用户的搜索结果互相污染。
     tool_results: list[dict[str, Any]] = []
 
+    # 有没有真的产出过正文。见下面「一个字的正文都没产出」的分支。
+    produced_text = False
+
     try:
         for turn in range(MAX_TURNS):
             turns = turn + 1
@@ -232,6 +235,7 @@ async def run_agent(
 
             if result.text:
                 # 扩展思考模型常一边调工具一边说话，这段也要给用户看。
+                produced_text = True
                 for event in tracker.switch(Stage.WRITER):
                     yield event
                 for piece in _slice_for_display(result.text):
@@ -275,6 +279,7 @@ async def run_agent(
                 total_in += final.input_tokens
                 total_out += final.output_tokens
                 if final.text:
+                    produced_text = True
                     for event in tracker.switch(Stage.WRITER):
                         yield event
                     for piece in _slice_for_display(final.text):
@@ -297,6 +302,23 @@ async def run_agent(
             truncated=True,
         )
         yield ErrorEvent(code="llm_unavailable", message="模型服务暂时不可用，请稍后重试")
+        return
+
+    # 一个字的正文都没产出时，必须发 error 而不是让 done 带空正文收尾。
+    #
+    # 触发场景：模型只回 thinking（stop_reason="end_turn"）或直接 refusal。
+    # 实测那种情况下 stop_reason 是正常的、tool_calls 为空，循环照常
+    # break，truncated 也是 False——前端于是把一份空白报告标成「已完成」，
+    # DAG 上 writer 节点从未 activate，用户看不到任何错误提示。
+    if not produced_text:
+        closing = tracker.complete()
+        if closing is not None:
+            yield closing
+        yield ErrorEvent(
+            code="empty_response",
+            message="模型未产出内容，请重试",
+            retryable=True,
+        )
         return
 
     # 收尾：关掉当前节点，再过 critic 占位，让 DAG 走完 5 步。
