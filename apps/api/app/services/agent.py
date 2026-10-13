@@ -56,6 +56,10 @@ MAX_OUTPUT_TOKENS = 4096  # 单轮输出预算。thinking 与正文共享，不�
 # 最后一轮强制收尾时传进去的空工具列表——模型看到空列表就不会再要工具。
 no_tools: tuple[ToolSpec, ...] = ()
 
+# 强制收尾指令。占位符 {} 会被填成 MAX_TURNS，让模型知道自己是被上限
+# 打断的而不是自己选择收尾——否则它会再解释一轮为什么不早停。
+FINALIZE_INSTRUCTION = "你已达到 {} 次检索上限。请基于已有信息直接给出最终答案，不要再调用工具。"
+
 # 只写**跨工具的编排规则**，不写「有工具 X 可用」——那些已经在各自的
 # description 里了（见 app/services/tools.py 的 *_SPEC.description）。
 #
@@ -127,6 +131,51 @@ class TurnResult:
     output_tokens: int
 
 
+@dataclass(slots=True)
+class TurnLedger:
+    """一次研究的用量与产出记账。
+
+    把这些散落的局部变量收进一个对象，是因为它们有**跨方法**的读者：
+    ``turns`` / token 数在异常路径上要读，已经在 try 块外赋过值；
+    ``produced_text`` 在循环外的收尾分支要读。摊平成局部变量时，
+    读到的值到底是「哪一次请求累加的」只有读代码的人知道。
+    """
+
+    session_id: str
+    started_at: float
+    turns: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    truncated: bool = False
+    produced_text: bool = False
+
+    def begin_turn(self) -> None:
+        """占用一轮额度。
+
+        计数在**请求发出之前**递增：崩溃的那一轮同样烧掉了额度，
+        少算一轮就等于告诉用量统计「这次几乎没花钱」，重试时
+        也就看不到上次真正的开销。
+        """
+        self.turns += 1
+
+    def record(self, result: TurnResult) -> None:
+        """累加一轮的 token 用量，并记住是否产出了正文。"""
+        self.input_tokens += result.input_tokens
+        self.output_tokens += result.output_tokens
+        if result.text:
+            self.produced_text = True
+
+    def done(self) -> DoneEvent:
+        return DoneEvent(
+            session_id=self.session_id,
+            elapsed_ms=int((time.monotonic() - self.started_at) * 1000),
+            turns=self.turns,
+            input_tokens=self.input_tokens,
+            output_tokens=self.output_tokens,
+            truncated=self.truncated,
+        )
+
+
 class NodeTracker:
     """节点生命周期的单写者。
 
@@ -189,8 +238,7 @@ async def run_agent(
     ``db`` / ``vec_engine`` 缺省时摘掉 ``local_search`` 工具——
     测试里大量场景不接数据库，强行造连接比少一个工具更麻烦。
     """
-    session_id = str(uuid4())
-    started_at = time.monotonic()
+    ledger = TurnLedger(session_id=str(uuid4()), started_at=time.monotonic())
     tracker = NodeTracker()
 
     # 本地拼装提示词，让前端能看到「调度」这一步。
@@ -198,9 +246,8 @@ async def run_agent(
     context = _build_context(user_id, db, vec_engine)
     tools = available_tools(has_local=context is not None)
     prompt = _build_user_prompt(question, tools, context is not None)
-    _closing = tracker.complete()
-    if _closing is not None:
-        yield _closing
+    for event in _close(tracker):
+        yield event
 
     try:
         client = get_anthropic_client()
@@ -212,37 +259,28 @@ async def run_agent(
     yield tracker.activate(Stage.RESEARCHER)
 
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
-    total_in = 0
-    total_out = 0
-    turns = 0
-    truncated = False
     # 每轮的 tool_result 累积在局部变量里，不放模块级全局——SSE 并发时
     # 全局变量会让两个用户的搜索结果互相污染。
     tool_results: list[dict[str, Any]] = []
 
-    # 有没有真的产出过正文。见下面「一个字的正文都没产出」的分支。
-    produced_text = False
-
     try:
         for turn in range(MAX_TURNS):
-            turns = turn + 1
+            ledger.begin_turn()
             result = await _run_turn(client, messages, tools)
-            total_in += result.input_tokens
-            total_out += result.output_tokens
+            ledger.record(result)
 
             # thinking block 原样回传——带 signature，改动会被上游拒绝。
             messages.append({"role": "assistant", "content": result.content})
 
             if result.text:
                 # 扩展思考模型常一边调工具一边说话，这段也要给用户看。
-                produced_text = True
                 for event in tracker.switch(Stage.WRITER):
                     yield event
                 for piece in _slice_for_display(result.text):
                     yield DeltaEvent(node_id=Stage.WRITER.value, text=piece)
 
             if not result.tool_calls:
-                truncated = result.stop_reason == "max_tokens"
+                ledger.truncated = result.stop_reason == "max_tokens"
                 break
 
             # 还要继续调工具：切回 researcher 节点。
@@ -262,45 +300,25 @@ async def run_agent(
             if turn == MAX_TURNS - 1:
                 # 最后一轮还在要工具：强制收尾，让模型基于现有信息作答，
                 # 用户仍能拿到答案，只是没有新的检索。
-                truncated = True
+                ledger.truncated = True
                 # 收尾指令作为**同一条** user 消息的第二个 block，不能另起
                 # 一条 user 消息——那会构造出连续同角色消息，上游可能拒收。
                 messages[-1]["content"] = [
                     *messages[-1]["content"],
-                    {
-                        "type": "text",
-                        "text": "你已达到检索次数上限。请基于已有信息直接给出最终答案，"
-                        "不要再调用工具。",
-                    },
+                    {"type": "text", "text": FINALIZE_INSTRUCTION.format(MAX_TURNS)},
                 ]
-                final = await _run_turn(client, messages, no_tools)
-                turns += 1  # 强制收尾也是一次真实请求，计入 turns
-                messages.append({"role": "assistant", "content": final.content})
-                total_in += final.input_tokens
-                total_out += final.output_tokens
-                if final.text:
-                    produced_text = True
-                    for event in tracker.switch(Stage.WRITER):
-                        yield event
-                    for piece in _slice_for_display(final.text):
-                        yield DeltaEvent(node_id=Stage.WRITER.value, text=piece)
+                async for finalize_event in _finalize(client, ledger, messages, tracker):
+                    yield finalize_event
                 break
     except Exception as exc:
-        logger.warning("agent 循环异常中止（已完成 %d 轮）", turns, exc_info=exc)
-        _closing = tracker.complete()
-        if _closing is not None:
-            yield _closing
+        logger.warning("agent 循环异常中止（已完成 %d 轮）", ledger.turns, exc_info=exc)
+        ledger.truncated = True
+        for event in _close(tracker):
+            yield event
         # 崩溃也要发 DoneEvent：它是唯一带 session_id 与 token 数的事件。
         # 缺了它，已经烧掉的 token 就成了用量统计的黑洞——而这恰恰是
         # 最需要留痕的场景（重试也才知道上次烧了多少）。
-        yield DoneEvent(
-            session_id=session_id,
-            elapsed_ms=int((time.monotonic() - started_at) * 1000),
-            turns=turns,
-            input_tokens=total_in,
-            output_tokens=total_out,
-            truncated=True,
-        )
+        yield ledger.done()
         yield ErrorEvent(code="llm_unavailable", message="模型服务暂时不可用，请稍后重试")
         return
 
@@ -310,10 +328,9 @@ async def run_agent(
     # 实测那种情况下 stop_reason 是正常的、tool_calls 为空，循环照常
     # break，truncated 也是 False——前端于是把一份空白报告标成「已完成」，
     # DAG 上 writer 节点从未 activate，用户看不到任何错误提示。
-    if not produced_text:
-        closing = tracker.complete()
-        if closing is not None:
-            yield closing
+    if not ledger.produced_text:
+        for event in _close(tracker):
+            yield event
         yield ErrorEvent(
             code="empty_response",
             message="模型未产出内容，请重试",
@@ -321,24 +338,57 @@ async def run_agent(
         )
         return
 
-    # 收尾：关掉当前节点，再过 critic 占位，让 DAG 走完 5 步。
-    _closing = tracker.complete()
-    if _closing is not None:
-        yield _closing
-    for stage in (Stage.ANALYST, Stage.CRITIC):
-        yield tracker.activate(stage)
-        _closing = tracker.complete()
-        if _closing is not None:
-            yield _closing
+    # 收尾：关掉当前节点，再过 analyst / critic 占位，让 DAG 走完 5 步。
+    for event in _settle(tracker):
+        yield event
+    yield ledger.done()
 
-    yield DoneEvent(
-        session_id=session_id,
-        elapsed_ms=int((time.monotonic() - started_at) * 1000),
-        turns=turns,
-        input_tokens=total_in,
-        output_tokens=total_out,
-        truncated=truncated,
-    )
+
+async def _finalize(
+    client: AsyncAnthropic,
+    ledger: TurnLedger,
+    messages: list[dict[str, Any]],
+    tracker: NodeTracker,
+) -> AsyncIterator[AgentEvent]:
+    """轮数用尽后的强制收尾：关掉工具，再基于已有信息作答。
+
+    ``messages`` 在调用前已被就地追加了收尾指令，这里不再回传 assistant
+    内容——主循环随即 break，``messages`` 不再被读，多存一份只是让人
+    以为它还有用。
+    """
+    ledger.begin_turn()
+    final = await _run_turn(client, messages, no_tools)
+    ledger.record(final)
+    if not final.text:
+        return
+    for event in tracker.switch(Stage.WRITER):
+        yield event
+    for piece in _slice_for_display(final.text):
+        yield DeltaEvent(node_id=Stage.WRITER.value, text=piece)
+
+
+def _close(tracker: NodeTracker) -> list[NodeEvent]:
+    """关掉当前 active 节点；本来就没有 active 时给空列表。
+
+    单独抽出来是因为这个「可能有值、可能没有」的两行模式在主循环里
+    出现过四次，每次都要 ``if ... is not None: yield ...``。
+    """
+    closing = tracker.complete()
+    return [] if closing is None else [closing]
+
+
+def _settle(tracker: NodeTracker) -> list[NodeEvent]:
+    """正常收尾：关掉当前节点，再过 analyst / critic 占位。
+
+    analyst 与 critic 目前不做实际工作，只为让前端的 DAG 走完 5 步——
+    用户看到的进度条不会停在 writer 上。将来这两步接真实逻辑时，
+    也应该走同一套 activate/complete 语义，而不是另开一条路。
+    """
+    events = _close(tracker)
+    for stage in (Stage.ANALYST, Stage.CRITIC):
+        events.append(tracker.activate(stage))
+        events.extend(_close(tracker))
+    return events
 
 
 # ── 单轮请求 ──────────────────────────────────────────────────

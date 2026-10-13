@@ -256,6 +256,46 @@ async def test_max_tokens_marks_truncated(monkeypatch: pytest.MonkeyPatch) -> No
     assert done.truncated is True
 
 
+# ── 节点序列：成功 vs 失败 ────────────────────────────────────
+
+
+def _node_sequence(events: list[AgentEvent]) -> list[tuple[str, str]]:
+    return [(e.node_id, e.lifecycle) for e in events if isinstance(e, NodeEvent)]
+
+
+async def test_successful_run_walks_all_five_nodes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """成功时 DAG 走完 5 步——analyst / critic 是占位也要过。"""
+    _stub_turns(monkeypatch, [_turn(text="答案")])
+
+    completed = [n for n, life in _node_sequence(await _collect()) if life == "completed"]
+
+    assert completed == ["supervisor", "researcher", "writer", "analyst", "critic"]
+
+
+async def test_error_paths_stop_at_the_failing_node(monkeypatch: pytest.MonkeyPatch) -> None:
+    """失败时只关掉当前节点，**不许**替 analyst / critic 打 completed。
+
+    成功路径上那两步是纯占位（让前端进度条走完），流程真失败时把它们
+    标成已完成，等于告诉前端「交叉核验和引用校验都做过了」——而实际
+    一步都没跑。用户据此判断报告可信度会被误导。
+    """
+    _stub_turns(monkeypatch, [_turn(text="")])
+    empty = _node_sequence(await _collect())
+
+    async def _boom(client: Any, messages: list[Any], tools: Any) -> TurnResult:
+        raise ConnectionError("中转站不可达")
+
+    monkeypatch.setattr(agent_module, "_run_turn", _boom)
+    crashed = _node_sequence(await _collect())
+
+    for sequence in (empty, crashed):
+        completed = [n for n, life in sequence if life == "completed"]
+        assert "analyst" not in completed
+        assert "critic" not in completed
+        # 收尾事件必须是最后一条，否则前端会一直转圈
+        assert sequence[-1][1] == "completed"
+
+
 async def test_llm_failure_emits_error_not_crash(monkeypatch: pytest.MonkeyPatch) -> None:
     """模型挂掉要变成 error 事件，不能抛异常炸掉 SSE 流。"""
 
