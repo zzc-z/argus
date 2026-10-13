@@ -58,12 +58,13 @@ MAX_OUTPUT_TOKENS = 4096  # 单轮输出预算。thinking 与正文共享，不�
 # 最后一轮强制收尾时传进去的空工具列表——模型看到空列表就不会再要工具。
 no_tools: tuple[ToolSpec, ...] = ()
 
-# 强制收尾指令。占位符 {} 会被填成 MAX_TURNS，让模型知道自己是被上限
-# 打断的而不是自己选择收尾——否则它会再解释一轮为什么不早停。
 # 强制收尾指令。措辞必须说「轮」而不是「检索次数」：一轮里模型可以并行发
 # 多个 tool_use，6 轮完全可能对应 15 次检索。告诉模型「你已达到 6 次检索
 # 上限」会误导它自己判断证据够不够，进而在答案里加「检索不足，可信度有限」
 # 这种画蛇添足的免责声明——而报告正文是用户直接读的东西。
+#
+# {} 是 MAX_TURNS：让模型知道自己是被上限打断的而不是自己选择收尾，
+# 否则它会再解释一轮为什么不早停。
 FINALIZE_INSTRUCTION = (
     "你已达到本轮研究的调用轮数上限（共 {} 轮）。请基于已有信息直接给出最终答案，不要再调用工具。"
 )
@@ -331,11 +332,13 @@ async def run_agent(
                     *messages[-1]["content"],
                     {"type": "text", "text": FINALIZE_INSTRUCTION.format(MAX_TURNS)},
                 ]
-                async for finalize_event in _finalize(client, ledger, messages, tracker):
-                    if isinstance(finalize_event, TurnLedger):
-                        ledger = finalize_event
-                    else:
-                        yield finalize_event
+                # begin_turn 放在调用方而不是 _finalize 内部：它必须在
+                # 主循环这个 try 里赋值，_finalize 抛异常时账本已经记上了
+                # 这一轮。和主循环同语义——「崩了也算」。
+                ledger = ledger.begin_turn()
+                finalize_events, ledger = await _finalize(client, ledger, messages, tracker)
+                for finalize_event in finalize_events:
+                    yield finalize_event
                 break
     except Exception as exc:
         logger.warning("agent 循环异常中止（已完成 %d 轮）", ledger.turns, exc_info=exc)
@@ -382,28 +385,36 @@ async def _finalize(
     ledger: TurnLedger,
     messages: list[dict[str, Any]],
     tracker: NodeTracker,
-) -> AsyncIterator[AgentEvent | TurnLedger]:
+) -> tuple[list[AgentEvent], TurnLedger]:
     """轮数用尽后的强制收尾：关掉工具，再基于已有信息作答。
 
-    产出**新账本**（而不是就地改传入的那个）——账本是 frozen 的，就地改
-    不到；而这轮请求的 token 用量必须回到主循环的账本上，否则强制收尾
-    那一次就是白烧的。所以流的最后一项固定是账本，调用方取出后不再使用。
+    返回 ``(事件列表, 新账本)`` 而不是异步生成器，有两个理由：
+
+    1. **账本必须回传**。账本是 frozen 的，就地改不到；而这轮请求的 token
+       用量必须回到主循环的账本上，否则强制收尾那一次就是白烧的。
+    2. **不想用哨兵值传回参**。前一版把 ``TurnLedger`` 塞进事件流的最后
+       一项、靠 isinstance 分流——那条「最后一项必须是账本」的不变式
+       没有任何东西强制，漏写一个 yield 就是静默丢 token（正是它想防的
+       那个 bug）。返回 tuple 是编译期强制的：类型不对 mypy 直接报错。
+
+    也不需要是异步生成器：只有一个调用点，且消费完立刻 break，全部事件
+    先攒在列表里不会造成任何延迟——请求本身早已 await 完毕。
 
     ``messages`` 在调用前已被就地追加了收尾指令，这里不回传 assistant
     内容——主循环随即 break，``messages`` 不再被读，多存一份只是让人
     以为它还有用。
     """
-    ledger = ledger.begin_turn()
     final = await _run_turn(client, messages, no_tools)
     ledger = ledger.record(final)
+
     if not final.text:
-        yield ledger
-        return
-    for event in tracker.switch(Stage.WRITER):
-        yield event
-    for piece in _slice_for_display(final.text):
-        yield DeltaEvent(node_id=Stage.WRITER.value, text=piece)
-    yield ledger
+        return [], ledger
+    events: list[AgentEvent] = list(tracker.switch(Stage.WRITER))
+    events.extend(
+        DeltaEvent(node_id=Stage.WRITER.value, text=piece)
+        for piece in _slice_for_display(final.text)
+    )
+    return events, ledger
 
 
 def _close(tracker: NodeTracker) -> list[NodeEvent]:

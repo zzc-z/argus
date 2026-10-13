@@ -271,6 +271,27 @@ async def test_max_turns_forces_finalization(monkeypatch: pytest.MonkeyPatch) ->
     assert any(isinstance(e, DeltaEvent) and "最终答案" in e.text for e in events)
 
 
+async def test_forced_finalization_is_billed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """强制收尾那一次是真实请求，token 必须回到账本。
+
+    强制收尾跑在独立的 ``_finalize`` 里，而账本是 frozen 的——它就地改
+    不到，用完的请求必须回传给主循环的账本。漏传不报任何异常，只是
+    少报一轮用量：token 白烧了，用量统计里看不见。
+
+    所以这个断言盯的是 MAX_TURNS 轮 + 收尾那 1 轮 = MAX_TURNS + 1 次
+    请求的 token。把它改成断言「至少 MAX_TURNS 轮」就抓不住了。
+    """
+    script = [_turn(tool_calls=[_tool_call()]) for _ in range(MAX_TURNS)]
+    script.append(_turn(text="基于现有信息的最终答案"))
+    _stub_turns(monkeypatch, script)
+
+    done = next(e for e in await _collect() if isinstance(e, DoneEvent))
+
+    assert done.turns == MAX_TURNS + 1
+    assert done.input_tokens == (MAX_TURNS + 1) * 100
+    assert done.output_tokens == (MAX_TURNS + 1) * 50
+
+
 async def test_max_tokens_marks_truncated(monkeypatch: pytest.MonkeyPatch) -> None:
     """因长度上限被切断时标 truncated，但不报错。"""
     _stub_turns(monkeypatch, [_turn(text="很长很长…", stop_reason="max_tokens")])
