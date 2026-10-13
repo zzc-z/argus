@@ -153,9 +153,10 @@ export default function ExplorePage() {
   const handleSelectNode = useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
     setInspectorOpen(true)
     setInspectorPayload({ ...buildNodePayload(node), toolCalls })
-    // 令牌也要自增：清了原文区不等于作废在飞的请求。不自增的话，
-    // 「点角标 → 点 DAG 节点」会让请求回来后把原文写到节点检查器里，
-    // 抽屉上半是节点 B 的 JSON、下半是引用 [1] 的原文。
+    // 令牌要自增 + 请求要 abort，两件事缺一不可：
+    // 令牌拦住「响应写进 state」，abort 拦住「继续下载」。少了后者，
+    // 「点角标 → 点 DAG 节点」之后那个请求仍会跑完全量 payload。
+    sourceAbortRef.current?.abort()
     sourceTextToken.current += 1
     setSourceText({ kind: 'none' })
   }, [toolCalls])
@@ -289,6 +290,7 @@ export default function ExplorePage() {
             // 会发多次（每次工具调用命中就发一帧），重新编号后角标 [1]
             // 指的是另一个 chunk——不失效的话抽屉会给出旧编号的全文，
             // 而正文角标已指向新切片，恰好是这个功能要防的事。
+            sourceAbortRef.current?.abort()
             sourceTextToken.current += 1
             setSourceText({ kind: 'none' })
             break

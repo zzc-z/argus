@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { useRouter } from 'next/navigation'
 
 import { API_BASE, ApiError, apiFetch } from '@/lib/api/client'
+import { clearChunkCache } from '@/lib/api/sources'
 
 /** 与后端 `app/schemas/user.py` 的 MeResponse 对齐。 */
 export interface CurrentUser {
@@ -72,6 +73,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       // 但刷新又登录上，比报错更糟。
       console.error('[auth] 登出请求失败，仍按已登出处理', err)
     }
+    // 模块级缓存不会因客户端导航而重置（logout 走 router.push，不重载页面）。
+    // 不清的话上一个用户的私有资料全文留在 JS 堆里，且下次命中缓存连一次
+    // 鉴权请求都不发——「资料已删除」「权限已撤销」都感知不到。
+    clearChunkCache()
     setUser(null)
     router.push('/login')
   }, [router])
