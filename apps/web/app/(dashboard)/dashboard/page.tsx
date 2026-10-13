@@ -36,6 +36,7 @@ export default function DashboardPage() {
             label: '发起新研究',
             icon: 'add',
             variant: 'primary',
+            href: '/explore',
             shortcut: '⌘N',
             shortcutTone: 'dark',
           },

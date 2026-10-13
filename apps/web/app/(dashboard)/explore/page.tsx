@@ -39,9 +39,17 @@ import {
 } from './components/InspectorDrawer'
 import { PromptInput } from './components/PromptInput'
 import { apiStream } from '@/lib/api/client'
+import type {
+  DoneEventV,
+  NodeEventV,
+  ReferenceEventV,
+  ToolCallEventV,
+} from '@/lib/api/sse'
 import {
   AGENT_NODES,
+  CITATIONS,
   type AgentNode,
+  type Citation,
   type NodeLifecycle,
   type SlashCommand,
   type ToolCall,
@@ -64,24 +72,11 @@ const INITIAL_NODES: AgentNode[] = AGENT_NODES.map((n) => ({ ...n, lifecycle: 'p
  */
 type RunState = 'idle' | 'running' | 'completed'
 
-/** 后端 ToolCallEvent 的 v 字段。phase=start 时 ok/elapsed_ms 无意义。 */
-interface ToolCallEventV {
-  call_id: string
-  phase: string
-  name: string
-  tool_input: Record<string, unknown>
-  ok: boolean
-  elapsed_ms: number
-}
-
 /**
- * start + end 两段事件合成一条展示记录。
+ * 把一次工具调用转成 InspectorDrawer 要的展示态。
  *
  * 后端把一次调用拆成两段发（开始时立刻显示「正在搜索」，结束后补耗时），
  * 前端按 call_id 配对：start 建的记录，end 时补齐耗时与成败。
- */
-/**
- * 把一次工具调用转成 InspectorDrawer 要的展示态。
  *
  * `end` 是同一 call_id 的 end 事件；没有就说明还在跑，duration 显示
  * 「执行中…」。start 事件一定存在——后端先发 start 再执行工具。
@@ -96,15 +91,6 @@ function toToolCall(v: ToolCallEventV, end?: ToolCallEventV): ToolCall {
   }
 }
 
-interface DoneEventV {
-  session_id: string
-  elapsed_ms: number
-  turns: number
-  input_tokens: number
-  output_tokens: number
-  truncated: boolean
-}
-
 /** 把后端 node 事件合并到前端 AgentNode 上。 */
 function applyNode(node: AgentNode, nv: NodeEventV): AgentNode {
   return {
@@ -115,8 +101,6 @@ function applyNode(node: AgentNode, nv: NodeEventV): AgentNode {
       nv.elapsed_ms != null ? `${(nv.elapsed_ms / 1000).toFixed(1)}s` : node.latency,
   }
 }
-
-type NodeEventV = { node_id: string; lifecycle: string; detail: string; elapsed_ms: number | null }
 
 export default function ExplorePage() {
   const [inspectorOpen, setInspectorOpen] = useState(true)
@@ -139,6 +123,9 @@ export default function ExplorePage() {
   const [question, setQuestion] = useState('')
   // 工具调用轨迹：InspectorDrawer 的「已执行工具调用」区读它。
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([])
+  // 引用表：后端 reference 事件下发。初始给 mock 的 CITATIONS，让未提问
+  // 时的静态段落仍有可点角标；一旦流开始就会被真实数据整体替换。
+  const [citations, setCitations] = useState<Citation[]>(CITATIONS)
 
   // 中断用的 AbortController：用户重问或卸载页面时取消上一次请求。
   const abortRef = useRef<AbortController | null>(null)
@@ -175,6 +162,10 @@ export default function ExplorePage() {
     setSummary(null)
     setQuestion(question)
     setRunState('running')
+    // 引用表和工具轨迹一样属于单次运行的产物，重问时必须清空——否则上一轮
+    // 的编号会跟这一轮的正文对不上。
+    setCitations(CITATIONS)
+    setToolCalls([])
 
     try {
       await apiStream('/api/v1/research/ask', { question }, (event) => {
@@ -211,6 +202,13 @@ export default function ExplorePage() {
               next[i] = merged
               return next
             })
+            break
+          }
+          case 'reference': {
+            const rv = v as unknown as ReferenceEventV
+            // 整体替换而非 append：后端 ReferenceTable.all 每次下发的是
+            // 已编号的全表，append 会让编号重复。
+            setCitations(rv.references)
             break
           }
           default:
@@ -280,6 +278,7 @@ export default function ExplorePage() {
           )}
           <StreamingReport
             onSelectCitation={handleSelectCitation}
+            citations={citations}
             streamedText={streamedText}
             query={question || undefined}
             title={question ? `${question} · 研究报告` : undefined}

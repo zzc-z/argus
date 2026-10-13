@@ -9,6 +9,7 @@
  */
 
 import * as React from 'react'
+import Link from 'next/link'
 import { IconSpan } from '@/components/common/IconSpan'
 import { cn } from '@/lib/utils'
 import type { ExploreReport } from '../../mock'
@@ -28,7 +29,16 @@ export function ExploreGrid({ reports }: ExploreGridProps) {
             继续您的研究探索
           </h2>
         </div>
-        <span className={`${styles.headMeta} font-body-sm`}>最近更新与上下文命中</span>
+        <div className={styles.headActions}>
+          <span className={`${styles.headMeta} font-body-sm`}>最近更新与上下文命中</span>
+          <Link
+            href="/explore"
+            className={cn(styles.cta, styles.ctaPrimary, styles.headCta, 'font-body-sm font-medium')}
+          >
+            <IconSpan name="add" size={16} />
+            <span>新建研究</span>
+          </Link>
+        </div>
       </header>
 
       <div className={styles.grid}>

@@ -219,23 +219,20 @@ export function buildNodePayload(node: AgentNode): InspectorPayload {
 export function buildCitationPayload(citation: Citation): InspectorPayload {
   return {
     toolCalls: [],
-    title: `数据源引用 [${citation.id}] 溯源核验`,
-    latency: '14ms',
+    title: `数据源引用 [${citation.n}] 溯源核验`,
+    latency: citation.recall,
     dotState: 'active',
     jsonText: JSON.stringify(
       {
-        citation_id: citation.id,
-        source_title: citation.sourceTitle,
-        canonical_url: citation.url,
-        publication_date: citation.date,
-        ingested_via: 'Argus Search API v2',
-        relevance_score: 0.984,
-        grounding_anchor: 'NVIDIA H100 SXM 对比 B200 NVLink 5 域',
-        extracted_facts: [
-          'B200 单卡 FP4 张量计算峰值达 9 PFLOPS',
-          'HBM3e 显存位宽提升至 8.0 TB/s',
-          '针对 10 万 QPS 级推理集群模型测算 TCO 节能 75%',
-        ],
+        citation_no: citation.n,
+        source_id: citation.source_id,
+        chunk_id: citation.chunk_id,
+        // 后端下发的 chunk_index 是 0-based，展示时人读的是「第 n+1 段」。
+        chunk_label: `第 ${citation.chunk_index + 1} 段`,
+        page: citation.page,
+        source_title: citation.title,
+        recall: citation.recall,
+        excerpt: citation.excerpt,
       },
       null,
       2,

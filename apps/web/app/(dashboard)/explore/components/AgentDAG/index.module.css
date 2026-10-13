@@ -1,15 +1,18 @@
 .section {
   width: 100%;
-  background-color: var(--token-surface-container-low, #f3f4f5);
-  border: 1px solid var(--token-outline-variant, #cac4d0);
+  /* 设计稿是白卡 + 发丝边框，不是灰底。之前用 -container-low 让整块卡
+     沉进背景里，边界发虚。 */
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
   border-radius: 8px;
   padding: 1.25rem;
   margin-bottom: 2rem;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   transition: border-color 150ms ease-out;
 }
 
 .section:hover {
-  border-color: var(--token-primary, #4f7cff);
+  border-color: var(--token-primary, #5704e1);
 }
 
 /* ──────── Header ──────── */
@@ -20,7 +23,7 @@
   justify-content: space-between;
   padding-bottom: 0.875rem;
   margin-bottom: 0.875rem;
-  border-bottom: 1px solid var(--token-outline-variant, #cac4d0);
+  border-bottom: 1px solid var(--token-outline-variant, #cac3d9);
 }
 
 .headLeft {
@@ -33,28 +36,28 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background-color: var(--token-primary, #4f7cff);
+  background-color: var(--token-primary, #5704e1);
 }
 
 .headTitle {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
 }
 
 .headSep {
-  color: var(--token-outline-variant, #cac4d0);
+  color: var(--token-outline-variant, #cac3d9);
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   font-size: 12px;
 }
 
 .headPipeline {
   font-size: 11px;
-  color: var(--token-outline, #79747e);
+  color: var(--token-outline, #7a7488);
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
 }
 
@@ -64,16 +67,16 @@
   gap: 0.5rem;
   font-size: 12px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 .headStatEmphasis {
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
   font-weight: 500;
 }
 
 .headStatSep {
-  color: var(--token-outline, #79747e);
+  color: var(--token-outline, #7a7488);
 }
 
 /* ──────── Timeline ──────── */
@@ -101,13 +104,17 @@
  * 上下端点 top/bottom 各 15px，让 rail 从首圆心连到末圆心，而不是
  * 从容器边缘连——否则线短一截，圆点看着悬空。
  */
+/* 轨道两段着色是本页最关键的进度信号：
+     .rail       = 未走过的段，用发丝色（设计稿 #e2e8f0）
+     .railActive = 已走过的段，用强调色（设计稿 #7039f9）
+   之前两段都是灰的，进度完全看不出来。 */
 .rail {
   position: absolute;
   left: 23.5px;
   top: 19px;
   bottom: 19px;
   width: 1px;
-  background-color: var(--token-outline-variant, #cac4d0);
+  background-color: var(--token-outline-variant, #cac3d9);
 }
 
 .railActive {
@@ -115,7 +122,7 @@
   left: 23.5px;
   top: 19px;
   width: 1px;
-  background-color: var(--token-outline, #79747e);
+  background-color: var(--token-primary, #5704e1);
   transition: height 200ms ease-out;
 }
 
@@ -136,19 +143,22 @@
   background-color: var(--token-surface-container, #edeeef);
 }
 
+/* active 行：设计稿是淡紫底 + 强调色 30% 边框 + 极轻投影，
+   hover 只微升到 10% 透明度（不是换色，是同色加深）。 */
 .rowActive {
-  background-color: rgba(112, 57, 249, 0.08);
-  border: 1px solid rgba(112, 57, 249, 0.3);
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-primary, #5704e1) 30%, transparent);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 .rowActive:hover {
-  background-color: rgba(112, 57, 249, 0.1);
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 10%, transparent);
 }
 
 .rowLeft {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 .rowText {
@@ -160,34 +170,34 @@
 .rowName {
   font-size: 12px;
   font-weight: 500;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   transition: color 120ms ease-out;
 }
 
 .row:hover .rowName {
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
 }
 
 .rowNameActive {
   font-weight: 600;
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
 }
 
 .rowNamePending {
-  color: var(--token-outline, #79747e);
+  color: var(--token-outline, #7a7488);
 }
 
 .row:hover .rowNamePending {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 .rowRole {
   font-size: 11px;
-  color: var(--token-outline, #79747e);
+  color: var(--token-outline, #7a7488);
 }
 
 .rowRoleActive {
-  color: var(--token-primary, #4f7cff);
+  color: var(--token-primary, #5704e1);
 }
 
 .rowRight {
@@ -196,20 +206,20 @@
   gap: 0.625rem;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   font-size: 11px;
-  color: var(--token-outline, #79747e);
+  color: var(--token-outline, #7a7488);
 }
 
 .rowLatency {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 .rowLatencyMuted {
-  color: var(--token-outline, #79747e);
+  color: var(--token-outline, #7a7488);
 }
 
 .rowDetail {
   font-size: 10px;
-  color: var(--token-primary, #4f7cff);
+  color: var(--token-primary, #5704e1);
   opacity: 0;
   transition: opacity 120ms ease-out;
 }
@@ -219,7 +229,7 @@
 }
 
 .rowActiveLatency {
-  color: var(--token-primary, #4f7cff);
+  color: var(--token-primary, #5704e1);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -230,7 +240,7 @@
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background-color: var(--token-primary, #4f7cff);
+  background-color: var(--token-primary, #5704e1);
   animation: ping 1.2s ease-in-out infinite;
 }
 
@@ -248,26 +258,35 @@
 
 .rowActiveDetail {
   font-size: 10px;
-  color: var(--token-primary, #4f7cff);
+  color: var(--token-primary, #5704e1);
   opacity: 0.8;
 }
 
 /* ──────── Status circles ──────── */
 
+/* 三态圆点照设计稿：
+     completed = 深色实心 + 白勾（不是灰底空心 —— 灰底让它跟 pending 撞脸）
+     active    = 强调色实心 + 白色内点 + 脉冲光环
+     pending   = 白底空心
+   设计稿里 completed 用的是 #334155 这类「已定的深色」，对应 token 家族是
+   tertiary（亮 #4c4e50 / 暗 #c5c6c8）—— 它表达的是中性完成态，不是强调。 */
 .circleCompleted {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background-color: var(--token-surface-container-high, #e1e3e4);
-  border: 1px solid var(--token-outline, #79747e);
+  background-color: var(--token-tertiary, #4c4e50);
+  border: 1px solid var(--token-tertiary, #4c4e50);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 .circleIcon {
-  color: var(--token-on-surface-variant, #49454f);
+  /* 勾落在深色实心圆上，必须用反色 —— 之前是 on-surface（近黑），
+     在 #334155 实底上几乎看不见「已完成」。 */
+  color: var(--token-inverse-on-surface, #f0f1f2);
   /*
    * Material Symbols 是图标字体，字形在框内天生偏右一点（右侧留白比左侧
    * 宽），在 16px 的圆点里看着像没居中。
@@ -285,22 +304,25 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background-color: var(--token-primary, #4f7cff);
+  background-color: var(--token-primary, #5704e1);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1;
-  box-shadow: 0 0 12px var(--token-primary, #4f7cff);
+  /* 光晕用半透明色。之前写实色 12px 光晕，在白底卡片上糊成一坨
+     实心色斑；设计稿是 10px / 35% 透明。 */
+  box-shadow: 0 0 10px color-mix(in srgb, var(--token-primary, #5704e1) 35%, transparent);
   animation: cobaltPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 @keyframes cobaltPulse {
+  /* 设计稿：0.45 透明度起、扩散到 6px 环、终态全透明 */
   0%,
   100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--token-primary, #4f7cff) 55%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--token-primary, #5704e1) 45%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 5px transparent;
+    box-shadow: 0 0 0 6px transparent;
   }
 }
 
@@ -311,11 +333,13 @@
   background-color: var(--token-on-primary, #ffffff);
 }
 
+/* pending = 白底空心圈。边框用更浅的 hairline（设计稿 #cbd5e1），
+   刻意比 completed 的深色实心弱一档 —— 三态的视觉权重必须拉开。 */
 .circlePending {
   width: 16px;
   height: 16px;
   border-radius: 50%;
   background-color: var(--token-surface-container-lowest, #ffffff);
-  border: 1px solid var(--token-outline, #79747e);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
   z-index: 1;
 }

@@ -164,9 +164,78 @@ body {
   --token-success: #059669;
   --token-on-success: #ffffff;
   --token-on-primary: #ffffff;
-  --token-error: #fca5a5;
+  /* error 从 #fca5a5 改 #ba1a1a：浅鲑红在亮色白底下对比度达不到 WCAG AA
+     4.5:1。值与 tailwind.config.ts 的 colors.error 对齐。 */
+  --token-error: #ba1a1a;
   --token-error-container: #fee2e2;
   --token-on-error: #ffffff;
+
+  /* ── Material 3 palette (亮色侧补齐, 2026-10-13) ──
+     这 44 个 token 此前只存在于 html[data-theme='dark'] 里，亮色模式下从未
+     定义过 —— 于是所有 `var(--token-X, <fallback>)` 在亮色下都拿不到 token、
+     只吃 fallback（而 Tailwind class 走 tailwind.config.ts 的 colors，两套
+     机制割裂）。补齐后 CSS module 里的 var() 才会真正跟随主题切换。
+
+     值逐字取自 tailwind.config.ts 的 theme.extend.colors，两处本就该同源。 */
+
+  /* surfaces */
+  --token-surface: #f8f9fa;
+  --token-surface-dim: #d9dadb;
+  --token-surface-bright: #f8f9fa;
+  --token-surface-container-lowest: #ffffff;
+  --token-surface-container-low: #f3f4f5;
+  --token-surface-container: #edeeef;
+  --token-surface-container-high: #e7e8e9;
+  --token-surface-container-highest: #e1e3e4;
+  --token-surface-variant: #e1e3e4;
+  --token-surface-tint: #682ef1;
+
+  /* text */
+  --token-on-surface: #191c1d;
+  --token-on-surface-variant: #494456;
+
+  /* primary */
+  --token-primary: #5704e1;
+  --token-primary-container: #7039f9;
+  --token-on-primary-container: #e9e0ff;
+  --token-primary-fixed: #e8deff;
+  --token-primary-fixed-dim: #cdbdff;
+  --token-on-primary-fixed: #20005f;
+  --token-on-primary-fixed-variant: #4f00d0;
+
+  /* inverse */
+  --token-inverse-primary: #cdbdff;
+  --token-inverse-surface: #2e3132;
+  --token-inverse-on-surface: #f0f1f2;
+
+  /* secondary */
+  --token-secondary: #575e70;
+  --token-secondary-container: #d9dff5;
+  --token-on-secondary: #ffffff;
+  --token-on-secondary-container: #5c6274;
+  --token-secondary-fixed: #dce2f7;
+  --token-secondary-fixed-dim: #c0c6db;
+  --token-on-secondary-fixed: #141b2b;
+  --token-on-secondary-fixed-variant: #404758;
+
+  /* tertiary */
+  --token-tertiary: #4c4e50;
+  --token-tertiary-container: #646668;
+  --token-on-tertiary: #ffffff;
+  --token-on-tertiary-container: #e3e4e6;
+  --token-tertiary-fixed: #e1e2e4;
+  --token-tertiary-fixed-dim: #c5c6c8;
+  --token-on-tertiary-fixed: #191c1e;
+  --token-on-tertiary-fixed-variant: #444749;
+
+  /* outline */
+  --token-outline: #7a7488;
+  --token-outline-variant: #cac3d9;
+  --token-on-error-container: #93000a;
+
+  /* scrim — 遮罩 / 投影的基底色。半透明黑本身不随主题变（靠 color-mix
+     的百分比调强弱），但仍需在两套主题里都有定义，否则引用方只能写死。 */
+  --token-scrim: #000000;
 }
 
 /* ── Dark theme tokens (Material 3 dark palette) ──
@@ -247,6 +316,11 @@ html[data-theme='dark'] {
   --token-on-success: #022c1f;
   --token-success-container: #064e3b;
   --token-on-success-container: #a7f3d0;
+
+  /* scrim — see the light-theme block for why this exists. Same value in
+     both themes: a scrim is a translucent black whose strength comes from
+     the color-mix percentage, not from the base hue. */
+  --token-scrim: #000000;
 }
 
 /* Typography tokens live in :root above. Component CSS modules consume

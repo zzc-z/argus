@@ -6,6 +6,8 @@
  * later without reshaping.
  */
 
+import type { ReferenceV } from '@/lib/api/sse'
+
 export type NodeLifecycle = 'completed' | 'active' | 'pending'
 
 export interface AgentNode {
@@ -31,12 +33,12 @@ export interface ToolCall {
   duration: string
 }
 
-export interface Citation {
-  id: number
-  sourceTitle: string
-  url: string
-  date: string
-}
+/**
+ * 引用条目。直接复用后端契约（`lib/api/sse.ts` 的 `ReferenceV`），
+ * 不另立一套展示形状——mock 与实时数据必须同构，否则角标在流式模式下
+ * 渲染不出来。
+ */
+export type Citation = ReferenceV
 
 export interface RawJsonState {
   agent_id: string
@@ -203,22 +205,34 @@ export const ANALYST_RAW_STATE: RawJsonState = {
 
 export const CITATIONS: Citation[] = [
   {
-    id: 1,
-    sourceTitle: 'NVIDIA 技术白皮书：Blackwell GPU 架构深度剖析',
-    url: 'developer.nvidia.com/blackwell-architecture',
-    date: '2024年3月',
+    n: 1,
+    chunk_id: 4211,
+    source_id: 17,
+    chunk_index: 8,
+    page: 12,
+    title: 'NVIDIA 技术白皮书：Blackwell GPU 架构深度剖析',
+    excerpt: '在 FP8 精度下，Blackwell 的单卡吞吐相较 H100 提升约 3.5 倍，NVLink 域带宽达 130TB/s。',
+    recall: '向量+BM25',
   },
   {
-    id: 2,
-    sourceTitle: 'AnandTech 深度解析：NVIDIA Blackwell B200 双芯架构与 NVLink 5',
-    url: 'anandtech.com/show/21312/nvidia-blackwell-b200',
-    date: '2024年3月',
+    n: 2,
+    chunk_id: 4212,
+    source_id: 17,
+    chunk_index: 9,
+    page: 14,
+    title: 'AnandTech 深度解析：NVIDIA Blackwell B200 双芯架构与 NVLink 5',
+    excerpt: 'B200 采用双 die 设计与 10TB/s HBM3e，单机架 NVL72 提供 1.8 万亿参数级 MoE 权重承载能力。',
+    recall: '向量',
   },
   {
-    id: 3,
-    sourceTitle: '路透社：超大规模云厂商加速推进 Blackwell 集群部署用于 Gemini 与 ChatGPT',
-    url: 'reuters.com/technology/nvidia-blackwell-data-center',
-    date: '2024年4月',
+    n: 3,
+    chunk_id: 3790,
+    source_id: 22,
+    chunk_index: 2,
+    page: null,
+    title: '路透社：超大规模云厂商加速推进 Blackwell 集群部署用于 Gemini 与 ChatGPT',
+    excerpt: '多家超大规模云厂商确认已在生产环境部署 Blackwell 集群，主要面向大参数 MoE 模型的在线推理。',
+    recall: 'BM25',
   },
 ]
 

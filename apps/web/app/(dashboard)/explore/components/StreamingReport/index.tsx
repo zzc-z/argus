@@ -12,6 +12,11 @@ const TRAILING_BODY_FALLBACK =
 export interface StreamingReportProps {
   onSelectCitation: (citation: Citation) => void
   /**
+   * 引用表。缺省用 mock 的 CITATIONS；流式模式下由父组件用后端 reference
+   * 事件覆盖。角标能否点开取决于它与正文里的 `[n]` 是否对得上。
+   */
+  citations?: Citation[]
+  /**
    * 尾段已经「流式输入」的文本。
    * 当值为 `undefined` 时回退到静态 mock 文案（保持不传此 prop 也能跑）。
    */
@@ -23,11 +28,30 @@ export interface StreamingReportProps {
 }
 
 /**
+ * 把正文里的 `[n]` 切成可点的角标，其余原样输出。
+ *
+ * 后端在 prompt 里要求模型「句末标上对应编号，如 [1] 或 [1][2]」，但那是
+ * 软约束——模型会编造越界编号、也会漏标。所以解析必须容错：命中引用表的
+ * 渲染成角标，查不到的退回裸字符，让用户自己看出模型编了号。
+ *
+ * 注意 textarea / p 里不能塞裸 `<button>` 之外的东西被读屏器误读，所以
+ * 分隔符（含被吃掉的 `[n]` 本身）在命中与未命中时都要能还原出文本。
+ */
+function renderWithCitations(text: string, citations: Citation[], onSelect: (c: Citation) => void) {
+  return text.split(/(\[\d+\])/).map((chunk, i) => {
+    const match = /^\[(\d+)\]$/.exec(chunk)
+    if (!match?.[1]) return chunk
+    return <Cite key={`${i}-${chunk}`} id={Number(match[1])} citations={citations} onSelect={onSelect} />
+  })
+}
+
+/**
  * 流式报告主区 —— H1、3 段正文（穿插 [n] 引文上标）、文中 3 列硬件指标卡、
  * 当前正在流式追加的段落末尾带闪烁光标。
  */
 export function StreamingReport({
   onSelectCitation,
+  citations = CITATIONS,
   streamedText,
   query,
   title,
@@ -62,11 +86,11 @@ export function StreamingReport({
         <p className={styles.p1}>
           从 NVIDIA Hopper 架构 (H100 SXM) 迁移至最新部署的 Blackwell 计算平台 (B200 / GB200
           NVL72），标志着高并发大语言模型 (LLM) 推理经济性迎来结构性拐点
-          <Cite id={1} onSelect={onSelectCitation} />
+          <Cite id={1} citations={citations} onSelect={onSelectCitation} />
           。尽管 H100 已经确立了 FP8 张量计算作为主流前沿模型（如 Llama 3 70B 和 Mixtral
           8x22B）的标准部署格式，但 Blackwell 进一步引入了集成微张量缩放的第二代 Transformer
           引擎，并提供原生 FP4 精度支持
-          <Cite id={2} onSelect={onSelectCitation} />， 在同等功耗预算下实现了每瓦特 Token
+          <Cite id={2} citations={citations} onSelect={onSelectCitation} />， 在同等功耗预算下实现了每瓦特 Token
           吞吐量的成倍跃升。
         </p>
 
@@ -101,17 +125,21 @@ export function StreamingReport({
           HBM3e。在生成式自回归解码阶段——即显存总线带宽长期占据绝对瓶颈 的关键环节——Blackwell
           允许单机架域直接装载 1.8 万亿参数级别的 MoE 权重检查点，彻底消除了跨节点传统 InfiniBand
           串行化通信损耗
-          <Cite id={3} onSelect={onSelectCitation} />
+          <Cite id={3} citations={citations} onSelect={onSelectCitation} />
           。根据来自一线超大规模数据中心的基准 验证，在 70B 级别模型的高饱和批处理场景（Batch Size =
           128）下，单 Token 吐字延迟由 H100 的 42ms 骤降至约 14ms
-          <Cite id={2} onSelect={onSelectCitation} />。
+          <Cite id={2} citations={citations} onSelect={onSelectCitation} />。
         </p>
           </>
         )}
 
         <p className={styles.p3}>
-          {trailingBody}
-          {!isStreaming && <Cite id={1} onSelect={onSelectCitation} />}
+          {isStreaming
+            ? renderWithCitations(trailingBody, citations, onSelectCitation)
+            : trailingBody}
+          {!isStreaming && (
+            <Cite id={1} citations={citations} onSelect={onSelectCitation} />
+          )}
           {showCursor && <span className={styles.cursor} />}
         </p>
       </div>
@@ -121,12 +149,15 @@ export function StreamingReport({
 
 interface CiteProps {
   id: number
+  citations: Citation[]
   onSelect: (citation: Citation) => void
 }
 
 /** Citation superscript [n] button. */
-function Cite({ id, onSelect }: CiteProps) {
-  const citation = CITATIONS.find((c) => c.id === id)
+function Cite({ id, citations, onSelect }: CiteProps) {
+  const citation = citations.find((c) => c.n === id)
+  // 编号对不上引用表时退回裸字符。后端 citation.py 明确说 [n] 只是 prompt
+  // 里的软约束，模型可能编造或漏标编号——不能崩，也不能吞掉这个号。
   if (!citation) return <span>[{id}]</span>
 
   return (
@@ -134,7 +165,7 @@ function Cite({ id, onSelect }: CiteProps) {
       type="button"
       className={styles.cite}
       onClick={() => onSelect(citation)}
-      title={citation.sourceTitle}
+      title={`${citation.title}${citation.page != null ? ` · 第 ${citation.page} 页` : ''}`}
     >
       {id}
     </button>

@@ -1,10 +1,12 @@
 import * as React from 'react'
+import Link from 'next/link'
 
 import { IconSpan } from '@/components/common/IconSpan'
 import { ArgusMark } from '@/components/common/ArgusMark'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 
 import { UserMenu } from './components/UserMenu'
+import { QuickKeys } from './components/QuickKeys'
 
 import { NavLink } from './NavLink'
 import styles from './layout.module.css'
@@ -48,6 +50,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </span>
             <nav className={styles.nav}>
               <NavLink href="/dashboard" icon="dashboard" label="Dashboard 首页" />
+              <NavLink href="/explore" icon="explore" label="研究工作台" />
               <NavLink href="/reports" icon="article" label="报告列表" />
               <NavLink href="/topics" icon="rss_feed" label="主题订阅" />
               <NavLink href="/sources" icon="database" label="资料库" />
@@ -83,13 +86,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className={styles.content}>
         <header className={styles.topbar}>
           <div className={styles.topbarLeft}>
-            <div className={styles.searchBox}>
+            <Link href="/explore" className={styles.searchBox}>
               <IconSpan name="search" size={18} />
               <span className={`${styles.searchText} font-body-sm`}>
                 快速检索节点、研究模型或报告...
               </span>
               <kbd className={`${styles.searchKbd} font-code`}>⌘K</kbd>
-            </div>
+            </Link>
             <div className={styles.statusPill}>
               <span className={styles.statusDot} aria-hidden="true" />
               <span className={`${styles.statusText} font-label-sm`}>就绪</span>
@@ -118,6 +121,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         </main>
       </div>
+      <QuickKeys />
     </div>
   )
 }

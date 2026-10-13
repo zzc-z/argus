@@ -1,10 +1,21 @@
+/* 页面底是浅灰（设计稿 #f8f9fa），DAG 卡 / 指标卡 / 输入框都是白底浮在
+   上面 —— 前后两层拉开。之前用 -container-lowest(#fff) 做页面底，
+   卡片白底落在白底上，边界只剩一道灰线，整页没有纵深。 */
+
+/* ── 高度 ───────────────────────────────────────────────────
+   可视区 = 视口 - 顶栏(56px) - 本页标题栏 pageBar(67px)。123 是实测值：
+   抽屉 bottom 恰好落在视口底。之前用 -7rem 之类是猜的，反复多出或少掉。 */
 .shell {
-  min-height: 100%;
-  background-color: var(--token-surface-container-lowest, #ffffff);
-  color: var(--token-on-surface, #1a1c1e);
+  --explore-viewport: calc(100vh - 123px);
+
+  /* 整页不滚 —— 只有中间内容区滚。抽屉与底栏都钉在视口内，
+     否则页面一滚它们跟着走。 */
+  height: var(--explore-viewport);
+  overflow: hidden;
+  background-color: var(--token-surface, #f8f9fa);
+  color: var(--token-on-surface, #191c1d);
   display: flex;
   flex-direction: column;
-  overflow-x: hidden;
 }
 
 .main {
@@ -14,15 +25,20 @@
   margin-inline: auto;
   display: flex;
   position: relative;
-  overflow: hidden;
+  /* min-height:0：flex 子项默认 min-height:auto，会被内容撑破，
+     .shell 的 overflow:hidden 就裁不到预期位置。 */
+  min-height: 0;
 }
 
+/* 中间内容区 —— 全页唯一的滚动容器。抽屉钉死在右侧不跟滚，
+   正文再长也只在这里上下滚。 */
 .center {
   width: 100%;
   padding: 1.5rem 1.5rem 7rem;
   display: flex;
   flex-direction: column;
   transition: all 200ms ease-out;
+  overflow-y: auto;
 }
 
 @media (min-width: 1024px) {
@@ -40,9 +56,11 @@
   right: 0;
   z-index: 30;
   padding-block: 8px 20px;
-  /* 输入区底部的渐变遮罩。原先是纯黑，在浅色主题下会糊成一条脏带。
-     用 on-surface 的浅色版本，主题切换时自动跟随。 */
-  background: linear-gradient(to top, var(--token-surface, #f9f9f9) 0%, color-mix(in srgb, var(--token-surface, #f9f9f9) 60%, transparent) 60%, transparent 100%);
+  /* 只在中间内容区宽度内铺渐变。之前 left:0/right:0 铺满全屏，
+     左右两侧（抽屉与空白区）底部也被染上渐变，看着像阴影。 */
+  width: min(100%, 920px);
+  margin-inline: auto;
+  background: linear-gradient(to top, var(--token-surface, #f8f9fa) 0%, color-mix(in srgb, var(--token-surface, #f8f9fa) 60%, transparent) 60%, transparent 100%);
   pointer-events: none;
 }
 
@@ -55,9 +73,9 @@
   margin: 12px 0;
   padding: 10px 14px;
   border-radius: 8px;
-  border: 1px solid rgb(239 68 68 / 30%);
-  background: rgb(239 68 68 / 10%);
-  color: #fca5a5;
+  border: 1px solid color-mix(in srgb, var(--token-error, #ba1a1a) 30%, transparent);
+  background: color-mix(in srgb, var(--token-error, #ba1a1a) 10%, transparent);
+  color: var(--token-error, #ba1a1a);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -65,8 +83,8 @@
 /* 收尾统计：done 事件带的轮次 / 耗时 / token。 */
 .summary {
   margin: 8px 0 0;
-  color: #6b7280;
-  font-family: var(--font-mono, ui-monospace, monospace);
+  color: var(--token-on-surface-variant, #494456);
+  font-family: var(--font-family-mono, ui-monospace, monospace);
   font-size: 11px;
   letter-spacing: 0.02em;
 }
@@ -85,18 +103,19 @@
 }
 
 .pageTitle {
-  font-family: var(--token-font-headline-sm, inherit);
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--token-on-surface, #1a1c1e);
+  font-family: var(--font-family-sans);
+  font-size: var(--text-headline-sm-size, 14px);
+  line-height: var(--text-headline-sm-line-height, 20px);
+  font-weight: var(--text-headline-sm-weight, 600);
+  color: var(--token-on-surface, #191c1d);
 }
 
 .inspectorToggle {
   padding: 4px 10px;
   border-radius: 8px;
-  border: 1px solid var(--token-outline-variant, #cac4d0);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
   background: transparent;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   font-size: 12px;
   cursor: pointer;
 }

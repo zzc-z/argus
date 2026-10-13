@@ -1,12 +1,24 @@
+/* 右栏是白面板 + 发丝左边框（设计稿 bg-white / border-l #e5e7eb），
+   不是一整块灰。之前 drawer 与 content 都用 -container(#edeeef)，
+   整栏压成脏灰，跟页面主区糊在一起。
+
+   高度：桌面端走 relative + align-self:stretch（吃父级 .main 的确定高度），
+   移动端 fixed + top/bottom 钉死。relative 下 bottom:0 是无效的 ——
+   这正是面板随内容收缩的原因。 */
 .drawer {
   position: fixed;
   right: 0;
   top: 56px;
   bottom: 0;
   width: 380px;
-  background-color: var(--token-surface-container, #edeeef);
-  border-left: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
-  z-index: 40;
+  height: 100%;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border-left: 1px solid var(--token-outline-variant, #cac3d9);
+  box-shadow: -2px 0 6px 0 rgb(0 0 0 / 0.02);
+  /* 必须低于 (dashboard)/layout 的 .topbar(40)。原来这里也写 40 —— 数值
+     相同时由文档顺序决定谁盖谁，drawer 在 .main 内后渲染，就把顶栏左侧
+     （搜索框 / 状态指示器）盖掉了，只剩右侧按钮露着。降一级即可。 */
+  z-index: 30;
   display: flex;
   flex-direction: column;
   transition:
@@ -27,8 +39,17 @@
 
 @media (min-width: 1024px) {
   .drawer {
+    /* 桌面端是 .main 的 flex 子项。父级链 .shell(height 固定) → .main(flex:1
+       + min-height:0) 现在有确定高度，所以 height:100% 能解析了 ——
+       面板正好等于可视区，不多不少，也不随正文滚动。
+
+       之前用 align-self:stretch 是因为 .shell 只有 min-height（不确定高度），
+       stretch 只能拉到内容高度。现在改成确定高度，stretch 反而会跟着内容长高。 */
     position: relative;
     top: auto;
+    bottom: auto;
+    height: 100%;
+    flex: 0 0 380px;
   }
 }
 
@@ -37,7 +58,7 @@
 .head {
   height: 48px;
   padding-inline: 1rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #191c1d) 40%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -57,16 +78,16 @@
 }
 
 .headDotActive {
-  background-color: var(--token-primary, #4a5c92);
+  background-color: var(--token-primary, #5704e1);
   animation: livePulse 1.4s ease-in-out infinite;
 }
 
 .headDotCompleted {
-  background-color: var(--token-on-surface-variant, #49454f);
+  background-color: var(--token-on-surface-variant, #494456);
 }
 
 .headDotDefault {
-  background-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 10%, transparent);
+  background-color: color-mix(in srgb, var(--token-on-surface, #191c1d) 10%, transparent);
 }
 
 @keyframes livePulse {
@@ -83,7 +104,7 @@
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   letter-spacing: -0.01em;
 }
@@ -97,7 +118,7 @@
 .headLatency {
   font-size: 11px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   margin-right: 8px;
 }
 
@@ -107,7 +128,7 @@
   border-radius: 8px;
   border: none;
   background-color: transparent;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -118,8 +139,8 @@
 }
 
 .closeBtn:hover {
-  background-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
-  color: var(--token-on-surface, #1a1c1e);
+  background-color: color-mix(in srgb, var(--token-on-surface, #191c1d) 40%, transparent);
+  color: var(--token-on-surface, #191c1d);
 }
 
 /* ──────── Body grid ──────── */
@@ -134,8 +155,8 @@
 
 .tabStrip {
   width: 48px;
-  border-right: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
-  background-color: var(--token-surface-container, #edeeef);
+  border-right: 1px solid var(--token-outline-variant, #cac3d9);
+  background-color: var(--token-surface-container-low, #f3f4f5);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -158,51 +179,54 @@
 }
 
 .tabBtn:hover {
-  color: var(--token-on-surface, #1a1c1e);
-  background-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 20%, transparent);
+  color: var(--token-on-surface, #191c1d);
+  background-color: color-mix(in srgb, var(--token-on-surface, #191c1d) 20%, transparent);
 }
 
+/* 设计稿选中态：淡紫底 + 极轻投影，让它从 tab 条里"浮"出来 */
 .tabBtnActive {
-  color: var(--token-primary, #4a5c92);
-  background-color: rgba(79, 124, 255, 0.1);
+  color: var(--token-primary, #5704e1);
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 10%, transparent);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 .tabIcon {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 .tabBtn:hover .tabIcon {
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
 }
 
 .tabIconActive {
-  color: var(--token-primary, #4a5c92);
+  color: var(--token-primary, #5704e1);
 }
 
 /* ──────── Content ──────── */
 
+/* 内容区跟随面板白底；JSON 块与工具列表区各自用 -container-low 区分层次。 */
 .content {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background-color: var(--token-surface-container, #edeeef);
+  background-color: var(--token-surface-container-lowest, #ffffff);
 }
 
 .contentHead {
   height: 32px;
   padding-inline: 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 20%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #191c1d) 20%, transparent);
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 .contentSize {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   font-size: 10px;
 }
 
@@ -210,15 +234,17 @@
 
 .toolsBlock {
   padding: 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 30%, transparent);
-  background-color: color-mix(in srgb, var(--token-scrim, #000000) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #191c1d) 30%, transparent);
+  /* 设计稿这块是次级表面上的半透明叠层（rgba(248,250,252,.5)），不是黑色遮罩。
+   之前用 scrim 12% 在亮色下会压成一片灰脏色。 */
+  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 55%, transparent);
 }
 
 .toolsHead {
   font-size: 10px;
   text-transform: uppercase;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   margin-bottom: 0.5rem;
   display: flex;
   align-items: center;
@@ -226,17 +252,21 @@
 }
 
 .toolsTrace {
-  color: var(--token-primary, #4a5c92);
+  color: var(--token-primary, #5704e1);
 }
 
+/* 设计稿：工具调用项是白卡浮在浅灰区块上（前后两层）。
+   之前项与区块同色（都是 -container 灰），列表糊成一片看不出条目。 */
 .toolRow {
-  background-color: var(--token-surface-container, #edeeef);
-  border: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
   border-radius: 8px;
   padding: 8px;
   margin-bottom: 6px;
   cursor: pointer;
-  transition: border-color 120ms ease-out;
+  transition:
+    border-color 120ms ease-out,
+    box-shadow 120ms ease-out;
 }
 
 .toolRow:last-child {
@@ -244,7 +274,8 @@
 }
 
 .toolRow:hover {
-  border-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 10%, transparent);
+  border-color: var(--token-outline, #7a7488);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
 .toolRowHead {
@@ -259,24 +290,24 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
   font-weight: 500;
   font-size: 11px;
 }
 
 .toolRowIcon {
-  color: var(--token-primary, #4a5c92);
+  color: var(--token-primary, #5704e1);
 }
 
 .toolRowDuration {
   font-size: 10px;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 .toolRowArgs {
   font-size: 10px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -292,8 +323,9 @@
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   font-size: 11px;
   line-height: 1.6;
-  color: var(--token-on-surface-variant, #49454f);
-  background-color: var(--token-surface-container, #edeeef);
+  color: var(--token-on-surface-variant, #494456);
+  /* 设计稿 JSON 区是浅底代码块（#f8fafc），比面板白底低一档 */
+  background-color: var(--token-surface-container-low, #f3f4f5);
 }
 
 .jsonPre {
@@ -306,7 +338,7 @@
 
 .footer {
   padding: 0.75rem;
-  border-top: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--token-on-surface, #191c1d) 40%, transparent);
   background-color: var(--token-surface-container-low, #f3f4f5);
   display: flex;
   align-items: center;
@@ -316,7 +348,7 @@
 .phoenixLink {
   font-size: 12px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   text-decoration: none;
   display: flex;
   align-items: center;
@@ -325,15 +357,15 @@
 }
 
 .phoenixLink:hover {
-  color: var(--token-primary, #4a5c92);
+  color: var(--token-primary, #5704e1);
 }
 
 .phoenixIcon {
-  color: var(--token-primary, #4a5c92);
+  color: var(--token-primary, #5704e1);
 }
 
 .spanId {
   font-size: 10px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }

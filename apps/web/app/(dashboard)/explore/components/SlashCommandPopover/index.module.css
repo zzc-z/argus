@@ -1,14 +1,18 @@
+/* 弹窗是白面板浮在输入框之上（设计稿 bg-white）。之前用 -low 灰底，
+   跟灰底输入框同色，弹窗像是从输入框里长出来的一层。 */
 .popover {
   position: absolute;
   bottom: 56px;
   left: 1.5rem;
   width: 256px;
-  background-color: var(--token-surface-container-low, #f3f4f5);
-  border: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
   border-radius: 8px;
   box-shadow:
-    0 8px 24px -8px rgba(0, 0, 0, 0.12),
-    0 0 0 1px color-mix(in srgb, var(--token-on-surface, #1a1c1e) 40%, transparent);
+    /* 弹窗阴影是它悬浮在输入框之上的唯一线索，暗色下必须改用 scrim 基色，
+       否则纯黑落在深色底上等于没有阴影。百分比提到 24% 抵消半透明色的视觉衰减。 */
+    0 8px 24px -8px color-mix(in srgb, var(--token-scrim, #000000) 24%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--token-on-surface, #191c1d) 40%, transparent);
   padding: 6px;
   z-index: 50;
   font-size: 12px;
@@ -19,9 +23,9 @@
   padding: 4px 8px 6px 8px;
   font-size: 10px;
   text-transform: uppercase;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   letter-spacing: 0.04em;
-  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #1a1c1e) 30%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #191c1d) 30%, transparent);
   margin-bottom: 4px;
   display: flex;
   align-items: center;
@@ -29,7 +33,7 @@
 }
 
 .headIcon {
-  color: var(--token-primary, #4a5c92);
+  color: var(--token-primary, #5704e1);
 }
 
 .row {
@@ -38,17 +42,19 @@
   justify-content: space-between;
   width: 100%;
   padding: 6px;
-  border-radius: 8px;
+  /* 设计稿命令项圆角 6px（比面板的 8px 小一档） */
+  border-radius: 6px;
   background-color: transparent;
   border: none;
   cursor: pointer;
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
   text-align: left;
   transition: background-color 120ms ease-out;
 }
 
+/* hover 走浅表面底色（设计稿 #f8fafc），不是 30% 黑——那在白底上会糊成灰块 */
 .row:hover {
-  background-color: color-mix(in srgb, var(--token-on-surface, #1a1c1e) 30%, transparent);
+  background-color: var(--token-surface-container-low, #f3f4f5);
 }
 
 .rowLeft {
@@ -58,16 +64,16 @@
 }
 
 .rowCmd {
-  color: var(--token-primary, #4a5c92);
+  color: var(--token-primary, #5704e1);
   font-weight: 600;
 }
 
 .rowDesc {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   font-size: 11px;
 }
 
 .rowHint {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   font-size: 10px;
 }

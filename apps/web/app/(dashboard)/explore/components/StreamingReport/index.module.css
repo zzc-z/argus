@@ -20,61 +20,70 @@
   margin-bottom: 0.75rem;
   font-size: 12px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 .metaLabel {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
 .metaIcon {
-  color: var(--token-tertiary, #6b5ca5);
+  color: var(--token-primary, #5704e1);
 }
 
 .metaQuery {
-  color: var(--token-on-surface, #1a1c1e);
-  background-color: color-mix(in srgb, var(--token-primary, #4a5c92) 6%, transparent);
+  color: var(--token-on-surface, #191c1d);
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 6%, transparent);
   padding: 2px 8px;
   border-radius: 8px;
-  border: 1px solid var(--token-outline-variant, #cac7d0);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
 }
 
 /* ──────── H1 ──────── */
 
+/* 设计稿：text-3xl / font-bold / tracking-tight(-0.025em) / leading-tight(1.25)
+   字重是 700 不是 600 —— 600 在 30px 上明显偏轻，跟设计稿差一档。 */
 .h1 {
   font-size: 30px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--token-on-surface, #1a1c1e);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--token-on-surface, #191c1d);
   margin: 0 0 1.5rem 0;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 
 /* ──────── Prose ──────── */
 
 .prose {
   font-size: 14px;
-  line-height: 1.7;
-  color: var(--token-on-surface-variant, #49454f);
+  /* 设计稿 leading-[1.75] = 24.5px，比原来的 1.7 松，长段落更易读 */
+  line-height: 1.75;
+  color: var(--token-on-surface-variant, #494456);
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
 }
 
+/* 正文色。原先写死 rgba(250,250,250,.9) 近白色，而 .article 底色是白的
+   —— 亮色主题下正文完全隐形。段 1/3 用 on-surface，段 2 稍弱一级，
+   与设计稿的三级正文色差（#1e293b / #334155）对齐。 */
 .p1,
 .p3 {
-  color: rgba(250, 250, 250, 0.9);
+  color: var(--token-on-surface, #191c1d);
 }
 
 .p3 {
-  color: rgba(250, 250, 250, 0.85);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 /* ──────── Citation superscript ──────── */
 
+/* 引用角标：设计稿是淡紫底 + 强调色字 + 强调色 25% 边框 ——
+   一眼就要能认出「这是可点的引用」。之前是灰底灰字，跟正文里的
+   普通小字号数字混在一起，完全没有可点提示。 */
 .cite {
   font-feature-settings: 'sups' 1;
   font-variant-numeric: super;
@@ -83,33 +92,40 @@
   justify-content: center;
   font-size: 11px;
   line-height: 1;
-  padding: 1px 4px;
+  padding: 1px 5px;
   margin: 0 2px;
   border-radius: 4px;
-  background-color: var(--token-surface-container, #edeeef);
-  border: 1px solid var(--token-outline-variant, #cac7d0);
-  color: var(--token-on-surface-variant, #49454f);
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-primary, #5704e1) 25%, transparent);
+  color: var(--token-primary, #5704e1);
+  font-weight: 600;
   cursor: pointer;
   position: relative;
   top: -0.45em;
   transition:
     color 120ms ease-out,
     background-color 120ms ease-out,
-    border-color 120ms ease-out;
+    border-color 120ms ease-out,
+    translate 120ms ease-out;
   font-family: inherit;
 }
 
 .cite:hover {
-  color: var(--token-on-surface, #1a1c1e);
-  background-color: rgba(79, 124, 255, 0.16);
-  border-color: rgba(79, 124, 255, 0.5);
+  color: var(--token-primary, #5704e1);
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 18%, transparent);
+  border-color: var(--token-primary, #5704e1);
+  /* 设计稿 hover 上浮 1px */
+  translate: 0 -1px;
 }
 
 /* ──────── Hardware metrics card ──────── */
 
 .metricsCard {
-  background-color: var(--token-surface-container, #f3f4f5);
-  border: 1px solid var(--token-outline-variant, #cac7d0);
+  /* 设计稿这张卡是「白底 + 极淡发丝边框」，落在一档浅表面而非中间调 ——
+     之前 token 名挂的是 -container（#edeeef）但值取了 -low（#f3f4f5），
+     两边对不上。统一按 token 名。 */
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
   border-radius: 8px;
   padding: 1rem;
   margin-block: 1.5rem;
@@ -117,7 +133,7 @@
 }
 
 .metricsCard:hover {
-  border-color: rgba(79, 124, 255, 0.4);
+  border-color: color-mix(in srgb, var(--token-primary, #5704e1) 40%, transparent);
 }
 
 .metricsHead {
@@ -126,14 +142,14 @@
   justify-content: space-between;
   margin-bottom: 0.75rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--token-outline-variant, #cac7d0);
+  border-bottom: 1px solid var(--token-outline-variant, #cac3d9);
   font-size: 12px;
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
 }
 
 .metricsHeadEmphasis {
-  color: var(--token-on-surface, #1a1c1e);
+  color: var(--token-on-surface, #191c1d);
 }
 
 .metricsGrid {
@@ -151,31 +167,40 @@
 }
 
 .metricCol + .metricCol {
-  border-left: 1px solid var(--token-outline-variant, #cac7d0);
+  border-left: 1px solid var(--token-outline-variant, #cac3d9);
   padding-left: 1rem;
 }
 
 .metricLabel {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
 }
 
+/* 设计稿 headline 是 font-bold(700)，之前 500 让它跟 label 权重太接近，
+   数字反而不是视觉焦点。 */
 .metricHeadline {
-  color: var(--token-on-surface, #1a1c1e);
-  font-weight: 500;
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 700;
   font-size: 14px;
   margin-top: 2px;
 }
 
 .metricDetail {
-  color: var(--token-on-surface-variant, #49454f);
+  color: var(--token-on-surface-variant, #494456);
   font-size: 11px;
 }
 
+/* 高亮项设计稿是「淡紫底 + 紫字」的小胶囊，不只是把字变紫。 */
 .metricDetailHighlight {
-  color: var(--token-tertiary, #6b5ca5);
-  font-weight: 500;
+  display: inline-block;
+  color: var(--token-primary, #5704e1);
+  font-weight: 600;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 12%, transparent);
 }
 
 /* ──────── Blinking cursor ──────── */
@@ -184,7 +209,7 @@
   display: inline-block;
   width: 6px;
   height: 18px;
-  background-color: var(--token-primary, #4a5c92);
+  background-color: var(--token-primary, #5704e1);
   margin-left: 3px;
   vertical-align: text-bottom;
   animation: cursorBlink 1s steps(1, end) infinite;

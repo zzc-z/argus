@@ -32,6 +32,18 @@
   line-height: 20px;
 }
 
+/* Header action group: meta text + 新建研究 link, sits at .head's right end. */
+.headActions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.headCta {
+  text-decoration: none;
+  white-space: nowrap;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1fr;
