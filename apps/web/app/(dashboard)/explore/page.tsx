@@ -36,9 +36,11 @@ import {
   buildNodePayload,
   buildCitationPayload,
   type InspectorPayload,
+  type SourceTextState,
 } from './components/InspectorDrawer'
 import { PromptInput } from './components/PromptInput'
 import { apiStream } from '@/lib/api/client'
+import { fetchChunks } from '@/lib/api/sources'
 import type {
   DoneEventV,
   NodeEventV,
@@ -127,18 +129,56 @@ export default function ExplorePage() {
   // 时的静态段落仍有可点角标；一旦流开始就会被真实数据整体替换。
   const [citations, setCitations] = useState<Citation[]>(CITATIONS)
 
+  // 原文区：点角标后按 chunk_id 拉全文。三态而非 null——「不显示」与
+  // 「加载中」「拉取失败」要显示的东西完全不同，合并成一个值就会把
+  // 加载态画成空白、失败态画成「这段资料没有原文」。
+  const [sourceText, setSourceText] = useState<SourceTextState>({ kind: 'none' })
+  // 原文拉取的竞态令牌。每次点击自增，只有令牌等于当前值的那次响应才允许
+  // 写 state——连点两个角标时，先发的请求完全可能后到，不拦住就会把
+  // A 的原文画到 B 的编号下面。
+  const sourceTextToken = useRef(0)
+
   // 中断用的 AbortController：用户重问或卸载页面时取消上一次请求。
   const abortRef = useRef<AbortController | null>(null)
 
   const handleSelectNode = useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
     setInspectorOpen(true)
     setInspectorPayload({ ...buildNodePayload(node), toolCalls })
+    setSourceText({ kind: 'none' })
   }, [toolCalls])
 
   const handleSelectCitation = useCallback(
-    (citation: Parameters<typeof buildCitationPayload>[0]) => {
+    async (citation: Parameters<typeof buildCitationPayload>[0]) => {
       setInspectorOpen(true)
       setInspectorPayload(buildCitationPayload(citation))
+
+      const token = (sourceTextToken.current += 1)
+      setSourceText({ kind: 'loading' })
+      try {
+        const chunks = await fetchChunks(citation.source_id)
+        if (sourceTextToken.current !== token) return
+        const chunk = chunks.find((c) => c.id === citation.chunk_id)
+        if (!chunk) {
+          // 列表里有但 id 对不上：引用表与库已经不一致（多半是重传过资料）。
+          // 说「已被重新摄取」而不是「不存在」——后者听起来像数据丢了。
+          setSourceText({ kind: 'error', message: '该切片已不存在，资料可能已被重新摄取' })
+          return
+        }
+        // page 与 chunk_index 对纯文本是同一回事（parser 按 \f 分页并从 1
+        // 编号），两者都显示会变成「第 1 段 · 第 1 块」。有 page 时用它，
+        // 那是原文作者的分页边界，比我们自己的切片序号更有意义。
+        const label = chunk.page != null
+          ? `第 ${chunk.page} 段`
+          : `第 ${chunk.chunk_index + 1} 块`
+        setSourceText({ kind: 'ready', title: label, body: chunk.content })
+      } catch (err) {
+        if (sourceTextToken.current !== token) return
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setSourceText({
+          kind: 'error',
+          message: err instanceof Error ? err.message : '未知错误',
+        })
+      }
     },
     [],
   )
@@ -166,6 +206,10 @@ export default function ExplorePage() {
     // 的编号会跟这一轮的正文对不上。
     setCitations(CITATIONS)
     setToolCalls([])
+    // 令牌自增作废旧请求：上一轮点开的原文属于上一轮的 chunk_id，
+    // 而 chunk_id 是自增主键，新一轮很可能命中不同的 id。
+    sourceTextToken.current += 1
+    setSourceText({ kind: 'none' })
 
     try {
       await apiStream('/api/v1/research/ask', { question }, (event) => {
@@ -289,6 +333,7 @@ export default function ExplorePage() {
         <InspectorDrawer
           open={inspectorOpen}
           payload={inspectorPayload}
+          sourceText={sourceText}
           onClose={handleCloseInspector}
         />
       </div>

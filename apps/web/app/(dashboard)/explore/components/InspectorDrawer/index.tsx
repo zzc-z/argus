@@ -17,9 +17,21 @@ export interface InspectorPayload {
   toolCalls: ToolCall[]
 }
 
+/**
+ * 原文区的三种状态。刻意不用 `null` 表示「不显示」——那会和
+ * 「正在加载」「拉取失败」混淆，而这三者要显示的东西完全不同。
+ */
+export type SourceTextState =
+  | { kind: 'none' }
+  | { kind: 'loading' }
+  | { kind: 'ready'; title: string; body: string }
+  /** 拉不到原文。显式报错而不是回退到 excerpt——用户分不清 120 字节选与全文。 */
+  | { kind: 'error'; message: string }
+
 export interface InspectorDrawerProps {
   open: boolean
   payload: InspectorPayload
+  sourceText?: SourceTextState
   onClose: () => void
 }
 
@@ -30,7 +42,7 @@ export interface InspectorDrawerProps {
  * The "Output" tab is the default active tab because it is the most-referenced
  * surface in the design.
  */
-export function InspectorDrawer({ open, payload, onClose }: InspectorDrawerProps) {
+export function InspectorDrawer({ open, payload, sourceText, onClose }: InspectorDrawerProps) {
   const [tab, setTab] = React.useState<InspectorTab>('Output')
 
   const drawerClass = [styles.drawer, open ? styles.drawerOpen : styles.drawerClosed]
@@ -64,7 +76,12 @@ export function InspectorDrawer({ open, payload, onClose }: InspectorDrawerProps
       {/* Body: left tab strip + right content */}
       <div className={styles.body}>
         <TabStrip tab={tab} onTabChange={setTab} />
-        <ContentArea tab={tab} jsonText={payload.jsonText} toolCalls={payload.toolCalls} />
+        <ContentArea
+          tab={tab}
+          jsonText={payload.jsonText}
+          toolCalls={payload.toolCalls}
+          sourceText={sourceText}
+        />
       </div>
     </aside>
   )
@@ -126,9 +143,10 @@ interface ContentAreaProps {
   tab: InspectorTab
   jsonText: string
   toolCalls: ToolCall[]
+  sourceText?: SourceTextState
 }
 
-function ContentArea({ tab, jsonText, toolCalls: calls }: ContentAreaProps) {
+function ContentArea({ tab, jsonText, toolCalls: calls, sourceText }: ContentAreaProps) {
   const tabStatusLabel = TAB_LABELS[tab]
 
   return (
@@ -158,6 +176,11 @@ function ContentArea({ tab, jsonText, toolCalls: calls }: ContentAreaProps) {
         ))}
       </div>
 
+      {/* 原文区。只在点开角标后出现——它是引用溯源的一部分，不是常驻控件。 */}
+      {sourceText && sourceText.kind !== 'none' && (
+        <SourceTextBlock state={sourceText} />
+      )}
+
       {/* JSON viewer (Output tab primary, others also show for brevity) */}
       <div className={styles.jsonBlock}>
         <pre className={styles.jsonPre}>{jsonText}</pre>
@@ -175,8 +198,39 @@ function ContentArea({ tab, jsonText, toolCalls: calls }: ContentAreaProps) {
   )
 }
 
-/* ───────── Builders exposed to page ───────── */
+/* ───────── Source text (citation drill-down) ───────── */
 
+/**
+ * 角标点开后显示的原文切片。
+ *
+ * 位置放在工具列表与 JSON 之间：它回答的是「这条引用到底引了什么」，
+ * 比 JSON 溯源更靠前——用户点角标的第一反应是看原文，不是看字段。
+ */
+function SourceTextBlock({ state }: { state: SourceTextState }) {
+  return (
+    <div className={styles.sourceBlock}>
+      <div className={styles.sourceHead}>
+        <span className={styles.sourceTitle}>
+          <IconSpan name="description" size={13} className={styles.sourceIcon} />
+          <span>引用原文</span>
+        </span>
+        {state.kind === 'ready' && <span className={styles.sourceMeta}>{state.title}</span>}
+      </div>
+
+      {state.kind === 'loading' && (
+        <p className={styles.sourceHint}>正在拉取原文…</p>
+      )}
+      {state.kind === 'error' && (
+        <p className={styles.sourceError} role="alert">
+          原文拉取失败：{state.message}
+        </p>
+      )}
+      {state.kind === 'ready' && <p className={styles.sourceBody}>{state.body}</p>}
+    </div>
+  )
+}
+
+/* ───────── Builders exposed to page ───────── */
 const DEFAULT_PAYLOAD: InspectorPayload = {
   toolCalls: [],
   title: '分析节点检查器 (Analyst Node Inspector)',
@@ -227,8 +281,10 @@ export function buildCitationPayload(citation: Citation): InspectorPayload {
         citation_no: citation.n,
         source_id: citation.source_id,
         chunk_id: citation.chunk_id,
-        // 后端下发的 chunk_index 是 0-based，展示时人读的是「第 n+1 段」。
-        chunk_label: `第 ${citation.chunk_index + 1} 段`,
+        // 后端下发的 chunk_index 是 0-based，展示时人读的是「第 n+1 块」。
+        chunk_label: `第 ${citation.chunk_index + 1} 块`,
+        // 纯文本按 \f 分页时 page 也有值，所以它不是「PDF 专属」——
+        // 原文区优先用 page，这里保留原值供排查时对照。
         page: citation.page,
         source_title: citation.title,
         recall: citation.recall,

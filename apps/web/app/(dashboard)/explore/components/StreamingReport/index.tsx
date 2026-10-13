@@ -165,7 +165,7 @@ function Cite({ id, citations, onSelect }: CiteProps) {
       type="button"
       className={styles.cite}
       onClick={() => onSelect(citation)}
-      title={`${citation.title}${citation.page != null ? ` · 第 ${citation.page} 页` : ''}`}
+      title={`${citation.title}${citation.page != null ? ` · 第 ${citation.page} 段` : ''}`}
     >
       {id}
     </button>

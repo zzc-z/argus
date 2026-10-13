@@ -369,3 +369,73 @@
   font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
   color: var(--token-on-surface-variant, #494456);
 }
+
+/* ──────── 原文区（角标点开后）──────── */
+
+/* 放在工具列表与 JSON 溯源之间。原文比 JSON 更占版面，所以给它自己的
+   最大高度 + 滚动——一段 PDF 切片能有几千字，不限高会把下面的 JSON 顶出视口。 */
+.sourceBlock {
+  padding: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--token-on-surface, #191c1d) 30%, transparent);
+  background-color: color-mix(in srgb, var(--token-surface-container-low, #f3f4f5) 55%, transparent);
+  max-height: 42%;
+  overflow-y: auto;
+}
+
+.sourceHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.sourceTitle {
+  font-size: 10px;
+  text-transform: uppercase;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
+  color: var(--token-on-surface-variant, #494456);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sourceIcon {
+  color: var(--token-primary, #5704e1);
+}
+
+/* 资料标题可能很长（文件名带路径与扩展名），截断而不是换行——
+   换行会把正文区往下挤，且标题本身不是这条引用要传达的信息。 */
+.sourceMeta {
+  font-size: 10px;
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
+  color: var(--token-on-surface-variant, #494456);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.sourceHint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--token-on-surface-variant, #494456);
+}
+
+/* 错误显式说出，不用 role=status——拉取失败需要用户立刻注意到，不是背景信息。 */
+.sourceError {
+  margin: 0;
+  font-size: 11px;
+  color: var(--token-error, #ba1a1a);
+}
+
+/* 正文用 pre-wrap：切片里有换行（PDF 段落边界），且超长英文 token
+   （URL、模型名）不能撑破面板宽度。 */
+.sourceBody {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--token-on-surface, #191c1d);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
