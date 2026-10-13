@@ -1,11 +1,136 @@
 # Argus API 开发工作日志
 
 > 用途：上下文压缩后据此恢复开发状态。**最新的章节在顶部**。
-> 最后更新：2026-10-13（W2 Day 11 完成）
+> 最后更新：2026-10-13（补 CR 三轮完成）
 
 ---
 
-# 🔴 最新：W2 Day 11 完成（Citation Builder + 本地检索接进 agent）
+# 🔴 最新：补 CR 三轮（对 Day 9/10/11 回头审查）
+
+## 进度
+
+W2 Day 9/10/11 全部完成，**415 tests 全绿**，mypy strict 37 文件零问题，
+ruff 干净。已提交：`0a12bb9` / `b6b63e1` / `c865927`。
+
+## 为什么要回头补 CR
+
+Day 11 完成时 347 tests 全绿、mypy strict 干净、ruff 干净，**质量门一条
+问题都没报**。起3 个 reviewer 审 Day 9/10/11（按改动规模与风险排序），
+报出 2 严重 + 6 重要（Day 11）、4 严重 + 6 重要 + 8 细节（Day 9/10）。
+
+**最关键的发现：报出的问题里大部分质量门查不出来。**
+
+| 类型 | 能不能被测试发现 |
+|---|---|
+| 读错框架行为（以为 yield 依赖提前关闭） | ❌ 测试全绿 |
+| 绕过依赖注入（测试静悄悄连开发库） | ❌ 测试全绿 |
+| 注释引用不存在的常量 | ❌ 测试全绿 |
+| 文档谎报消费者（断言前端会消费，实际没有） | ❌ 测试全绿 |
+| 契约字段缺失 | ⚠️ 部分 |
+
+## 修掉的（都有复现或实测支撑）
+
+### 1. 并发闸门是 TOCTOU 竞态
+
+`_reject_if_full()` 在端点内同步检查，真正 acquire 在生成器里，中间隔着
+「响应开始发送」的 await。两个 reviewer 独立复现：10 个并发请求全部拿到
+200，503 一次都不触发——闸门在需要它的时候完全不生效。排队的请求每个
+pin 住一条 DB 连接，16 个并发就把连接池打爆。
+
+**修法**：`_try_acquire_slot()` 把检查与获取合并进同一同步块。
+
+半路踩坑：`asyncio.Semaphore` **没有** `acquire_nowait`（那是 threading 的
+API）。改用「`locked()` 判断 + `acquire()` 走快路径」——读源码确认
+`acquire()` 第一句就是 `if not self.locked(): self._value -= 1; return True`，
+**一个 await 都没有**，所以在协程里调它本身就是原子的。
+
+### 2. StaticPool 单连接导致已提交数据被静默吞掉
+
+`async_creator` 让 SQLAlchemy 走StaticPool 分支，全进程共用一条 SQLite
+连接，两个并发事务落进同一个事务里。
+
+实测（我自己的复现，不是照抄报告）：
+
+| | A 已提交的行 | 判定 |
+|---|---|---|
+| 修复前 StaticPool | 0 行 | ❌ 被 B 的回滚吞掉 |
+| 修复后 AsyncAdaptedQueuePool | 1 行 | ✓ 保住了 |
+
+**修法**：显式 `poolclass=AsyncAdaptedQueuePool` + `pool_size=4`。
+
+**变异测试的教训**：第一次验证用 8 并发 × 20 条，修复前后都是 160/160
+全对，看不出差别。换场景才复现出——**A 提交、B 回滚**。原因是并发写
+不触发回滚路径。挑变异场景要对准机制。
+
+### 3. `knn_search` 默认参数等于全库搜索
+
+`source_ids: Sequence[int] | None = None` 里，漏传第三四个参数就会检索到
+全库数据，然后 `find_many` 回查到别人的正文。**改成必填**：漏传从静默
+串库变成 TypeError。
+
+### 4. 向量 engine 绕过 dependency_overrides
+
+与 Day 11 修的 `get_session` 同源。潜伏至今是因为路由测试都换成了假
+agent，一旦有人写「真实 agent + local_search」的端到端测试就会踩到。
+改成 `VecEngineDep = Annotated[AsyncEngine, Depends(get_vector_engine)]`。
+
+### 5. 列表接口连带加载全部切片正文
+
+`Source.chunks` 的 `lazy="selectin"` 是无条件 eager。实测列资料发 2 条
+SQL，第二条把整份资料的正文拖回来——列表页只显示 title/status，一个
+字符都用不上。改 `lazy="raise"`。
+
+半路踩坑：`lazy="raiseload"` 在 SQLAlchemy 2.x 不存在，报 `Can't find
+strategy (('lazy', 'raiseload'),)`。正确值是 `"raise"`。
+
+### 6. 一个字的正文都没产出时仍以「成功」收尾
+
+模型只回 thinking（`stop_reason="end_turn"`）或直接 refusal 时，循环照常
+break、`truncated=False`、`tool_calls` 为空——前端把一份空白报告标成
+「已完成」，DAG 上 writer 节点从未 activate，没有任何错误提示。
+
+加 `produced_text` 标记 + `empty_response` 错误事件。
+
+### 7. URL 建源真正抓取（另一个 agent 交的活）
+
+新增 `app/services/fetcher.py`（277 行）+ 66 个测试。选型 httpx + trafilatura：
+实测 HtmlParser 提出来的 Wikipedia 页面含 6 处导航噪音（「Jump to
+content」「Main menu」），trafilatura 0 处——**导航文案进 embedding 会
+直接污染检索**。
+
+SSRF 防护：手动跟重定向 + 每跳复检，`ipaddress.is_global` 拦内网
+（含 169.254.169.254 云 metadata）。实测 httpx 默认 `follow_redirects=True`
+会一路跟到底，能读出内网内容。
+
+## 两条方法论教训（已写进 AGENTS.md §7.5）
+
+**1. 读源码下结论不可靠。** 我认定「FastAPI 的 yield 依赖在流式响应开始
+前就关闭」，还专门读了 `routing.py:147-151` 当证据。实际FastAPI 0.118.0
+把这个行为当 bug revert 了（release notes 原话举例的就是 SSE 拿不到 DB
+session）。我读错了 stack——默认 `scope="request"` 的依赖挂的是**外层**
+`request_stack`，外层在响应发完才关。
+
+**先写实测脚本验，别只读源码。** 用 TestClient 跑一次完整 ASGI 栈，
+三次真实 SQL 查询全部成功，才算确认。
+
+**2. 变异测试要挑对场景。** 见上面 StaticPool 那条。
+
+## 没修的
+
+1. **中间口语粘进正文**——模型边调工具边说的话会被前端累加进最终报告。
+   **这是前端问题**：后端语义是对的（那确实该给用户看），前端可以只累加
+   `writer` 节点的 delta。留给 UI 会话。
+2. **`run_agent` 145 行**（103 行有效代码，超项目 50 行上限两倍）——要拆出
+   节点编排 / 工具分发 / 收尾三块，结构性重构建议单独一批。
+3. **`DateTime(timezone=True)` 在 SQLite 上返回 naive**——今天没代码比较
+   它所以没爆，但 sources 会进研报引用与时间线。
+4. **向量与业务数据跨两条连接写入，无原子性**——摄取时可能一半切片有向量
+   一半没有，而 status 已写成 indexed。
+5. **`I2` FK pragma 只挂在 app.db.engine 上**，向量 engine 那条连接没开。
+
+---
+
+# 🔴 W2 Day 11 完成（Citation Builder + 本地检索接进 agent）
 
 ## 进度
 
@@ -451,7 +576,27 @@ langchain 的 `create_documents` 不返回字符偏移，而引用高亮必须�
    `available_tools()` 摘掉 `tavily_search` 后模型会被指示去调一个它看不到的
    工具，而 `local_search` 无人提及。**要改成按实际工具集动态拼接。**
 
-## 下一步：W2 Day 12（explore 页接线 + URL 抓取）
+## 下一步
+
+**后端**（本会话可做）：
+1. `run_agent` 145 行重构——拆节点编排 / 工具分发 / 收尾三块
+2. `DateTime(timezone=True)` 在 SQLite 上返回 naive——sources 会进引用与
+   时间线，早晚要比较
+3. 向量与业务数据跨两条连接写入，无原子性（摄取可能一半切片有向量一半
+   没有，而 status 已写成 indexed）
+4. FK pragma 只挂在 app.db.engine，向量 engine 那条连接没开
+
+**前端**（UI 会话在做，勿抢）：
+- 中间口语粘进正文——前端只累加 writer 节点的 delta 即可
+- explore 页消费 `reference` 事件，角标点击接真实 chunk
+
+**规则**：`AGENTS.md §7.5` —— 每写完一批代码走「质量门 → 测试 → CR」，
+CR 发现问题修完重跑并复审。含两条实证教训：读源码下结论不可靠、
+变异测试要挑对场景。
+
+---
+
+## 历史：W2 Day 12（explore 页接线 + URL 抓取）—— URL 抓取已完成
 
 Day 11 的 Citation Builder 与本地检索已完成（见上），剩下的：
 
