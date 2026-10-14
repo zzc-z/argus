@@ -325,7 +325,7 @@ async def test_formats_real_tavily_response_shape(
     此前所有测试都用 mock 字典，字段名对不对从没验证过——真把
     ``snippet`` 当 content 读，格式化出来全是空块，而测试照样全绿。
     """
-    real_item = {
+    real_item: dict[str, object] = {
         "content": "The NVIDIA GB200 NVL72 is a liquid-cooled, rack-scale solution.",
         "id": "abc123",
         "raw_content": None,
@@ -349,6 +349,31 @@ async def test_formats_real_tavily_response_shape(
     outcome = await execute_tool("tavily_search", {"query": "GB200"})
 
     assert outcome.ok is True
-    assert real_item["title"] in outcome.content
-    assert real_item["url"] in outcome.content
+    assert str(real_item["title"]) in outcome.content
+    assert str(real_item["url"]) in outcome.content
     assert "liquid-cooled" in outcome.content
+
+
+def test_tavily_search_schema_survives_without_key(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
+    """``tavily_search`` 的 schema 形状必须单独验——它不随环境变。
+
+    ``test_tool_schemas_shape`` 走 ``available_tools()``，而 conftest 的
+    autouse 隔离让那函数恒返回 ``{local_search, dedup}``。于是
+    ``tavily_search`` 的 ``input_schema.properties`` 自 2026-10-13 起因
+    「环境里没 key」就再没被任何测试碰到——这正是模型能不能正确传参
+    的地方，漏了不会有任何报错。
+    """
+    schema = next(
+        s for s in tool_schemas(available_tools(has_local=True)) if s["name"] == "tavily_search"
+    )
+    props = schema["input_schema"]["properties"]
+    assert "query" in props
+    assert props["query"]["type"] == "string"
+    # query 必须是必填：模型漏传时上游返回 400，而 tools.py 里那句
+    # `if not query: return 参数错误` 就永远走不到。schema 与实现脱节
+    # 时症状是「模型传空 query → Tavily 报 BadRequest」，看着像配额问题。
+    assert schema["input_schema"]["required"] == ["query"]
+    assert "max_results" in props
+    assert "max_results" in props

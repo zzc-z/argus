@@ -7,7 +7,6 @@
 """
 
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
-from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -34,8 +33,19 @@ pytest_plugins: list[str] = []
 def _tavily_unavailable() -> object:
     """``get_tavily_client`` 的测试替身：永远报「未配置」。
 
-    与 ``tests/test_tools.py`` 里那个同名函数是同一件事，但那份只服务于
-    那个文件；conftest 这份是 autouse 的，保证**任何**测试碰不到真网络。
+    ## 覆盖范围（别当成全局保证）
+
+    它替换的是 ``app.services.tools`` 里那份**模块级引用**。全仓只有
+    ``tools.py:25`` 从 llm 导入它，所以 agent 路径（``available_tools`` 与
+    ``execute_tool`` 都按模块全局查找）被覆盖到了。
+
+    但 ``app.services.llm.get_tavily_client`` 本身**没被换**。改它不行：
+    ``llm.clear_client_cache()``（llm.py:89）按名字查全局并调
+    ``.cache_clear()``，换成普通函数会让 ``test_llm_client`` 的 setup 报
+    AttributeError。所以 llm 层要真调 Tavily 的用例得自己管——目前
+    ``test_llm_client.py`` 靠把自己的 ``get_settings`` 换成缺 key 版本来
+    达到同样效果。**新加 llm 层正向用例时必须重复那一步**，否则会拿到
+    真客户端并真的发请求（症状是某个用例报 Tavily 的 4xx，看着像产品 bug）。
     """
     raise LLMNotConfiguredError("TAVILY_API_KEY 未配置")
 
@@ -44,7 +54,7 @@ def _tavily_unavailable() -> object:
 def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """确保测试不依赖真实 env vars。
 
-    ## 为什么不读 .env（关键）
+    ## 为什么隔离点选在 monkeypatch 而不是配置层
 
     pydantic-settings 的配置来自**文件**，不是进程环境——所以
     ``monkeypatch.delenv("TAVILY_API_KEY")`` 对它完全无效。2026-10-13
@@ -52,10 +62,18 @@ def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
     ``BadRequestError: Query is too short``：看着像产品 bug，其实是测试
     在联网（它用的查询词是 ``x``）。
 
-    真正的隔离是把 ``Settings.env_file`` 指向一个空文件——见
-    ``app/config.py`` 里 ``ARGUS_ENV_FILE`` 那段。要依赖 Tavily 的用例
-    自己显式声明（``test_tools._with_tavily_key`` 只替换
-    ``get_tavily_client``，真正发请求的 ``_search`` 仍需各自 monkeypatch）。
+    试过又放弃的三条路（都实测炸过，记下来免得重走）：
+
+    1. ``setenv("TAVILY_API_KEY", "")`` —— pydantic-settings 对空串的语义
+       不等于「未设置」，``_require`` 拿到的仍是真值，36 个用例挂掉。
+    2. 把 ``Settings.env_file`` 指向 ``.env.example`` —— 那里
+       ``JWT_SECRET_KEY`` 等是占位符，73 个用例当场炸。
+    3. 给 ``SettingsConfigDict`` 加 ``env_file_factory`` —— 这个 key 不存在。
+
+    剩下唯一可行的是替换 ``tools`` 模块里那份引用，见下方注释。
+
+    要用 Tavily 的用例自己 monkeypatch 回去（``test_tools._with_tavily_key``）；
+    它只换 client，真正发请求的 ``_search`` 仍需各自 mock。
 
     ## 为什么还要 cache_clear
 
@@ -68,6 +86,13 @@ def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
     ``test_tool_use_produces_tool_call_events`` 断言「搜索工具未配置」
     却拿到「工具内部错误」（它真的发了一次请求，被 Tavily 拒了）。
     config.py 早就写了「测试里 cache_clear() 可重置」，但没人真的调。
+
+    ## 这条 cache_clear 覆盖不到的（已知）
+
+    ``app/db.py:36`` 与 ``app/main.py:27`` 在**导入期**就把
+    ``get_settings()`` 绑进模块全局，``cache_clear`` 对它们无效。
+    写「setenv + cache_clear 就该生效」的测试会绿，但生产路径用的还是
+    导入期那份。目前不涉及 Tavily 所以没炸——别拿这个 fixture 当万能药。
     """
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("LOG_LEVEL", "warning")
