@@ -56,9 +56,15 @@ class Settings(BaseSettings):
     jwt_secret_key: SecretStr | None = Field(default=None)
     jwt_algorithm: str = Field(default="HS256")
     jwt_expire_seconds: int = Field(default=7 * 24 * 60 * 60)  # 7 天
-    # dev 走 http://localhost，Secure cookie 不会被浏览器带上，必须 false。
-    # 生产部署改true——显式配置而非按环境自动切换，避免线上漏改。
-    cookie_secure: bool = Field(default=False)
+    # 默认 **True**：OWASP Session Management 要求会话 cookie 必须带 Secure。
+    #
+    # 2026-10-14 改。原先是 False，理由写着「生产部署改 true，显式配置而非按
+    # 环境自动切换，避免线上漏改」——那个论证是反的。一个没写的环境变量就是
+    # False，线上不会有任何东西报错；而「漏改」正是这种默认值最常见的失败方式。
+    # 反过来，默认 True 时开发环境的漏改只导致本地登不上，一眼就能看出来。
+    #
+    # 本地开发走 http://localhost，需在 .env 里显式设 COOKIE_SECURE=false。
+    cookie_secure: bool = Field(default=True)
     # 登录成功后把浏览器送回的前端地址
     frontend_base_url: str = Field(default="http://localhost:3000")
 

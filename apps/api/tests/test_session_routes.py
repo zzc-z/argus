@@ -12,7 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.gateway import auth as auth_module
 from app.gateway.deps import SESSION_COOKIE
 from app.models import Provider, User
@@ -195,3 +195,62 @@ def test_me_returns_401_after_logout(
     client.post("/api/v1/auth/logout")
 
     assert client.get("/api/v1/me").status_code == 401
+
+
+# ── cookie 属性（2026-10-14）───────────────────────────────
+def test_cookie_secure_defaults_true(monkeypatch: pytest.MonkeyPatch) -> None:
+    """默认必须是 Secure。
+
+    2026-10-14 从 False 改回 True。旧默认值写着「生产部署改 true，显式配置
+    避免漏改」——那个论证是反的：漏设环境变量时没有任何东西会报错，而漏设
+    的后果是会话 cookie 在公网上明文传输。
+
+    用 ``_env_file=None`` 断言**默认值**而不是当前环境值——直接
+    ``Settings()`` 会读到本机 ``.env`` 里的 ``COOKIE_SECURE=false``，
+    测到的是环境而不是代码。
+    """
+    for name in ("COOKIE_SECURE", "cookie_secure"):
+        monkeypatch.delenv(name, raising=False)
+    assert Settings(_env_file=None).cookie_secure is True, (
+        "cookie_secure 默认 False 时，线上没设这个环境变量就等于没有 Secure——"
+        "而没有任何东西会报错。2026-10-14 已改回 True。"
+    )
+
+
+def test_login_sets_session_cookie_without_domain(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, github_state: str
+) -> None:
+    """session cookie 不带 Domain——只发给设它的那个确切主机，不外溢到子域。
+
+    这是 OWASP 建议的 ``__Host-`` / ``__Secure-`` 前缀真正起作用的那部分。
+    前缀本身没用（它强制 Secure，而 http://localhost 下各浏览器接受与否
+    不一致，MDN 明确标注 Safari 不支持），所以退而求其次写清楚这一条。
+
+    Starlette 未传 ``domain`` 时本来就不发该属性——这条测的是「别哪天有人
+    为了方便给个 ``.example.com`` 进去」。
+    """
+
+    async def _fake_exchange(code: str, code_verifier: str, settings: object) -> str:
+        return "gho_test_token"
+
+    async def _fake_profile(access_token: str) -> OAuthProfile:
+        return OAuthProfile(
+            provider=Provider.GITHUB,
+            provider_account_id="12345",
+            email="alice@example.com",
+            display_name="Alice",
+            avatar_url="https://x/1.png",
+        )
+
+    monkeypatch.setattr(auth_module, "_exchange_code_for_token", _fake_exchange)
+    monkeypatch.setattr(auth_module, "_fetch_github_profile", _fake_profile)
+
+    resp = client.get(
+        f"/api/v1/auth/github/callback?code=abc&state={github_state}",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 307
+
+    raw = resp.headers.get_list("set-cookie")
+    session_raw = next(h for h in raw if h.startswith(f"{SESSION_COOKIE}="))
+    assert "Domain" not in session_raw, f"Domain 属性会把 cookie 扩散到子域：{session_raw}"

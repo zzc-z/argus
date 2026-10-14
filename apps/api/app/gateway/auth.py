@@ -209,6 +209,24 @@ async def github_callback(
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         headers={"Location": f"{settings.frontend_base_url}/dashboard"},
     )
+    # session cookie 的属性，逐条都有理由：
+    #
+    # - httponly：JS 读不到，XSS 也偷不走（OWASP 必须项）
+    # - secure：默认 True，见 config.cookie_secure
+    # - samesite=lax：挡住跨站 POST（OWASP 认可 lax 为可接受）。选 lax 而非
+    #   strict 的具体代价未逐一核过——session cookie 只被 require_current_user
+    #   读（deps.py），而挂它的 /me、/research/ask、/sources 都不是靠跨站导航
+    #   到达的，理论上升到 strict 不会断登录。没实测过就不下结论。
+    # - path=/：会话 cookie 服务于**所有** API，不只 auth。收窄到 /api/v1/auth
+    #   会让 /api/v1/research/ask 读不到
+    # - **不设 domain**：不发 Domain 属性 → cookie 只发给设它的那个确切主机，
+    #   不会外溢到任何子域。这是 OWASP 建议的 __Host- / __Secure- 前缀真正
+    #   起作用的那部分。
+    #
+    # 没有用 `__Host-` 前缀是有意的（2026-10-14 查过）：它强制 Secure，而
+    # http://localhost 下浏览器是否接受 Secure cookie 各家不一致（MDN 明确
+    # 标注 Safari 不支持），本地开发会时好时坏。argus 无子域，前缀带来的防
+    # 子域伪造收益本就为零。
     redirect.set_cookie(
         key=SESSION_COOKIE,
         value=create_access_token(result.user.id),
@@ -230,9 +248,29 @@ async def logout() -> Response:
     前端不必先判断状态再决定调不调。
 
     服务端不存 session，所以「已发出去的 JWT」在过期前（默认 7 天）
-    依然能通过校验。真要立刻失效得加撤销名单（黑名单表 / Redis），
-    当前不做：7 天窗口内窃取 cookie 的攻击者本来就能直接调任何接口，
-    黑名单只把「立刻失效」变成「需要额外的在线校验」，收益不大。
+    依然能通过校验。真要立刻失效得加撤销名单（黑名单表 / Redis）。
+
+    ## 为什么现在不做撤销（这是权衡，不是规范许可）
+
+    OWASP Session Management 把「会话到期或用户主动登出时必须采取主动措施」
+    列为对 web 应用的要求。本项目**有意偏离**它：
+
+    - 7 天窗口内窃取 cookie 的攻击者本来就能直接调任何接口，黑名单只把
+      「立刻失效」变成「每次请求多一次在线校验」，并不能挽回已发生的泄露；
+    - 撤销名单本身要有状态（DB 表或 Redis），而这个项目的数据层是单机
+      SQLite——为「事后失效」引入一个必须与主库保持一致的第二份状态，
+      失败模式（名单写了但库挂了 → 撤销失效）比它要解决的问题更糟；
+    - OWASP 同一份文档也写着建议「会话标识在登录时重新生成」，本项目的
+      登录态本就是每次登录重新签发 JWT，没有可重放的旧标识。
+
+    这是风险取舍。**触发重新评估的条件**：接入多实例部署、账号体系开放给
+    他人使用、或开始承载任何「泄露后必须立即止血」的数据（支付、密钥、他人
+    私有内容）。届时按 OWASP 的建议加 denylist，键用 ``jti`` 而不是 JWT
+    原文——原文当键会被 malleability 绕过。
+
+    另见 OWASP JWT Cheat Sheet 关于「JWT 也能做用户会话，只需额外解决
+    失效问题」的说明；浏览器侧架构要求见 RFC 10017（OAuth 2.0 for
+    Browser-Based Applications），其安全要求派生自 RFC 9700（BCP 240）。
     """
     response = Response(status_code=status.HTTP_204_NO_CONTENT)
     response.delete_cookie(SESSION_COOKIE, path=SESSION_COOKIE_PATH)
