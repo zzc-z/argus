@@ -971,11 +971,21 @@ data: {"type": "done", "v": {"session_id": "...", "elapsed_ms": 5432}}
 | 事项 | 状态 |
 |---|---|
 | ~~`TAVILY_API_KEY` 未申请~~ | ✅ 已配（见顶部章节） |
-| `stop_reason == "max_tokens"` 且同时有 tool_calls 时，`truncated` 标记走不到 | 已知 bug，未修（`agent.py`） |
-| service 层引入了 logger | 与既有约定「logging 归 gateway」冲突，**待用户定夺** |
-| 「打字机」无节奏控制 | `_slice_for_display` 是同步函数，片段同 tick 吐完 |
+| ~~`max_tokens` + `tool_calls` 时 `truncated` 走不到~~ | ✅ 已修（`8f03d5e`）。真相是**漏标**：`truncated` 恒 False，用户拿到自称完整的报告 |
+| ~~service 层引入了 logger，与约定冲突~~ | ❌ **这条约定不存在**，是 2026-10-14 审计时发现的自我欺骗。AGENTS.md 从没写过「logging 归 gateway」，service 层记运维日志是正常做法 |
+| ~~「打字机」无节奏控制~~ | ❌ **不是缺陷**。`_slice_for_display` 的 docstring 明写这是有意设计（展示节奏属 agent 输出语义），且有测试覆盖 |
+| ~~SSE 断连时槽位泄漏~~ | ❌ **早已修好并实测**。`research.py:77` 写着「已实测 aclose() 触发」，release 在 finally 里 |
 | `tool_call` 事件驱动 InspectorDrawer | 已做（前端 `bd4e232`） |
-| W2 换 LangGraph | 保留 `tools.py`(365 行) / `stream.py`(221 行) / `llm.py` client 单例，只重写循环 |
+| W2 换 LangGraph | 保留 `tools.py`(495 行) / `stream.py`(238 行) / `llm.py` client 单例，只重写循环 |
+
+### 6.1 这张表本身就是教训（2026-10-15 审计）
+
+上面四条里**三条是假的**：一条引用了不存在的约定，一条把设计决策当缺陷，一条描述的
+问题三周前就修好并验证过了。它们能待这么久，是因为「写下来」被当成了「做过核对」。
+
+**「待办表」是最容易积累假知识的文件**——写的时候顺手，修完忘了划掉，
+再没人回去验证每一条是否还成立。以后填这张表，每条都要能回答「谁核实过、什么时候」；
+拿不出答案的要么当场核实，要么别写。
 
 ### 7. 代码审查发现并已修的 bug（别再犯）
 
