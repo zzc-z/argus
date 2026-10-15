@@ -299,6 +299,34 @@ async def test_max_tokens_marks_truncated(monkeypatch: pytest.MonkeyPatch) -> No
     assert done.truncated is True
 
 
+async def test_max_tokens_with_tool_calls_marks_truncated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """max_tokens 与 tool_use 同时出现时也要标 truncated。
+
+    Anthropic 官方说明：响应被 max_tokens 切断时可以带着 tool_use 块一起
+    返回（见 https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons）。
+    截断标记原先只写在「没有工具调用」的分支里，于是这种一轮里同时发生
+    截断与工具调用的响应，truncated 恒为 False——用户拿到一份自称完整、
+    实际少了一截的报告。
+
+    同时钉住另一半行为：这一轮的 tool_use 仍然照常执行，不因为被截断就丢。
+    """
+    _stub_turns(
+        monkeypatch,
+        [
+            _turn(tool_calls=[_tool_call()], stop_reason="max_tokens"),
+            _turn(text="基于部分证据的答案"),
+        ],
+    )
+    events = await _collect()
+
+    done = next(e for e in events if isinstance(e, DoneEvent))
+    assert done.truncated is True
+    # 截断不等于丢弃：工具照跑，结果照喂回模型
+    assert [e.phase for e in events if isinstance(e, ToolCallEvent)] == ["start", "end"]
+
+
 # ── 节点序列：成功 vs 失败 ────────────────────────────────────
 
 

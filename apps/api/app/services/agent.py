@@ -303,9 +303,16 @@ async def run_agent(
                 for piece in _slice_for_display(result.text):
                     yield DeltaEvent(node_id=Stage.WRITER.value, text=piece)
 
+            # 截断标记与「要不要继续调工具」是两件事，必须分开判。
+            # Anthropic 官方说明响应被 max_tokens 切断时可以同时带着 tool_use
+            # 块返回；把判断埋在「没有工具调用」的分支里，这种一轮里同时发生
+            # 截断与工具调用的响应就会漏标 truncated——用户拿到一份自称完整、
+            # 实际少了一截的报告。
+            # https://platform.claude.com/docs/en/build-with-claude/handling-stop-reasons
+            if result.stop_reason == "max_tokens":
+                ledger = ledger.mark_truncated()
+
             if not result.tool_calls:
-                if result.stop_reason == "max_tokens":
-                    ledger = ledger.mark_truncated()
                 break
 
             # 还要继续调工具：切回 researcher 节点。
