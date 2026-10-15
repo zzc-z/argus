@@ -298,7 +298,7 @@ def test_available_tools_order_is_stable(
     monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
 ) -> None:
     """工具顺序必须固定——set 的迭代顺序随 PYTHONHASHSEED 变，
-    同��份配置两次启动给出不同的 tools 数组会让 prompt 缓存失效。"""
+    同一份配置两次启动给出不同的 tools 数组会让 prompt 缓存失效。"""
     first = [t.name for t in available_tools()]
     second = [t.name for t in available_tools()]
     assert first == second

@@ -11,7 +11,7 @@
   不需要任何 API key。本项目 ``TAVILY_API_KEY`` 是**可选配置**，
   拿它当唯一路径等于让「没配 key」的部署完全不可用。
 - 现有 :class:`~app.services.parser.HtmlParser` 是正则剥标签，
-  对同一份 Wikipedia HTML 提��� 30748 字符、命中 6 处导航/页脚噪音
+  对同一份 Wikipedia HTML 提取 30748 字符、命中 6 处导航/页脚噪音
   （"Jump to content" / "Main menu" / "hide"）；trafilatura 提 15399 字符、
   0 处噪音。中文站差距更大——新浪财经正文中文占比 0.66，HtmlParser 只有 0.05。
   导航文案进 embedding 会直接污染检索，这是要引 trafilatura 的唯一理由。

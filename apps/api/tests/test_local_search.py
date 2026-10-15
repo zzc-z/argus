@@ -53,7 +53,7 @@ async def _index(engine: AsyncEngine, chunks: list[DocumentChunk]) -> None:
     """按**各自的**正文建 BM25 索引。
 
     不能图省事给所有切片写同一段文本——那样 BM25 对每条的评分完全相同，
-    排序退化成任���，断言「哪条排第一」就成了随机事件。
+    排序退化成任意顺序，断言「哪条排第一」就成了随机事件。
     """
     await ensure_index_tables(engine)
     await bm25.index_chunks(engine, [(c.id, c.content) for c in chunks])
