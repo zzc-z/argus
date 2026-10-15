@@ -23,6 +23,7 @@ from app.gateway import (
     sources_router,
     users_router,
 )
+from app.security import SecurityHeadersMiddleware, build_security_headers
 
 _settings = get_settings()
 
@@ -54,6 +55,15 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+# 安全头在最外层：middleware 按注册顺序反向包裹（后注册的先收到请求），
+# 所以后加的 SecurityHeaders 会包住 CORS——CORS 拒绝预检时直接短路返回的
+# 响应也能带上安全头。app/security.py 解释了为什么这里只有 frame-ancestors
+# 而没有完整 CSP。
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    headers=build_security_headers(enable_hsts=_settings.app_env == "prod"),
 )
 
 app.include_router(health_router)
