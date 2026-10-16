@@ -5,6 +5,70 @@
 
 ---
 
+# 🔴 恢复指南（2026-10-16 上下文压缩前）
+
+## 一句话状态
+
+W2 Day 9/10/11/13 代码全部完成，**466 测试全绿，CR 走完三轮**。
+唯一阻塞是中转站周额度用尽（429），导致 Critic 的真实效果**从未验证**。
+
+当前 HEAD：`82f97f6`，工作树干净，**4 个 commit 未 push**（`7cea137` 起）。
+
+## 已完成（本轮）
+
+| commit | 内容 |
+|---|---|
+| `4504345` | 文档审计（待办表三条是假的）+ AGENTS §7.6「注释不许编造事实」 |
+| `7cea137` | 修 4 处注释乱码 |
+| `75004f2` | OWASP Secure Headers（app/security.py + 11 测试） |
+| `8f03d5e` | max_tokens 与 tool_use 共现时正确标 truncated |
+| `66dad58` | Critic 引用忠实度校验（新增 faithfulness.py + 20 测试） |
+| `bf8dece` | CR 抓出的 6 严重 + 13 重要，其中 C1 让整个输出方向相反 |
+| `82f97f6` | 记录 429 阻塞 + 待验证的验收用例 |
+
+## 下一步（按优先级）
+
+### 1. 前端渲染校验结果 —— **不依赖 LLM，现在就能做**
+
+后端 `FaithfulnessEvent` 已经发出来了（`_type_name` 已登记、顺序在
+`done` **之后**），但 `apps/web/app/(dashboard)/explore/page.tsx:249`
+的 `switch (event.type)` **没有 faithfulness 分支**，`default: break`
+把它吞了。当前用户完全看不到校验结论。
+
+要做的：
+- `apps/web/lib/api/sse.ts` —— 已加了 `FaithfulnessEventV` +
+  `UnsupportedV` 两个接口。该文件**只有类型定义、没有派发逻辑**
+  （我原先以为有 switch，实测 grep 无命中）；派发全在 `page.tsx` 的
+  `switch (event.type)` 里，各分支用 `v as unknown as XxxV` 断言取类型
+- `page.tsx` —— 加 `case 'faithfulness'`，存 state
+- 报告尾部（`page.tsx:358` 附近，`runSummary` 那块）渲染通过率 +
+  未支撑条目列表 + `missing` 提示
+- 走完质量门 + CR
+
+### 2. Day 12 Mem0 记忆 —— 不依赖 LLM
+
+sprint plan 里的下一块。MemoryBackend 抽象 + researcher 启动时 recall。
+全是存储与检索逻辑，可以写完可以测完。
+
+### 3. 额度恢复后验 Critic（10-19 12:51 之后）
+
+用 WORKLOG「已完成但待真实验证」章节里那三条陷阱用例跑
+`verify_citations`，确认能挑出来。挑不出来说明 LLM 判定也不够，
+要重新设计（届时记录实测数据，别再猜）。
+
+## 硬约束（别再踩）
+
+- **AGENTS.md §7.5 是死规定**：每批改动走完「质量门 → 测试 → CR」，
+  缺一不可。豁免只有纯文档/注释与纯格式化两种。
+- **注释里的技术断言要么实测过要么不写**（§7.6）。本轮我在写的过程中
+  犯了三次：注释说「done 先于校验帧」而代码相反、说「逐条独立判定」
+  而实现没有、说 `ReferenceTable` 每轮独立而实际是 per-request。
+- **排查 API 异常先 curl 拿真实 HTTP 状态**，别用 SDK——
+  SDK 的 `max_retries=2` 会把 429 伪装成超时。我据此误判两次并引发返工。
+- **CR 报的「严重级」可能是你自己上一个修复引入的**。第二轮复审就是。
+
+---
+
 # 🔴 当前阻塞：中转站周额度用尽（429）
 
 **2026-10-16**。排查 Critic 真实验证时发现所有 LLM 调用「超时」，
