@@ -18,20 +18,27 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from typing import Any, Self, cast
 from uuid import uuid4
 
 from anthropic import AsyncAnthropic
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.config import get_settings
-from app.services.citation import Reference, ReferenceTable
-from app.services.faithfulness import load_source_texts, verify_citations
+from app.models.report import Report, ReportSource
+from app.models.source import DocumentChunk
+from app.services.citation import Reference, ReferenceTable, count_citation_markers
+from app.services.faithfulness import (
+    load_source_texts,
+    verify_citations,
+)
 from app.services.llm import get_anthropic_client
 from app.services.stream import (
     AgentEvent,
@@ -164,11 +171,13 @@ class TurnLedger:
 
     session_id: str
     started_at: float
+    user_id: int
     turns: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
     truncated: bool = False
     produced_text: bool = False
+    report_id: int | None = None
 
     def begin_turn(self) -> Self:
         """占用一轮额度，返回新账本。
@@ -191,6 +200,10 @@ class TurnLedger:
     def mark_truncated(self) -> Self:
         return replace(self, truncated=True)
 
+    def with_report_id(self, report_id: int | None) -> Self:
+        """记下刚落盘的报告 id。None = 落盘失败或没落（db 为 None）。"""
+        return replace(self, report_id=report_id)
+
     def done(self) -> DoneEvent:
         return DoneEvent(
             session_id=self.session_id,
@@ -199,6 +212,7 @@ class TurnLedger:
             input_tokens=self.input_tokens,
             output_tokens=self.output_tokens,
             truncated=self.truncated,
+            report_id=self.report_id,
         )
 
 
@@ -264,7 +278,11 @@ async def run_agent(
     ``db`` / ``vec_engine`` 缺省时摘掉 ``local_search`` 工具——
     测试里大量场景不接数据库，强行造连接比少一个工具更麻烦。
     """
-    ledger = TurnLedger(session_id=str(uuid4()), started_at=time.monotonic())
+    ledger = TurnLedger(
+        session_id=str(uuid4()),
+        started_at=time.monotonic(),
+        user_id=user_id,
+    )
     tracker = NodeTracker()
 
     # 本地拼装提示词，让前端能看到「调度」这一步。
@@ -277,7 +295,7 @@ async def run_agent(
     # collected_refs —— 每轮工具产出的引用。
     # report_body    —— **所有轮**的正文拼接。用户看到的报告是这几轮
     # DeltaEvent 连起来的，只校验最后一轮等于「抽查标成全检」。实测这
-    # ��路径在轮数用尽时更糟：_finalize 那一轮的正文已经发出去，
+    # 条路径在轮数用尽时更糟：_finalize 那一轮的正文已经发出去，
     # 但循环里的 result 还指着它之前那轮，结论段完全没被校验。
     collected_refs: list[Reference] = []
     report_body: list[str] = []
@@ -356,10 +374,15 @@ async def run_agent(
                 # 主循环这个 try 里赋值，_finalize 抛异常时账本已经记上了
                 # 这一轮。和主循环同语义——「崩了也算」。
                 ledger = ledger.begin_turn()
-                finalize_events, ledger = await _finalize(client, ledger, messages, tracker)
+                finalize_events, finalize_text, ledger = await _finalize(
+                    client, ledger, messages, tracker
+                )
+                # 追加**整段** final.text，与主循环同粒度。不能用 DeltaEvent
+                # 的切片：那些是展示节奏（每 20-36 字一片），`"\n".join`
+                # 会在每个逗号处插换行，落盘正文与用户读到的完全不一样。
+                if finalize_text:
+                    report_body.append(finalize_text)
                 for finalize_event in finalize_events:
-                    if isinstance(finalize_event, DeltaEvent):
-                        report_body.append(finalize_event.text)
                     yield finalize_event
                 break
     except Exception as exc:
@@ -409,12 +432,31 @@ async def run_agent(
             # 那会让 done 永远不发出，用户看到「报告读完突然报错」，
             # 连 token 用量都没了。降级成拿不到原文，critic 自己会跳过。
             logger.warning("critic 取原文失败，本次跳过引用校验", exc_info=True)
+            # **必须回滚**，与下面 _persist_report 的兜底同一个理由：读失败
+            # 可能已经把事务打成无效，不回滚的话紧接着的落盘 flush 会抛
+            # PendingRollbackError，被那边吞成「报告落盘失败」——真正的
+            # 根因在这里，而日志会写「报告落盘失败」，排查时被带偏一整轮。
+            try:
+                await db.rollback()
+            except Exception:
+                logger.warning("critic 取原文失败后回滚也失败", exc_info=True)
+
+    # 报告落盘。必须在 done 之前：done 帧带 report_id，前端拿它才能在
+    # 历史报告里找到这份。落盘失败不能影响流——与上面 critic 取原文同理，
+    # DB 抖动不该把已经流出去的正文收尾带走。
+    report_id = await _persist_report(
+        db=db,
+        question=question,
+        content="\n".join(report_body),
+        ledger=ledger,
+        refs=collected_refs,
+    )
 
     # done **先于**校验帧发出。校验是可选增强，而 judge 调用最坏要
     # 120s × 3 次重试 = 6 分钟；挡在 done 前面的话，用户在报告读完
     # 之后还要干等，且 MAX_CONCURRENT_STREAMS 只有 4——几个并发就能
     # 把准入闸门堵死。先把报告与 token 用量交出去，校验随后补一帧。
-    yield ledger.done()
+    yield ledger.with_report_id(report_id).done()
 
     async for settle_event in _settle(
         tracker, client, "\n".join(report_body), sources
@@ -427,36 +469,38 @@ async def _finalize(
     ledger: TurnLedger,
     messages: list[dict[str, Any]],
     tracker: NodeTracker,
-) -> tuple[list[AgentEvent], TurnLedger]:
+) -> tuple[list[AgentEvent], str, TurnLedger]:
     """轮数用尽后的强制收尾：关掉工具，再基于已有信息作答。
 
-    返回 ``(事件列表, 新账本)`` 而不是异步生成器，有两个理由：
+    返回 ``(事件列表, 本轮整段正文, 新账本)``：
 
     1. **账本必须回传**。账本是 frozen 的，就地改不到；而这轮请求的 token
        用量必须回到主循环的账本上，否则强制收尾那一次就是白烧的。
-    2. **不想用哨兵值传回参**。前一版把 ``TurnLedger`` 塞进事件流的最后
+    2. **正文必须以整段回传**，不能靠调用方从 DeltaEvent 里挑回来。
+       DeltaEvent 的 text 是 ``_slice_for_display`` 的**展示切片**，而
+       ``report_body`` 最后是 ``"\\n".join(...)``——从切片拼回来的话，
+       每个切片边界都会插一个换行，于是落盘的报告在每个逗号处断行，
+       与用户通过 SSE 读到的连续文本对不上（2026-10-17 CR 实测复现）。
+       主循环 append 的是 ``result.text`` 整段，这里同粒度。
+    3. **不想用哨兵值传回参**。前一版把 ``TurnLedger`` 塞进事件流的最后
        一项、靠 isinstance 分流——那条「最后一项必须是账本」的不变式
        没有任何东西强制，漏写一个 yield 就是静默丢 token（正是它想防的
        那个 bug）。返回 tuple 是编译期强制的：类型不对 mypy 直接报错。
 
     也不需要是异步生成器：只有一个调用点，且消费完立刻 break，全部事件
     先攒在列表里不会造成任何延迟——请求本身早已 await 完毕。
-
-    ``messages`` 在调用前已被就地追加了收尾指令，这里不回传 assistant
-    内容——主循环随即 break，``messages`` 不再被读，多存一份只是让人
-    以为它还有用。
     """
     final = await _run_turn(client, messages, no_tools)
     ledger = ledger.record(final)
 
     if not final.text:
-        return [], ledger
+        return [], "", ledger
     events: list[AgentEvent] = list(tracker.switch(Stage.WRITER))
     events.extend(
         DeltaEvent(node_id=Stage.WRITER.value, text=piece)
         for piece in _slice_for_display(final.text)
     )
-    return events, ledger
+    return events, final.text, ledger
 
 
 def _close(tracker: NodeTracker) -> list[NodeEvent]:
@@ -467,6 +511,154 @@ def _close(tracker: NodeTracker) -> list[NodeEvent]:
     """
     closing = tracker.complete()
     return [] if closing is None else [closing]
+
+
+async def _persist_report(
+    *,
+    db: AsyncSession | None,
+    question: str,
+    content: str,
+    ledger: TurnLedger,
+    refs: Sequence[Reference],
+) -> int | None:
+    """把这一轮的报告写进 ``reports``，返回新记录的 id。
+
+    **任何失败都降级成「没存上」返回 None，绝不向上抛。** 与上面 critic
+    取原文是同一个理由：正文已经通过 SSE 流出去了，落盘是附加价值，
+    让它把收尾带走等于「报告读完突然报错」，连 token 用量都没了。
+    而这里的失败概率比 critic 高得多——要写两张表、算引用计数。
+    """
+    if db is None:
+        # 无检索上下文的单测路径（``run_agent`` 的 db 形参默认 None）。
+        return None
+
+    report = Report(
+        user_id=ledger.user_id,
+        question=question,
+        content=content,
+        session_id=ledger.session_id,
+        input_tokens=ledger.input_tokens,
+        output_tokens=ledger.output_tokens,
+        elapsed_ms=int((time.monotonic() - ledger.started_at) * 1000),
+    )
+    try:
+        # **必须设超时**：这一步卡在「最后一条 delta」与「done 帧」之间，
+        # 而 `run_agent` 是被 `_stream` 的 `async for` 同步消费的，槽位
+        # （`MAX_CONCURRENT_STREAMS = 4`）在 `_stream` 的 finally 里释放——
+        # await 卡住则 finally 不执行，槽位被**永久**占住，之后每个
+        # /research/ask 都 503。切换 Postgres 后 DB 锁等待没有默认上限，
+        # 一次长事务就能把 4 个槽位全占死。
+        #
+        # 超时语义与其它失败一致：降级成「没存上」，正文照常交付。
+        await asyncio.wait_for(_write(db, report, refs, content), PERSIST_TIMEOUT_SECONDS)
+    except Exception:
+        # 带 session_id：没有它，日志里只有一句「报告落盘失败」，而落盘
+        # 失败是**静默**的（流照常结束、用户拿到完整报告），运维无法把它
+        # 和某次具体请求对上——这个功能可以长期完全不工作而没人发现。
+        logger.warning(
+            "报告落盘失败，本次不记入历史报告",
+            extra={"session_id": ledger.session_id, "user_id": ledger.user_id},
+            exc_info=True,
+        )
+        # 必须回滚再返回：session 停在 failed 状态，后续任何查询都会报
+        # PendingRollbackError。回滚本身也可能抛（DB 真挂），所以再兜一层。
+        try:
+            await db.rollback()
+        except Exception:
+            logger.warning("报告落盘失败后回滚也失败", exc_info=True)
+        return None
+    return report.id
+
+
+# 落盘的等待上限。比 ``MODEL_TIMEOUT_SECONDS`` 短得多：正文已经流给用户了，
+# 历史报告是附加价值，卡着不放只会占住并发槽位。超时即降级。
+PERSIST_TIMEOUT_SECONDS = 5.0
+
+
+async def _write(
+    db: AsyncSession,
+    report: Report,
+    refs: Sequence[Reference],
+    content: str,
+) -> None:
+    """真正执行落盘的三步。单独抽出是为了能给 ``asyncio.wait_for`` 包一层。"""
+    db.add(report)
+    await db.flush()
+    await _record_citations(db, report.id, refs, content)
+    await db.commit()
+
+
+async def _record_citations(
+    db: AsyncSession, report_id: int, refs: Sequence[Reference], content: str
+) -> None:
+    """按 chunk 聚合角标与引用次数，攒进 session 等待 commit。
+
+    同一个 chunk 只写一行，所以复合主键是 ``(report_id, chunk_id)``。
+    直接逐条 append 会撞主键约束。
+
+    ``n`` 取该 chunk **第一次**出现时的编号：`ReferenceTable.register`
+    对同一 chunk 复用原号，所以同一个 chunk 不会拿到两个不同的 n。
+
+    ``cite_count`` 取 ``content`` 里 ``[n]`` 角标的实际出现次数，而不是
+    ``refs`` 的长度——理由见下面那段注释。
+
+    ## 为什么先查存在性
+
+    研究跑 30-60 秒，期间用户可以在另一个标签页删掉被引用的资料，
+    `document_chunks` 行随之级联消失。此时若照单插入会撞
+    `report_sources.chunk_id` 的外键，**整个事务回滚——连 `reports`
+    那行完整正文一起丢**，而用户已经读完了流、只是历史列表里没它。
+    一条悬空引用不该让整份报告陪葬，所以这里跳过已消失的 chunk。
+
+    读路径（``gateway/reports.py``）本来也按 inner join 过滤掉了这些，
+    写路径必须与它对齐。
+    """
+    numbers: dict[int, int] = {}
+    for ref in refs:
+        # **不能按 refs 出现次数累加**：`tools.py` 的 local_search 每轮返回
+        # 的是 `context.citations.all`（全量引用表快照，不是增量），所以同
+        # 一个 chunk 会在每一轮都出现一次——数出来的是「这个 chunk 在几轮
+        # 工具结果里出现过」，与「被引用几次」毫无关系。
+        #
+        # 真正的引用次数要数正文里的 [n] 角标出现几次，见 `count_markers`。
+        numbers.setdefault(ref.chunk_id, ref.n)
+    markers = count_citation_markers(content)
+    # **只写正文里真出现过的角标**。``collected_refs`` 是全量引用表快照，
+    # 模型检索到 10 个切片但正文只写了 [1] 和 [4] 时，其余 8 个从未被引用；
+    # 给它们也写一行会让 sources 页的「关联报告 N 篇」虚高（那份资料在报告
+    # 里根本没有角标），报告详情页也会多出 8 条 cite_count=0 的幽灵引用。
+    counts = {
+        chunk_id: markers[n]
+        for chunk_id, n in numbers.items()
+        if markers.get(n, 0) > 0
+    }
+    if not counts:
+        return
+
+    alive = set(
+        (
+            await db.execute(
+                select(DocumentChunk.id).where(DocumentChunk.id.in_(list(counts)))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    dropped = [cid for cid in counts if cid not in alive]
+    if dropped:
+        logger.info("落盘时跳过 %d 个已被删除的切片", len(dropped))
+
+    for chunk_id, cite_count in counts.items():
+        if chunk_id not in alive:
+            continue
+        db.add(
+            ReportSource(
+                report_id=report_id,
+                chunk_id=chunk_id,
+                n=numbers[chunk_id],
+                cite_count=cite_count,
+            )
+        )
 
 
 async def _settle(

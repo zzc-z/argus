@@ -43,6 +43,12 @@ class SourceResponse(BaseModel):
     char_count: int
     error_message: str | None = None
     created_at: datetime
+    # 有多少份**报告**引用过这份资料（同一份报告引 10 个切片仍算 1 篇）。
+    # **不由 ORM relationship 提供**：那会让列表页对每行发一条 SELECT
+    # （N+1），而 ``Source.chunks`` 已经因为 selectin 拖正文吃过一次亏。
+    # 列表端点走 ``_citation_counts``：一条 join 把匹配行拉进 Python 去重。
+    # 单用户量下这个行数没有上界（见 sources.py 的同函数注释）。
+    citation_count: int = 0
 
 
 class SourceListResponse(BaseModel):

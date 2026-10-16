@@ -5,6 +5,7 @@
 """
 
 from app.models.base import Base
+from app.models.report import Report, ReportSource
 from app.models.source import DocumentChunk, Source, SourceStatus, SourceType
 from app.models.user import Account, Provider, User
 
@@ -13,6 +14,8 @@ __all__ = [
     "Base",
     "DocumentChunk",
     "Provider",
+    "Report",
+    "ReportSource",
     "Source",
     "SourceStatus",
     "SourceType",

@@ -32,11 +32,13 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import distinct, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import SessionLocal, get_session
 from app.gateway.deps import CurrentUser
 from app.models import DocumentChunk, Source, SourceStatus, SourceType
+from app.models.report import ReportSource
 from app.schemas.source import (
     ChunkResponse,
     SourceCreate,
@@ -136,8 +138,17 @@ async def create_from_url(
 @router.get("", response_model=SourceListResponse, summary="列出我的资料")
 async def list_sources(user: CurrentUser, db: DbSession) -> SourceListResponse:
     sources = await Source.list_owned(db, user.id)
+    # 一条 group_by 算全部资料的被引次数，而不是每行发一条 SELECT。
+    # 计数口径是「引用了几份报告」而非「被引用了几次」——sources 页那一列
+    # 问的是「有几篇报告用过我」，不是「出现了几次」。
+    cited = await _citation_counts(db, [s.id for s in sources])
     return SourceListResponse(
-        items=[SourceResponse.model_validate(s) for s in sources],
+        items=[
+            SourceResponse.model_validate(s).model_copy(
+                update={"citation_count": cited.get(s.id, 0)}
+            )
+            for s in sources
+        ],
         total=len(sources),
     )
 
@@ -146,7 +157,12 @@ async def list_sources(user: CurrentUser, db: DbSession) -> SourceListResponse:
 async def read_source(source_id: int, user: CurrentUser, db: DbSession) -> SourceResponse:
     """轮询端点。前端拿它显示「正在切片 142/180」。"""
     source = await _owned(db, source_id, user.id)
-    return SourceResponse.model_validate(source)
+    # citation_count 在这里也要算：否则同一个字段在列表端点有值、详情
+    # 端点恒为 0（落到 schema 默认值），前端轮询时会看到数字自己掉回 0。
+    counts = await _citation_counts(db, [source.id])
+    return SourceResponse.model_validate(source).model_copy(
+        update={"citation_count": counts.get(source.id, 0)}
+    )
 
 
 @router.get("/{source_id}/chunks", response_model=list[ChunkResponse], summary="列出切片")
@@ -174,6 +190,35 @@ async def delete_source(source_id: int, user: CurrentUser, db: DbSession) -> Non
 
 
 # ── 内部 ───────────────────────────────────────────────────
+async def _citation_counts(db: AsyncSession, source_ids: list[int]) -> dict[int, int]:
+    """资料 id → 被多少份报告引用。
+
+    **按报告去重**：同一份报告引用同一资料的 5 个切片，仍算 1 篇。直接
+    ``count(*)`` 会把「被引得多的资料」显示成「被很多报告提到」。
+
+    去重放在 SQL 侧（``count(distinct report_id)`` + ``group_by``），返回
+    行数与**报告数**同阶；拉全部引用行进 Python 去重会让返回行数与
+    「报告数 × 每篇切片数」同阶——单用户数据量下就能差出几十倍，而
+    ``read_source`` 是摄取进度轮询端点，会每秒跑两遍。
+
+    结果只包含被引用过的资料；未出现在字典里的就是 0。
+    """
+    if not source_ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                DocumentChunk.source_id,
+                func.count(distinct(ReportSource.report_id)),
+            )
+            .join(DocumentChunk, DocumentChunk.id == ReportSource.chunk_id)
+            .where(DocumentChunk.source_id.in_(source_ids))
+            .group_by(DocumentChunk.source_id)
+        )
+    ).all()
+    return dict(rows)
+
+
 async def _owned(db: AsyncSession, source_id: int, user_id: int) -> Source:
     """取资料并校验归属。找不到或不是本人的，一律 404。
 

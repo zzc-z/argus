@@ -28,6 +28,7 @@ rag-pipeline §9.1 的示例不一致。
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -147,9 +148,7 @@ class ReferenceTable:
         self._references: dict[int, Reference] = {}
         self._dropped = 0
 
-    def register(
-        self, results: Sequence[Retrieved]
-    ) -> list[tuple[Reference, Retrieved]]:
+    def register(self, results: Sequence[Retrieved]) -> list[tuple[Reference, Retrieved]]:
         """给一批检索结果分配编号，返回「(引用, 检索结果)」对。
 
         返回对而不是光引用，是因为 :func:`render_evidence` 还要拿
@@ -248,8 +247,7 @@ def citation_rules(table: ReferenceTable) -> str:
     overflow = ""
     if table.dropped:
         overflow = (
-            f"\n- 资料里还有 {table.dropped} 条相关内容没有展示，"
-            "不要据此认为资料库只有上面这些。"
+            f"\n- 资料里还有 {table.dropped} 条相关内容没有展示，不要据此认为资料库只有上面这些。"
         )
     return (
         f"你有一批来自用户私有资料的证据，编号 [1] 到 [{upper}]，"
@@ -271,7 +269,11 @@ def _location_suffix(ref: Reference) -> str:
 
 
 def _clip(content: str) -> str:
-    return content if len(content) <= CHUNK_CONTENT_CHARS else content[:CHUNK_CONTENT_CHARS] + "…（已截断）"
+    return (
+        content
+        if len(content) <= CHUNK_CONTENT_CHARS
+        else content[:CHUNK_CONTENT_CHARS] + "…（已截断）"
+    )
 
 
 def _excerpt(content: str) -> str:
@@ -285,3 +287,54 @@ def _recall_label(hit: Retrieved) -> str:
     if hit.vector_rank is not None and hit.bm25_rank is not None:
         return "向量+BM25"
     return "向量" if hit.vector_rank is not None else "BM25"
+
+
+# ── 抽取报告里带角标的句子 ──────────────────────────────────
+
+# 行内角标 [1] / [1,2] / [1][2]。
+#
+# `\d{1,3}` 而非 `\d+`：引用表编号是「每个请求独立从 1 起」的自增序号，
+# 实际不会超过三位数。用 `\d+` 会把 "[2024] 年的报告" 里的年份当成编号
+# 2024——那是个没人引用的编号，会让校验报告里凭空多一条「引用缺失」。
+
+_FOOTNOTE_RE = re.compile(r"\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\]")
+_SENTENCE_SPLIT_RE = re.compile(r"[。！？\n]+")
+
+
+def extract_cited_sentences(text: str) -> dict[int, list[str]]:
+    """按引用编号收集带角标的句子。
+
+    返回 ``{引用编号: [句子, ...]}``。同一句里带多个角标时，它会同时
+    出现在每个编号下——**这句话确实同时引用了多条资料**，两两都要校验。
+    """
+    result: dict[int, list[str]] = {}
+    for sentence in _SENTENCE_SPLIT_RE.split(text):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+        for group in _FOOTNOTE_RE.findall(sentence):
+            for raw in group.split(","):
+                number = int(raw.strip())
+                result.setdefault(number, []).append(sentence)
+    return result
+
+
+def count_citation_markers(text: str) -> dict[int, int]:
+    """数每个 ``[n]`` 角标在正文里出现了几次。
+
+    ## 为什么落盘要这个，而不是数 ``collected_refs``
+
+    ``local_search`` 每轮返回的是**全量引用表快照**（``tools.py`` 的
+    ``references=tuple(context.citations.all)``），不是本轮新增的那几条。
+    而 ``agent.py`` 直接把它 extend 进 ``collected_refs``，于是同一个
+    chunk 会在每一轮都出现一次——按 refs 长度累加得到的是「这个切片在
+    几轮工具结果里出现过」，与「正文引用了它几次」毫无关系。
+
+    复用 :func:`extract_cited_sentences` 的同一套正则，避免两处规则漂移。
+    """
+    counts: dict[int, int] = {}
+    for sentence in _SENTENCE_SPLIT_RE.split(text):
+        for group in _FOOTNOTE_RE.findall(sentence):
+            for raw in group.split(","):
+                counts[int(raw.strip())] = counts.get(int(raw.strip()), 0) + 1
+    return counts

@@ -19,6 +19,7 @@ from app.config import get_settings
 from app.gateway import (
     auth_router,
     health_router,
+    reports_router,
     research_router,
     sources_router,
     users_router,
@@ -71,3 +72,4 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(research_router)
 app.include_router(sources_router)
+app.include_router(reports_router)

@@ -7,6 +7,7 @@
 
 from app.gateway.auth import router as auth_router
 from app.gateway.health import router as health_router
+from app.gateway.reports import router as reports_router
 from app.gateway.research import router as research_router
 from app.gateway.sources import router as sources_router
 from app.gateway.users import router as users_router
@@ -14,6 +15,7 @@ from app.gateway.users import router as users_router
 __all__ = [
     "auth_router",
     "health_router",
+    "reports_router",
     "research_router",
     "sources_router",
     "users_router",

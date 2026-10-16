@@ -5,12 +5,12 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.services.citation import extract_cited_sentences
 from app.services.faithfulness import (
     FaithfulnessReport,
     Unsupported,
     _build_user_prompt,
     _parse_verdicts,
-    extract_cited_sentences,
     load_source_texts,
 )
 

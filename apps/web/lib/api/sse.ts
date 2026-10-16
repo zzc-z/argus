@@ -85,6 +85,19 @@ export interface DoneEventV {
   output_tokens: number
   /** 三种触发：max_tokens、轮次耗尽强收、agent 循环崩溃。 */
   truncated: boolean
+  /**
+   * 刚落盘的报告 id。没有 db 或落盘失败时为 null。
+   *
+   * **[尚未接线]** 目前前端没有任何地方读它——`explore/page.tsx` 还是
+   * `v as unknown as DoneEventV` 裸 cast。接线的位置在 explore 页：拿它
+   * 跳到 `/report/${report_id}`（注意是单数 `report`，`/reports` 是列表
+   * 页、没有 `[id]`），因为报告只在落盘后才在 `/api/v1/reports` 里存在，
+   * session_id 不是列表的查询键。
+   *
+   * 目标页 `app/(dashboard)/report/[id]/page.tsx` 当前仍是 mock 数据，
+   * 接上后还要再改那一页。
+   */
+  report_id: number | null
 }
 
 /** 一条未被原文支撑的引用。 */

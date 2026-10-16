@@ -36,7 +36,6 @@ Critic 节点的实现（sprint plan Day 13）。产出「通过率 + 未支撑�
 from __future__ import annotations
 
 import logging
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -47,41 +46,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.models import DocumentChunk
-from app.services.citation import Reference
+from app.services.citation import Reference, extract_cited_sentences
 
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
 
 logger = logging.getLogger(__name__)
-
-
-# ── 抽取报告里带角标的句子 ──────────────────────────────────
-
-# 行内角标 [1] / [1,2] / [1][2]。
-#
-# `\d{1,3}` 而非 `\d+`：引用表编号是「每个请求独立从 1 起」的自增序号，
-# 实际不会超过三位数。用 `\d+` 会把 "[2024] 年的报告" 里的年份当成编号
-# 2024——那是个没人引用的编号，会让校验报告里凭空多一条「引用缺失」。
-_FOOTNOTE_RE = re.compile(r"\[(\d{1,3}(?:\s*,\s*\d{1,3})*)\]")
-_SENTENCE_SPLIT_RE = re.compile(r"[。！？\n]+")
-
-
-def extract_cited_sentences(text: str) -> dict[int, list[str]]:
-    """按引用编号收集带角标的句子。
-
-    返回 ``{引用编号: [句子, ...]}``。同一句里带多个角标时，它会同时
-    出现在每个编号下——**这句话确实同时引用了多条资料**，两两都要校验。
-    """
-    result: dict[int, list[str]] = {}
-    for sentence in _SENTENCE_SPLIT_RE.split(text):
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-        for group in _FOOTNOTE_RE.findall(sentence):
-            for raw in group.split(","):
-                number = int(raw.strip())
-                result.setdefault(number, []).append(sentence)
-    return result
 
 
 # ── 判定结果 ────────────────────────────────────────────────
@@ -339,7 +309,9 @@ async def load_source_texts(
     # 关系，那样配出来的是「角标 1 拿到 5 号 chunk 的正文」，整份校验
     # 结果方向相反且无任何报错（2026-10-16 CR 实测复现）。
     rows = (
-        await db.execute(select(DocumentChunk.id, DocumentChunk.content).where(DocumentChunk.id.in_(wanted)))
+        await db.execute(
+            select(DocumentChunk.id, DocumentChunk.content).where(DocumentChunk.id.in_(wanted))
+        )
     ).all()
     by_chunk_id = dict(rows)
     return {n: by_chunk_id[cid] for cid, n in wanted.items() if cid in by_chunk_id}

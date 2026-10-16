@@ -80,6 +80,13 @@ class DoneEvent:
     input_tokens: int
     output_tokens: int
     truncated: bool = False
+    report_id: int | None = None
+    """刚落盘的报告 id。
+
+    None 有两种含义，**故意不区分**：无 db（单测路径）与落盘失败。前端
+    只需知道「这次没进历史报告」，而区分它们对用户没有价值——真要查根因
+    看服务端日志，那里有 ``session_id`` 与完整 traceback。
+    """
 
 
 @dataclass(frozen=True, slots=True)
