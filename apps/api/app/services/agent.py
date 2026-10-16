@@ -21,7 +21,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from enum import StrEnum
 from typing import Any, Self, cast
 from uuid import uuid4
@@ -30,13 +30,15 @@ from anthropic import AsyncAnthropic
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.config import get_settings
-from app.services.citation import ReferenceTable
+from app.services.citation import Reference, ReferenceTable
+from app.services.faithfulness import load_source_texts, verify_citations
 from app.services.llm import get_anthropic_client
 from app.services.stream import (
     AgentEvent,
     DeltaEvent,
     DoneEvent,
     ErrorEvent,
+    FaithfulnessEvent,
     NodeEvent,
     ReferenceEvent,
     TextSlicer,
@@ -270,6 +272,8 @@ async def run_agent(
     context = _build_context(user_id, db, vec_engine)
     tools = available_tools(has_local=context is not None)
     prompt = _build_user_prompt(question, tools, context is not None)
+    # Critic 校验要用。每轮工具产出的引用累积在这里，收尾时取最后一份。
+    collected_refs: list[Reference] = []
     for event in _close(tracker):
         yield event
 
@@ -319,7 +323,7 @@ async def run_agent(
             for event in tracker.switch(Stage.RESEARCHER):
                 yield event
 
-            async for tool_event in _run_tools(result.tool_calls, tool_results, context):
+            async for tool_event in _run_tools(result.tool_calls, tool_results, context, collected_refs):
                 yield tool_event
 
             # Anthropic 协议：同一轮的多个 tool_result 必须打包进一条
@@ -381,9 +385,19 @@ async def run_agent(
         )
         return
 
-    # 收尾：关掉当前节点，再过 analyst / critic 占位，让 DAG 走完 5 步。
-    for event in _settle(tracker):
-        yield event
+    # 收尾：关掉当前节点，再过 analyst，最后 critic 真做校验（Day 13）。
+    #
+    # 校验需要**原文全文**而非引用表里的 120 字 excerpt——回查 document_chunks。
+    # db 为 None 时（无检索上下文的单测路径）拿不到原文，critic 自行降级。
+    sources: dict[int, str] = {}
+    if db is not None and collected_refs:
+        sources = await load_source_texts(db, collected_refs)
+
+    async for settle_event in _settle(tracker, client, result.text, sources):
+        yield settle_event
+
+    # done 先于校验帧发出：报告本身（含 token 用量）立刻可读，
+    # 校验慢也不挡住用户看内容。
     yield ledger.done()
 
 
@@ -434,18 +448,45 @@ def _close(tracker: NodeTracker) -> list[NodeEvent]:
     return [] if closing is None else [closing]
 
 
-def _settle(tracker: NodeTracker) -> list[NodeEvent]:
-    """正常收尾：关掉当前节点，再过 analyst / critic 占位。
+async def _settle(
+    tracker: NodeTracker,
+    client: AsyncAnthropic,
+    report_text: str,
+    sources: dict[int, str],
+) -> AsyncIterator[AgentEvent]:
+    """正常收尾：关掉当前节点 → analyst 占位 → critic 真做校验。
 
-    analyst 与 critic 目前不做实际工作，只为让前端的 DAG 走完 5 步——
-    用户看到的进度条不会停在 writer 上。将来这两步接真实逻辑时，
-    也应该走同一套 activate/complete 语义，而不是另开一条路。
+    analyst 仍不做实际工作，只为让 DAG 走完 5 步（用户看到的进度条
+    不会停在 writer）。critic 从 Day 13 起是真干活：校验报告里每条
+    [n] 是否被它引用的原文支撑。
+
+    ## 事件顺序：节点事件先 yield，校验最后
+
+    反过来的话，LLM 调用慢或失败时用户会看到 DAG 停在半路。
+
+    ## 校验不阻断
+
+    模型已跑完 4-6 轮检索，剔除内容等于让它的工作白费，而把结论标注
+    出来让用户自己判断，成本为零。校验失败（LLM 报错、JSON 解析不了）
+    一律降级成 ``skipped``，不影响报告本身。
     """
-    events = _close(tracker)
-    for stage in (Stage.ANALYST, Stage.CRITIC):
-        events.append(tracker.activate(stage))
-        events.extend(_close(tracker))
-    return events
+    events: list[AgentEvent] = list(_close(tracker))
+    events.append(tracker.activate(Stage.ANALYST))
+    events.extend(_close(tracker))
+    events.append(tracker.activate(Stage.CRITIC))
+    events.extend(_close(tracker))
+    for event in events:
+        yield event
+
+    report = await verify_citations(client, report_text, sources)
+    yield FaithfulnessEvent(
+        checked=report.checked,
+        supported=report.supported,
+        unsupported=[asdict(u) for u in report.unsupported],
+        missing=report.missing,
+        skipped=report.skipped,
+        reason=report.reason,
+    )
 
 
 # ── 单轮请求 ──────────────────────────────────────────────────
@@ -501,6 +542,7 @@ async def _run_tools(
     tool_calls: list[dict[str, Any]],
     sink: list[dict[str, Any]],
     context: ToolContext | None,
+    collected_refs: list[Reference],
 ) -> AsyncIterator[AgentEvent]:
     """执行一轮里模型要的所有工具，产出 start/end 事件并往 sink 累积结果。
 
@@ -537,6 +579,9 @@ async def _run_tools(
         )
 
         if outcome.references:
+            # 累积给 critic 用：每轮的引用表编号独立，跨轮的数字对不上，
+            # 所以用引用对象本身（带 chunk_id），而不是拼进引用表。
+            collected_refs.extend(outcome.references)
             yield ReferenceEvent(
                 references=[ref.to_citation() for ref in outcome.references],
             )

@@ -83,6 +83,22 @@ class DoneEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class FaithfulnessEvent:
+    """Critic 节点的校验结论。``skipped`` 为真时只带 reason。
+
+    刻意**不阻断**：模型已跑完多轮检索，把未支撑的角标从正文里剔除
+    等于让它的工作白费，而把结论标注出来让用户自己判断，成本为零。
+    """
+
+    checked: int
+    supported: int
+    unsupported: list[dict[str, Any]] = field(default_factory=list)
+    missing: list[int] = field(default_factory=list)
+    skipped: bool = False
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class ErrorEvent:
     """开流之后的错误。
 
@@ -97,7 +113,13 @@ class ErrorEvent:
 
 
 AgentEvent = (
-    NodeEvent | DeltaEvent | ToolCallEvent | ReferenceEvent | DoneEvent | ErrorEvent
+    NodeEvent
+    | DeltaEvent
+    | ToolCallEvent
+    | ReferenceEvent
+    | FaithfulnessEvent
+    | DoneEvent
+    | ErrorEvent
 )
 
 
@@ -119,6 +141,7 @@ def _type_name(event: AgentEvent) -> str:
         ToolCallEvent: "tool_call",
         ReferenceEvent: "reference",
         DoneEvent: "done",
+        FaithfulnessEvent: "faithfulness",
         ErrorEvent: "error",
     }[type(event)]
 
