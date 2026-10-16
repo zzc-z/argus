@@ -17,6 +17,7 @@
  *   ├─────────────────────────────────┤ Inspector  │
  *   │ Center column (920px)           │ (380px)    │
  *   │  ├ AgentDAG (5 nodes)           │ collapsible│
+ *   │  ├ 收尾统计 + FaithfulnessPanel │            │
  *   │  ├ StreamingReport (H1 + prose) │            │
  *   └─────────────────────────────────┴────────────┘
  *           ┌──────────────────────────┐
@@ -24,8 +25,7 @@
  *           └──────────────────────────┘
  */
 
-import * as React from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
 import { Inter } from 'next/font/google'
 
 import { AgentDAG } from './components/AgentDAG'
@@ -38,11 +38,17 @@ import {
   type InspectorPayload,
   type SourceTextState,
 } from './components/InspectorDrawer'
+import {
+  FaithfulnessPanel,
+  FaithfulnessAbort,
+  FaithfulnessPending,
+} from './components/FaithfulnessPanel'
 import { PromptInput } from './components/PromptInput'
-import { apiStream } from '@/lib/api/client'
+import { apiStream, type SseEvent } from '@/lib/api/client'
 import { clearChunkCache, fetchChunks } from '@/lib/api/sources'
 import type {
   DoneEventV,
+  FaithfulnessEventV,
   NodeEventV,
   ReferenceEventV,
   ToolCallEventV,
@@ -99,9 +105,157 @@ function applyNode(node: AgentNode, nv: NodeEventV): AgentNode {
     ...node,
     role: nv.detail || node.role,
     lifecycle: nv.lifecycle as NodeLifecycle,
-    latency:
-      nv.elapsed_ms != null ? `${(nv.elapsed_ms / 1000).toFixed(1)}s` : node.latency,
+    latency: nv.elapsed_ms != null ? `${(nv.elapsed_ms / 1000).toFixed(1)}s` : node.latency,
   }
+}
+
+/**
+ * 引用校验的四态。
+ *
+ * 单独定义而不是在 `RunHandlers` 与 `useState` 各写一遍：`Dispatch<A>`
+ * 赋给 `Dispatch<B>` 要求 B 可赋给 A，**只往其中一份加成员时 tsc 不报错**
+ * （约束方向是单向的），契约会悄悄变窄。
+ */
+type FaithfulnessState =
+  | { kind: 'idle' }
+  | { kind: 'pending' }
+  | { kind: 'done'; report: FaithfulnessEventV }
+  | { kind: 'abort' }
+
+/** 一轮研究的状态写入器。由 `applyEvent` / `resetForRun` / `settleFaithfulness` 调用。 */
+type RunHandlers = {
+  setNodes: Dispatch<SetStateAction<AgentNode[]>>
+  setStreamedText: Dispatch<SetStateAction<string>>
+  setErrorText: Dispatch<SetStateAction<string | null>>
+  setSummary: Dispatch<SetStateAction<DoneEventV | null>>
+  setRunState: Dispatch<SetStateAction<RunState>>
+  setFaithfulness: Dispatch<SetStateAction<FaithfulnessState>>
+  setToolCalls: Dispatch<SetStateAction<ToolCall[]>>
+  setCitations: Dispatch<SetStateAction<Citation[]>>
+  setCitationsLive: Dispatch<SetStateAction<boolean>>
+  setQuestion: Dispatch<SetStateAction<string>>
+  /** 作废在飞的原文请求并清空原文区。每轮开跑与收到新 reference 帧时都要调。 */
+  invalidateSourceText: () => void
+}
+
+/**
+ * 把一次工具调用的两帧合并成一条展示记录。
+ *
+ * 后端把一次调用拆成 start / end 两段发，start 先占位显示「执行中…」，
+ * end 到达时用真实耗时覆盖同一 call_id。start 一定先于 end（后端先发 start
+ * 再执行工具），所以找不到已有记录就一定是首帧。
+ */
+function mergeToolCall(prev: ToolCall[], tv: ToolCallEventV): ToolCall[] {
+  const merged = toToolCall(tv, tv.phase === 'end' ? tv : undefined)
+  const i = prev.findIndex((c) => c.id === tv.call_id)
+  if (i < 0) return [...prev, merged]
+  const next = [...prev]
+  next[i] = merged
+  return next
+}
+
+/**
+ * 把一帧 SSE 落到 state 上。
+ *
+ * 提出组件外是因为它自成一块——除 `invalidateSourceText` 外只碰传入的
+ * setter，与 `run` 的其余逻辑无耦合。内联在 `run` 里会让那个函数超过
+ * CONVENTIONS §3 的 50 行上限。
+ */
+function applyEvent(event: SseEvent, h: RunHandlers): void {
+  const v = event.v
+  switch (event.type) {
+    case 'node': {
+      const nv = v as unknown as NodeEventV
+      h.setNodes((prev) => prev.map((n) => (n.id === nv.node_id ? applyNode(n, nv) : n)))
+      break
+    }
+    case 'delta': {
+      const dv = v as unknown as { text: string }
+      h.setStreamedText((prev) => prev + dv.text)
+      break
+    }
+    case 'error': {
+      const ev = v as unknown as { message: string }
+      h.setErrorText(ev.message)
+      break
+    }
+    case 'done':
+      h.setSummary(v as unknown as DoneEventV)
+      h.setRunState('completed')
+      // done 先于校验帧发出（见 FaithfulnessPanel 的模块注释），所以
+      // 这里把校验切到 pending 而不是等 faithfulness 到了才显示。
+      h.setFaithfulness({ kind: 'pending' })
+      break
+    case 'faithfulness':
+      h.setFaithfulness({ kind: 'done', report: v as unknown as FaithfulnessEventV })
+      break
+    case 'tool_call': {
+      h.setToolCalls((prev) => mergeToolCall(prev, v as unknown as ToolCallEventV))
+      break
+    }
+    case 'reference': {
+      const rv = v as unknown as ReferenceEventV
+      // 整体替换而非 append：后端 ReferenceTable.all 每次下发的是
+      // 已编号的全表，append 会让编号重复。
+      h.setCitations(rv.references)
+      h.setCitationsLive(true)
+      // 编号含义变了，在飞的原文请求必须作废。reference 帧一次流里
+      // 会发多次（每次工具调用命中就发一帧），重新编号后角标 [1]
+      // 指的是另一个 chunk——不失效的话抽屉会给出旧编号的全文，
+      // 而正文角标已指向新切片，恰好是这个功能要防的事。
+      h.invalidateSourceText()
+      break
+    }
+    default:
+      break
+  }
+}
+
+/**
+ * 流结束时收尾校验状态。
+ *
+ * 判据是**当前是不是 pending**：只要结论已经收到（kind === 'done'），
+ * 正常路径下这里就是 no-op，两条终止路径共用以保证行为对称。
+ *
+ * 会停在 pending 的路径有两条：
+ *  1. done 与 faithfulness 之间有最长约 6 分钟的零字节静默窗口
+ *     （`llm.py` 的 MODEL_TIMEOUT_SECONDS=120 × 3 次尝试——SDK 的
+ *     `range(max_retries + 1)`，实测 `max_retries=2` 是 3 次而非 2 次）。
+ *     窗口内**不发任何字节**，中间层的空闲超时（代理 / 网关）会掐断连接。
+ *     `[未核实]` 本仓没有部署配置，具体阈值取决于部署形态。
+ *  2. `llm_unavailable` / `empty_response` 两条错误路径（`agent.py`
+ *     在 yield 完 done + ErrorEvent 后直接 return，从不进 `_settle`）。
+ *
+ * 两条都不涉及 judge 调用本身失败——那个被 `faithfulness.py` 的
+ * try/except 吞成 skipped 报告，帧照发，走的是 `done` 分支。
+ *
+ * 收尾成 `abort` 而不是 `idle`（即「不渲染面板」）是刻意的：面板空白
+ * 与「全部通过」在视觉上无法区分，而这里真实发生的是「没跑完」。
+ */
+function settleFaithfulness(h: RunHandlers): void {
+  h.setFaithfulness((prev) => (prev.kind === 'pending' ? { kind: 'abort' } : prev))
+}
+
+/** 一次提问开始前把所有单次运行的产物清干净。 */
+function resetForRun(h: RunHandlers, question: string): void {
+  h.setNodes(INITIAL_NODES)
+  h.setStreamedText('')
+  h.setErrorText(null)
+  h.setSummary(null)
+  h.setFaithfulness({ kind: 'idle' })
+  h.setQuestion(question)
+  h.setRunState('running')
+  // 引用表和工具轨迹一样属于单次运行的产物，重问时必须清空——否则上一轮
+  // 的编号会跟这一轮的正文对不上。
+  h.setCitations(CITATIONS)
+  h.setCitationsLive(false)
+  h.setToolCalls([])
+  // 令牌自增作废旧请求：上一轮点开的原文属于上一轮的 chunk_id，
+  // 而 chunk_id 是自增主键，新一轮很可能命中不同的 id。令牌拦的是
+  // 「写进 state」，abort 拦的是「继续下载」——长文档的 payload 有十几 MB，
+  // 光靠令牌它会一路跑到完。
+  clearChunkCache()
+  h.invalidateSourceText()
 }
 
 export default function ExplorePage() {
@@ -121,6 +275,10 @@ export default function ExplorePage() {
   const [errorText, setErrorText] = useState<string | null>(null)
   // 收尾统计：done 事件带的 session_id / 耗时 / token 数。
   const [summary, setSummary] = useState<DoneEventV | null>(null)
+  // Critic 的引用校验。四态见 `FaithfulnessState`。判别联合而非多个 boolean：
+  // 两个 boolean 下 `pending=true && report!==null`（同时声称「进行中」和
+  // 「已有结论」）这类自相矛盾的组合是可表示的，画出来必然出错。
+  const [faithfulness, setFaithfulness] = useState<FaithfulnessState>({ kind: 'idle' })
   // 当前提问。标题要从它取——后端返回的正文不含标题。
   const [question, setQuestion] = useState('')
   // 工具调用轨迹：InspectorDrawer 的「已执行工具调用」区读它。
@@ -150,16 +308,19 @@ export default function ExplorePage() {
   // 但带宽还在白跑，一个长文档的 payload 能有十几 MB）。
   const sourceAbortRef = useRef<AbortController | null>(null)
 
-  const handleSelectNode = useCallback((node: Parameters<typeof buildNodePayload>[0]) => {
-    setInspectorOpen(true)
-    setInspectorPayload({ ...buildNodePayload(node), toolCalls })
-    // 令牌要自增 + 请求要 abort，两件事缺一不可：
-    // 令牌拦住「响应写进 state」，abort 拦住「继续下载」。少了后者，
-    // 「点角标 → 点 DAG 节点」之后那个请求仍会跑完全量 payload。
-    sourceAbortRef.current?.abort()
-    sourceTextToken.current += 1
-    setSourceText({ kind: 'none' })
-  }, [toolCalls])
+  const handleSelectNode = useCallback(
+    (node: Parameters<typeof buildNodePayload>[0]) => {
+      setInspectorOpen(true)
+      setInspectorPayload({ ...buildNodePayload(node), toolCalls })
+      // 令牌要自增 + 请求要 abort，两件事缺一不可：
+      // 令牌拦住「响应写进 state」，abort 拦住「继续下载」。少了后者，
+      // 「点角标 → 点 DAG 节点」之后那个请求仍会跑完全量 payload。
+      sourceAbortRef.current?.abort()
+      sourceTextToken.current += 1
+      setSourceText({ kind: 'none' })
+    },
+    [toolCalls],
+  )
 
   const handleSelectCitation = useCallback(
     async (citation: Parameters<typeof buildCitationPayload>[0]) => {
@@ -194,9 +355,10 @@ export default function ExplorePage() {
         // index+1），而 PDF 是这个功能的主要场景——把它改叫「第 N 段」会让
         // 用户拿着报告去找「第 3 页」时找不到。纯文本的 page 来自 \f 分页
         // （parser.py:137），叫「页」同样准确；HTML 的 page 为 null，只显示块号。
-        const label = chunk.page != null
-          ? `第 ${chunk.page} 页 · 第 ${chunk.chunk_index + 1} 块`
-          : `第 ${chunk.chunk_index + 1} 块`
+        const label =
+          chunk.page != null
+            ? `第 ${chunk.page} 页 · 第 ${chunk.chunk_index + 1} 块`
+            : `第 ${chunk.chunk_index + 1} 块`
         setSourceText({ kind: 'ready', title: label, body: chunk.content })
       } catch (err) {
         if (sourceTextToken.current !== token) return
@@ -223,86 +385,42 @@ export default function ExplorePage() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    setNodes(INITIAL_NODES)
-    setStreamedText('')
-    setErrorText(null)
-    setSummary(null)
-    setQuestion(question)
-    setRunState('running')
-    // 引用表和工具轨迹一样属于单次运行的产物，重问时必须清空——否则上一轮
-    // 的编号会跟这一轮的正文对不上。
-    setCitations(CITATIONS)
-    setCitationsLive(false)
-    setToolCalls([])
-    // 令牌自增作废旧请求：上一轮点开的原文属于上一轮的 chunk_id，
-    // 而 chunk_id 是自增主键，新一轮很可能命中不同的 id。令牌拦的是
-    // 「写进 state」，abort 拦的是「继续下载」——长文档的 payload 有十几 MB，
-    // 光靠令牌它会一路跑到完。
-    sourceAbortRef.current?.abort()
-    clearChunkCache()
-    sourceTextToken.current += 1
-    setSourceText({ kind: 'none' })
+    // setXxx 都是稳定引用（React 保证），所以 `handlers` 每次调用 run 时
+    // 新建也不会读到过期值——它捕获的全是 React 的稳定引用与 useRef 对象。
+    const handlers: RunHandlers = {
+      setNodes,
+      setStreamedText,
+      setErrorText,
+      setSummary,
+      setRunState,
+      setFaithfulness,
+      setToolCalls,
+      setCitations,
+      setCitationsLive,
+      setQuestion,
+      invalidateSourceText: () => {
+        sourceAbortRef.current?.abort()
+        sourceTextToken.current += 1
+        setSourceText({ kind: 'none' })
+      },
+    }
+
+    resetForRun(handlers, question)
 
     try {
-      await apiStream('/api/v1/research/ask', { question }, (event) => {
-        const v = event.v as Record<string, unknown>
-        switch (event.type) {
-          case 'node': {
-            const nv = v as unknown as NodeEventV
-            setNodes((prev) => prev.map((n) => (n.id === nv.node_id ? applyNode(n, nv) : n)))
-            break
-          }
-          case 'delta': {
-            const dv = v as unknown as { text: string }
-            setStreamedText((prev) => prev + dv.text)
-            break
-          }
-          case 'error': {
-            const ev = v as unknown as { message: string }
-            setErrorText(ev.message)
-            break
-          }
-          case 'done':
-            setSummary(v as unknown as DoneEventV)
-            setRunState('completed')
-            break
-          case 'tool_call': {
-            const tv = v as unknown as ToolCallEventV
-            setToolCalls((prev) => {
-              // 按 call_id 合并 start / end 两段：start 先占位并显示
-              // 「执行中…」，end 到达时用真实耗时覆盖同一 id。
-              const i = prev.findIndex((c) => c.id === tv.call_id)
-              const merged = toToolCall(tv, tv.phase === 'end' ? tv : undefined)
-              if (i < 0) return [...prev, merged]
-              const next = [...prev]
-              next[i] = merged
-              return next
-            })
-            break
-          }
-          case 'reference': {
-            const rv = v as unknown as ReferenceEventV
-            // 整体替换而非 append：后端 ReferenceTable.all 每次下发的是
-            // 已编号的全表，append 会让编号重复。
-            setCitations(rv.references)
-            setCitationsLive(true)
-            // 编号含义变了，在飞的原文请求必须作废。reference 帧一次流里
-            // 会发多次（每次工具调用命中就发一帧），重新编号后角标 [1]
-            // 指的是另一个 chunk——不失效的话抽屉会给出旧编号的全文，
-            // 而正文角标已指向新切片，恰好是这个功能要防的事。
-            sourceAbortRef.current?.abort()
-            sourceTextToken.current += 1
-            setSourceText({ kind: 'none' })
-            break
-          }
-          default:
-            break
-        }
-      }, controller.signal)
+      await apiStream(
+        '/api/v1/research/ask',
+        { question },
+        (event) => applyEvent(event, handlers),
+        controller.signal,
+      )
+      settleFaithfulness(handlers)
       setRunState((prev) => (prev === 'running' ? 'completed' : prev))
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
       setErrorText(err instanceof Error ? err.message : '连接失败')
+      // 守卫与 resolve 分支对称：结论已经收到时不能因为连接随后出错就清空。
+      settleFaithfulness(handlers)
       setRunState('completed')
     }
   }, [])
@@ -360,12 +478,17 @@ export default function ExplorePage() {
             </p>
           )}
           {summary && (
-            <p className={styles.runSummary}>
+            <p className={styles.summary}>
               会话 {summary.session_id.slice(0, 8)} · {summary.turns} 轮 ·{' '}
               {(summary.elapsed_ms / 1000).toFixed(1)} 秒 · 输入 {summary.input_tokens} / 输出{' '}
               {summary.output_tokens} tokens{summary.truncated && ' · 已截断'}
             </p>
           )}
+          {faithfulness.kind === 'pending' && <FaithfulnessPending />}
+          {/* 本轮压根失败时不显示「校验未完成」——那一轮没有报告、没有引用，
+              「重试可得到结论」指向一个不存在的问题，而红色横幅已经说清了原因。 */}
+          {faithfulness.kind === 'abort' && !errorText && <FaithfulnessAbort />}
+          {faithfulness.kind === 'done' && <FaithfulnessPanel report={faithfulness.report} />}
           <StreamingReport
             onSelectCitation={handleSelectCitation}
             citations={citations}
@@ -399,4 +522,3 @@ export default function ExplorePage() {
     </div>
   )
 }
-

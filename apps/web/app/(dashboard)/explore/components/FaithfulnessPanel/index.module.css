@@ -1,0 +1,113 @@
+/* 引用校验结论面板。配色走项目的 --token-* 变量，暗色下自动跟随
+   （globals.css 在 :root 与 html[data-theme='dark'] 两处都定义了这些 token），
+   不写死颜色。 */
+
+.panel {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--token-outline-variant, #cac3d9) 70%, transparent);
+  border-radius: 8px;
+  background: var(--token-surface-container-low, #f3f4f5);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 600;
+}
+
+.headIconOk {
+  color: var(--token-success, #059669);
+}
+
+.headIconWarn {
+  color: var(--token-error, #ba1a1a);
+}
+
+/* 未校验态刻意用中性色：错误红会让「没检查」看起来像「查出问题」，
+   而 skipped 的真实含义是这次运行根本没做校验。 */
+.headIconMuted {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.tagOk,
+.tagWarn,
+.tagMuted {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+}
+
+.tagOk {
+  background: var(--token-success-container, #ecfdf5);
+  color: var(--token-on-success-container, #047857);
+}
+
+.tagWarn {
+  background: var(--token-error-container, #fee2e2);
+  color: var(--token-on-error-container, #93000a);
+}
+
+.tagMuted {
+  background: var(--token-surface-container-high, #e6e7e9);
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.reason {
+  margin: 6px 0 0;
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.missing {
+  margin: 4px 0 0;
+  color: var(--token-error, #ba1a1a);
+  font-size: 11px;
+}
+
+.list {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border-left: 2px solid var(--token-error, #ba1a1a);
+  background: var(--token-surface-container-lowest, #ffffff);
+}
+
+.footnote {
+  flex-shrink: 0;
+  color: var(--token-error, #ba1a1a);
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.itemBody {
+  min-width: 0;
+}
+
+.sentence {
+  margin: 0;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.itemReason {
+  margin: 2px 0 0;
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 11px;
+}
