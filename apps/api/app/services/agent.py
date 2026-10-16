@@ -272,8 +272,15 @@ async def run_agent(
     context = _build_context(user_id, db, vec_engine)
     tools = available_tools(has_local=context is not None)
     prompt = _build_user_prompt(question, tools, context is not None)
-    # Critic 校验要用。每轮工具产出的引用累积在这里，收尾时取最后一份。
+    # Critic 校验要用两样东西：
+    #
+    # collected_refs —— 每轮工具产出的引用。
+    # report_body    —— **所有轮**的正文拼接。用户看到的报告是这几轮
+    # DeltaEvent 连起来的，只校验最后一轮等于「抽查标成全检」。实测这
+    # ��路径在轮数用尽时更糟：_finalize 那一轮的正文已经发出去，
+    # 但循环里的 result 还指着它之前那轮，结论段完全没被校验。
     collected_refs: list[Reference] = []
+    report_body: list[str] = []
     for event in _close(tracker):
         yield event
 
@@ -296,6 +303,8 @@ async def run_agent(
             ledger = ledger.begin_turn()
             result = await _run_turn(client, messages, tools)
             ledger = ledger.record(result)
+            if result.text:
+                report_body.append(result.text)
 
             # thinking block 原样回传——带 signature，改动会被上游拒绝。
             messages.append({"role": "assistant", "content": result.content})
@@ -349,6 +358,8 @@ async def run_agent(
                 ledger = ledger.begin_turn()
                 finalize_events, ledger = await _finalize(client, ledger, messages, tracker)
                 for finalize_event in finalize_events:
+                    if isinstance(finalize_event, DeltaEvent):
+                        report_body.append(finalize_event.text)
                     yield finalize_event
                 break
     except Exception as exc:
@@ -391,14 +402,24 @@ async def run_agent(
     # db 为 None 时（无检索上下文的单测路径）拿不到原文，critic 自行降级。
     sources: dict[int, str] = {}
     if db is not None and collected_refs:
-        sources = await load_source_texts(db, collected_refs)
+        try:
+            sources = await load_source_texts(db, collected_refs)
+        except Exception:
+            # 校验是可选增强。DB 抖动不能把已经流出去的正文收尾也带走——
+            # 那会让 done 永远不发出，用户看到「报告读完突然报错」，
+            # 连 token 用量都没了。降级成拿不到原文，critic 自己会跳过。
+            logger.warning("critic 取原文失败，本次跳过引用校验", exc_info=True)
 
-    async for settle_event in _settle(tracker, client, result.text, sources):
-        yield settle_event
-
-    # done 先于校验帧发出：报告本身（含 token 用量）立刻可读，
-    # 校验慢也不挡住用户看内容。
+    # done **先于**校验帧发出。校验是可选增强，而 judge 调用最坏要
+    # 120s × 3 次重试 = 6 分钟；挡在 done 前面的话，用户在报告读完
+    # 之后还要干等，且 MAX_CONCURRENT_STREAMS 只有 4——几个并发就能
+    # 把准入闸门堵死。先把报告与 token 用量交出去，校验随后补一帧。
     yield ledger.done()
+
+    async for settle_event in _settle(
+        tracker, client, "\n".join(report_body), sources
+    ):
+        yield settle_event
 
 
 async def _finalize(
@@ -579,8 +600,10 @@ async def _run_tools(
         )
 
         if outcome.references:
-            # 累积给 critic 用：每轮的引用表编号独立，跨轮的数字对不上，
-            # 所以用引用对象本身（带 chunk_id），而不是拼进引用表。
+            # 累积给 critic 用。ReferenceTable 是 **per-request** 的
+            #（在 _build_context 里创建一次，循环外），所以跨轮编号稳定，
+            # 正文里的 [n] 与它对得上。tools 返回的是全量表而非增量，
+            # 这里累积会有重复，但按 chunk_id 去重后无影响。
             collected_refs.extend(outcome.references)
             yield ReferenceEvent(
                 references=[ref.to_citation() for ref in outcome.references],

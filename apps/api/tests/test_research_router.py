@@ -581,7 +581,12 @@ async def test_end_to_end_with_stubbed_llm(client: TestClient, monkeypatch: pyte
     assert text == "最终结论是：向量数据库适合高维近邻检索。"
 
     assert any(f["type"] == "tool_call" for f in frames)
-    assert frames[-1]["type"] == "done"
+    # done 不再是最后一帧：Critic 的校验帧排在它**之后**发出，这样 judge
+    # 调用慢（最坏 120s × 3 次重试）也不挡用户看到报告与 token 统计。
+    assert frames[-1]["type"] == "faithfulness"
+    done_idx = next(i for i, f in enumerate(frames) if f["type"] == "done")
+    faith_idx = next(i for i, f in enumerate(frames) if f["type"] == "faithfulness")
+    assert done_idx < faith_idx
 
 
 async def test_stream_does_not_touch_db(

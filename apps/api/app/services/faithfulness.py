@@ -35,13 +35,13 @@ Critic 节点的实现（sprint plan Day 13）。产出「通过率 + 未支撑�
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
+import jiter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -160,6 +160,12 @@ def _build_user_prompt(
     return "\n\n".join(sentence_blocks) + "\n\n" + source_block
 
 
+# verdict 词汇白名单。**未知值归为「无法判定」而不是 unsupported**——
+# 误伤方向是质疑用户写的结论，那比漏判糟得多。
+_SUPPORTED_WORDS = {"supported", "support", "ok", "pass"}
+_UNSUPPORTED_WORDS = {"unsupported", "not_supported", "fail", "contradicted"}
+
+
 def _parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, tuple[bool, str]]:
     """解析模型输出。对不上的 id 直接丢弃——宁可少判几条，也不要编一个。
 
@@ -170,16 +176,37 @@ def _parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, tuple[bool, s
     if start == -1:
         return {}
     try:
-        payload = json.loads(raw[start:])
-    except json.JSONDecodeError:
+        # 用 jiter 而不是 json.loads：模型爱给 ```json 围栏，`json.loads`
+        # 遇到任何尾随文本就抛——那正是最常见的输出形式，抛了等于校验
+        # 在最该生效的场景里静默失效。jiter 容忍尾随内容且快得多。
+        payload = jiter.from_json(raw[start:].encode(), partial_mode=True)
+    except ValueError:
+        return {}
+    if not isinstance(payload, dict):
         return {}
 
     out: dict[str, tuple[bool, str]] = {}
     for item in payload.get("verdicts", []):
-        raw_id = str(item.get("id", "")).rstrip("b")
-        if raw_id not in expected_ids:
+        # 每一层都要类型校验——模型返回 {"verdicts": "supported"} 时，
+        # 迭代出的是字符 's'，直接 .get() 会 AttributeError 逃出降级路径。
+        # 实测三种返回都会炸：字符串 / 数字数组 / 字典（迭代出 key）。
+        if not isinstance(item, dict):
             continue
-        out[raw_id] = (item.get("verdict") == "supported", str(item.get("reason", "")))
+        raw_id = str(item.get("id", "")).strip().rstrip("b").strip()
+        if raw_id not in expected_ids:
+            logger.debug("丢弃无法对应的 verdict id: %r", item.get("id"))
+            continue
+        # 严格相等会把 "Supported" / "SUPPORTED" / "部分支撑" 全判成
+        # unsupported——**误伤方向是质疑用户**，比漏判更糟。归一化后再判，
+        # 认不出来的单独归为「无法判定」而不是 unsupported。
+        verdict = str(item.get("verdict", "")).strip().lower()
+        reason = str(item.get("reason", ""))
+        if verdict in _SUPPORTED_WORDS:
+            out[raw_id] = (True, reason)
+        elif verdict in _UNSUPPORTED_WORDS:
+            out[raw_id] = (False, reason)
+        else:
+            logger.debug("verdict 词汇无法归类: %r（不计入通过也不计入失败）", verdict)
     return out
 
 
@@ -258,9 +285,14 @@ async def verify_citations(
 
     passed = 0
     unsupported: list[Unsupported] = []
+    unjudged: list[int] = []
     for n in verifiable:
         verdict = verdicts.get(str(n))
         if verdict is None:
+            # 模型没回这条。**必须从分母里剔除**——留在 checked 里会让
+            # 「通过 3 条、0 条未支撑」这种自相矛盾的数字出现，而且分母
+            # 永远不减、通过率系统性偏低。
+            unjudged.append(n)
             continue
         ok, reason = verdict
         if ok:
@@ -268,8 +300,19 @@ async def verify_citations(
         else:
             unsupported.append(Unsupported(footnote=n, sentence=sentences[n][0], reason=reason))
 
+    if unjudged and not passed and not unsupported:
+        # 全都没判出来——这是「无法校验」，不是「全部无据」。
+        return FaithfulnessReport(
+            checked=0,
+            supported=0,
+            unsupported=[],
+            missing=list(missing),
+            skipped=True,
+            reason="模型未返回任何判定",
+        )
+
     return FaithfulnessReport(
-        checked=len(verifiable),
+        checked=len(verifiable) - len(unjudged),
         supported=passed,
         unsupported=unsupported,
         missing=list(missing),
@@ -291,8 +334,12 @@ async def load_source_texts(
     if not wanted:
         return {}
 
-    rows = await db.scalars(
-        select(DocumentChunk.content).where(DocumentChunk.id.in_(wanted))
-    )
-    by_chunk_id = dict(zip(wanted, rows, strict=False))
+    # **必须 select(id, content)** 再按 id 建字典。不能只 select(content)
+    # 然后 zip——SQL 没有 ORDER BY，返回顺序与 wanted 的 key 顺序没有任何
+    # 关系，那样配出来的是「角标 1 拿到 5 号 chunk 的正文」，整份校验
+    # 结果方向相反且无任何报错（2026-10-16 CR 实测复现）。
+    rows = (
+        await db.execute(select(DocumentChunk.id, DocumentChunk.content).where(DocumentChunk.id.in_(wanted)))
+    ).all()
+    by_chunk_id = dict(rows)
     return {n: by_chunk_id[cid] for cid, n in wanted.items() if cid in by_chunk_id}

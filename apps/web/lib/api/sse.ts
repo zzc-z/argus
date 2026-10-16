@@ -87,6 +87,35 @@ export interface DoneEventV {
   truncated: boolean
 }
 
+/** 一条未被原文支撑的引用。 */
+export interface UnsupportedV {
+  /** 角标编号，对应正文里的 `[n]`。 */
+  footnote: number
+  /** 带角标的原句。 */
+  sentence: string
+  /** 模型给的中文理由，一句话。 */
+  reason: string
+}
+
+/**
+ * `type: "faithfulness"` —— Critic 对引用忠实度的校验结论。
+ *
+ * 刻意**不阻断**：模型已跑完多轮检索，剔除内容等于让它白跑；把结论
+ * 标注出来让用户自己判断，成本为零。
+ *
+ * `skipped` 为真时只带 `reason`——没有原文可比（无检索上下文）、模型
+ * 客户端未配置、或 LLM 调用失败时都走这条路。
+ */
+export interface FaithfulnessEventV {
+  checked: number
+  supported: number
+  unsupported: UnsupportedV[]
+  /** 正文引用了但引用表里没有的编号——标注层面的错，不是忠实度问题。 */
+  missing: number[]
+  skipped: boolean
+  reason: string
+}
+
 /** `type: "error"` —— 开流之后的错误。SSE 的 HTTP 头早已发出，只能靠事件。 */
 export interface ErrorEventV {
   code: string
