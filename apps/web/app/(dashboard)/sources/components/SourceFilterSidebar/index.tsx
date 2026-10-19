@@ -1,42 +1,90 @@
 'use client'
 
 import * as React from 'react'
-import { IconSpan } from '@/components/common/IconSpan'
 import styles from './index.module.css'
+import {
+  ROW_STATUS_FILTERS,
+  SOURCE_TYPE_FILTERS,
+  type RowStatus,
+  type RowStatusFilter,
+  type SourceTypeFilter,
+} from '../../lib/sourceTypes'
+
+/** 类型筛选的选中态。空集合 = 全选（与设计稿的「5 类全勾」一致）。 */
+export type TypeSelection = ReadonlySet<SourceTypeFilter['key']>
+
+/** 索引状态的选中态，key 是后端 `SourceStatus` 的原值。 */
+export type StatusSelection = ReadonlySet<RowStatusFilter['key']>
+
+export interface SourceFilterSidebarProps {
+  /** 每种类型的资料条数，由列表数据现算。 */
+  /** 条数允许缺失：某个类型 0 条时就不该显示这一行。 */
+  typeCounts: Record<SourceTypeFilter['key'], number | undefined>
+  /** 每个状态（`indexed` / `processing` / `failed`）的条数，现算。 */
+  statusCounts: Record<RowStatusFilter['key'], number | undefined>
+  selectedTypes: TypeSelection
+  onToggleType: (key: SourceTypeFilter['key']) => void
+  selectedStatuses: StatusSelection
+  onToggleStatus: (key: RowStatusFilter['key']) => void
+}
 
 /**
- * Left filter sidebar — type / indexing status / timeline / tags / storage quota.
- * State is purely visual (counts/checked/active) — matches the static design.
+ * 左侧筛选栏 —— 类型 / 索引状态。
+ *
+ * ## 勾选语义：空集合 = 全选
+ *
+ * 「不勾任何类型」= 显示全部，**不是**显示零条。原因：初次进入页面时选中态
+ * 是空的，若把它解释成「什么都不显示」，用户会看到一个空列表加一句「没有
+ * 匹配的资料」，而实际上他什么都没排除。
+ *
+ * ## 删掉的设计稿区块
+ *
+ * 这些不是「忘了接」，是**后端没有对应概念**，接不了也不该编：
+ *   - 时间跨度：`Source.created_at` 有，但列表端点不接筛选参数，要真做得
+ *     先给 `GET /sources` 加 `?since=`。
+ *   - 课题与标签：`Source` 模型里**没有** tags / topic 字段。
+ *   - 向量库配额：后端没有配额概念。
  */
-export function SourceFilterSidebar() {
+/**
+ * 状态点的 CSS Module 类名。放在组件里而不是 lib——lib 不该 import 组件的
+ * 样式表（反向依赖），颜色也确实是纯展示的事。
+ */
+const DOT_CLASS: Record<RowStatus, string | undefined> = {
+  ready: styles.dotEmerald,
+  processing: styles.dotPrimary,
+  failed: styles.dotError,
+}
+
+export function SourceFilterSidebar({
+  typeCounts,
+  statusCounts,
+  selectedTypes,
+  onToggleType,
+  selectedStatuses,
+  onToggleStatus,
+}: SourceFilterSidebarProps) {
   return (
     <aside className={styles.sidebar}>
-      {/* Section: File Types */}
       <section className={styles.section}>
         <div className={styles.sectionHead}>
           <span className={`${styles.sectionTitle} font-label-sm uppercase tracking-wider`}>
             类型筛选 Type
           </span>
-          <span className={`${styles.sectionMeta} font-code`}>5 类</span>
+          <span className={`${styles.sectionMeta} font-code`}>{SOURCE_TYPE_FILTERS.length} 类</span>
         </div>
         <div className={styles.checkList}>
-          {[
-            { label: 'PDF 文档', count: 310, checked: true },
-            { label: '网页 URL', count: 287, checked: true },
-            { label: 'RSS 实时流', count: 148, checked: false },
-            { label: '技术论文 Arxiv', count: 102, checked: false },
-            { label: '音视频转录', count: 32, checked: false },
-          ].map((row) => (
-            <label key={row.label} className={styles.checkRow}>
+          {SOURCE_TYPE_FILTERS.map((f) => (
+            <label key={f.key} className={styles.checkRow}>
               <div className={styles.checkText}>
                 <input
                   type="checkbox"
-                  defaultChecked={row.checked}
+                  checked={selectedTypes.has(f.key)}
+                  onChange={() => onToggleType(f.key)}
                   className={`${styles.checkbox} accent-primary-container`}
                 />
-                <span className={`${styles.checkLabel} font-body-sm`}>{row.label}</span>
+                <span className={`${styles.checkLabel} font-body-sm`}>{f.label}</span>
               </div>
-              <span className={`${styles.checkCount} font-code`}>{row.count}</span>
+              <span className={`${styles.checkCount} font-code`}>{typeCounts[f.key] ?? 0}</span>
             </label>
           ))}
         </div>
@@ -44,131 +92,37 @@ export function SourceFilterSidebar() {
 
       <div className={styles.divider} />
 
-      {/* Section: Indexing Status */}
       <section className={styles.section}>
         <span className={`${styles.sectionTitle} font-label-sm uppercase tracking-wider`}>
           索引状态 Status
         </span>
         <div className={styles.checkList}>
-          <label className={styles.checkRow}>
-            <div className={styles.checkText}>
-              <input
-                type="checkbox"
-                defaultChecked
-                className={`${styles.checkbox} accent-primary-container`}
-              />
-              <span className={`${styles.checkLabel} font-body-sm`}>
-                <span className={styles.dotEmerald} /> 已完全索引 Indexed
-              </span>
-            </div>
-            <span className={`${styles.checkCount} font-code`}>812</span>
-          </label>
-          <label className={styles.checkRow}>
-            <div className={styles.checkText}>
-              <input
-                type="checkbox"
-                defaultChecked
-                className={`${styles.checkbox} accent-primary-container`}
-              />
-              <span className={`${styles.checkLabel} font-body-sm`}>
-                <span className={`${styles.dotPrimary} animate-pulse`} /> 增量切片中 Processing
-              </span>
-            </div>
-            <span className={`${styles.checkCountActive} font-code`}>24</span>
-          </label>
-          <label className={styles.checkRow}>
-            <div className={styles.checkText}>
-              <input type="checkbox" className={`${styles.checkbox} accent-primary-container`} />
-              <span className={`${styles.checkLabel} font-body-sm`}>
-                <span className={styles.dotError} /> 索引告警 Failed
-              </span>
-            </div>
-            <span className={`${styles.checkCountErr} font-code`}>11</span>
-          </label>
-        </div>
-      </section>
-
-      <div className={styles.divider} />
-
-      {/* Section: Timeline */}
-      <section className={styles.section}>
-        <span className={`${styles.sectionTitle} font-label-sm uppercase tracking-wider`}>
-          添加时间跨度 Timeline
-        </span>
-        <div className={styles.timelineGrid}>
-          <button type="button" className={`${styles.timeBtn} font-body-sm`}>
-            近 24 小时
-          </button>
-          <button
-            type="button"
-            className={`${styles.timeBtn} ${styles.timeBtnActive} font-body-sm font-medium`}
-          >
-            本周
-          </button>
-          <button type="button" className={`${styles.timeBtn} font-body-sm`}>
-            本月
-          </button>
-          <button type="button" className={`${styles.timeBtn} font-body-sm`}>
-            2026年
-          </button>
-        </div>
-      </section>
-
-      <div className={styles.divider} />
-
-      {/* Section: Tags */}
-      <section className={styles.section}>
-        <div className={styles.sectionHead}>
-          <span className={`${styles.sectionTitle} font-label-sm uppercase tracking-wider`}>
-            课题与标签 Tags
-          </span>
-          <IconSpan
-            name="filter_list"
-            size={16}
-            className="text-secondary hover:text-on-surface cursor-pointer"
-          />
-        </div>
-        <div className={styles.tags}>
-          {[
-            { label: '#AI硬件架构', count: 142, active: false },
-            { label: '#大模型推理', count: 98, active: true },
-            { label: '#合规审计', count: 64, active: false },
-            { label: '#财报数据', count: 53, active: false },
-            { label: '#具身智能', count: 37, active: false },
-          ].map((t) => (
-            <button
-              key={t.label}
-              type="button"
-              className={`${styles.tag} ${t.active ? styles.tagActive : ''} font-body-sm`}
-            >
-              <span className="text-[12px]">{t.label}</span>
+          {ROW_STATUS_FILTERS.map((f) => (
+            <label key={f.key} className={styles.checkRow}>
+              <div className={styles.checkText}>
+                <input
+                  type="checkbox"
+                  checked={selectedStatuses.has(f.key)}
+                  onChange={() => onToggleStatus(f.key)}
+                  className={`${styles.checkbox} accent-primary-container`}
+                />
+                <span className={`${styles.checkLabel} font-body-sm`}>
+                  <span className={DOT_CLASS[f.key]} /> {f.label}
+                </span>
+              </div>
               <span
-                className={`${styles.tagCount} font-code text-[11px] ${t.active ? styles.tagCountActive : ''}`}
+                className={`${
+                  f.key === 'failed'
+                    ? styles.checkCountErr
+                    : f.key === 'processing'
+                      ? styles.checkCountActive
+                      : styles.checkCount
+                } font-code`}
               >
-                {t.count}
+                {statusCounts[f.key] ?? 0}
               </span>
-            </button>
+            </label>
           ))}
-        </div>
-      </section>
-
-      <div className={styles.divider} />
-
-      {/* Storage quota */}
-      <section className={styles.quota}>
-        <div className={styles.quotaHead}>
-          <div className={styles.quotaLabel}>
-            <IconSpan name="pie_chart" size={16} />
-            <span className={`${styles.quotaText} font-label-sm`}>向量库配额</span>
-          </div>
-          <span className={`${styles.quotaPercent} font-code`}>24.8% 已用</span>
-        </div>
-        <div className={styles.quotaBar}>
-          <div className={styles.quotaFill} style={{ width: '24.8%' }} />
-        </div>
-        <div className={`${styles.quotaFooter} font-code`}>
-          <span>12.4 GB 已用</span>
-          <span>50.0 GB 总量</span>
         </div>
       </section>
     </aside>

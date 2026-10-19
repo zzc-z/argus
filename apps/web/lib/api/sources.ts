@@ -5,7 +5,118 @@
  * `ChunkResponse`——改了那边必须同步改这里。
  */
 
-import { apiFetch } from './client'
+import { API_BASE, ApiError, apiFetch } from './client'
+
+/** 资料类型。与后端 `SourceType`（`'pdf' | 'html' | 'text' | 'docx'`）一一对应。 */
+export type SourceTypeV = 'pdf' | 'html' | 'text' | 'docx'
+
+/**
+ * 摄取状态。与后端 `SourceStatus` 一一对应（6 态）。
+ *
+ * ⚠️ 这是**存储态**，不是表格用的展示态（3 态）——两者的映射在
+ * `sources/lib/sourceTypes.ts` 的 `toRowStatus`。
+ */
+export type SourceStatusV = 'pending' | 'parsing' | 'chunking' | 'embedding' | 'indexed' | 'failed'
+
+/** 一份资料。与后端 `SourceResponse` 一一对应。 */
+export interface SourceV {
+  id: number
+  title: string
+  source_type: SourceTypeV
+  status: SourceStatusV
+  /** URL 建源时的原始地址；上传文件建源为 null。 */
+  url: string | null
+  /** `size_bytes` 为 null（URL 建源时后端没抓到 Content-Length）。 */
+  size_bytes: number | null
+  chunk_count: number
+  /** 解析出的纯文本长度（`char_count`）。 */
+  char_count: number
+  /** 资料可信度评分 0–1。 */
+  credibility_score: number
+  /** 失败原因，仅 `status === 'failed'` 时非空。 */
+  error_message: string | null
+  created_at: string
+  /** 被多少份报告引用过（按报告去重）。 */
+  citation_count: number
+}
+
+/** 资料列表响应。与后端 `SourceListResponse` 一一对应。 */
+export interface SourceListV {
+  items: SourceV[]
+  total: number
+}
+
+/** 列出当前用户的全部资料。后端无分页参数，一次返回全部。 */
+export function fetchSources(signal?: AbortSignal): Promise<SourceListV> {
+  return apiFetch<SourceListV>('/api/v1/sources', { signal })
+}
+
+/** 删一份资料。返回 204。 */
+export function deleteSource(sourceId: number): Promise<void> {
+  return apiFetch<void>(`/api/v1/sources/${sourceId}`, { method: 'DELETE' })
+}
+
+/** 从错误响应体里取 `detail`。422 时它是**数组**（字段级校验），拼成人话。 */
+async function detailOf(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { detail?: string | { msg?: string }[] }
+    const d = body.detail
+    if (typeof d === 'string') return d
+    if (Array.isArray(d))
+      return d
+        .map((x) => x.msg ?? '')
+        .filter(Boolean)
+        .join('；')
+  } catch {
+    // 响应体不是 JSON（网关的 HTML 错误页），走下面的兜底文案
+  }
+  return `请求失败（${res.status}）`
+}
+
+/**
+ * 上传一个文件建源。
+ *
+ * 用裸 `fetch` 而不是 `apiFetch`：后者按 `Content-Type: application/json`
+ * 发请求体，而这里必须是浏览器自己带 boundary 的 `multipart/form-data`。
+ * 手写 `Content-Type` 反而会让 boundary 丢掉，服务端解析失败。
+ *
+ * 立刻返回 201 + `status: "pending"`——摄取是后台任务，前端要拿 `id`
+ * 去轮询 `fetchSource`，不能等它跑完。
+ */
+export async function uploadSource(file: File, signal?: AbortSignal): Promise<SourceV> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${API_BASE}/api/v1/sources`, {
+    method: 'POST',
+    credentials: 'include',
+    body: form,
+    ...(signal ? { signal } : {}),
+  })
+  if (!res.ok) {
+    throw new ApiError(res.status, await detailOf(res))
+  }
+  return (await res.json()) as SourceV
+}
+
+/**
+ * URL 建源。**`title` 是必填**（后端 `SourceCreate.title` 有 min_length=1），
+ * 所以 UI 必须能提供——add-sources 页从 URL 末段推导并允许改。
+ */
+export function createSourceFromUrl(
+  body: { title: string; url: string; source_type: SourceTypeV },
+  signal?: AbortSignal,
+): Promise<SourceV> {
+  return apiFetch<SourceV>('/api/v1/sources/url', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
+  })
+}
+
+/** 查单份资料的状态。**摄取进度轮询用的就是它**（后端 docstring 明写）。 */
+export function fetchSource(sourceId: number, signal?: AbortSignal): Promise<SourceV> {
+  return apiFetch<SourceV>(`/api/v1/sources/${sourceId}`, { signal })
+}
 
 /** 切片详情。与后端 `ChunkResponse` 一一对应。 */
 export interface Chunk {
@@ -64,10 +175,7 @@ const chunkCache = new Map<number, Chunk[]>()
  * 先补全量再筛是后端缺单片端点下的次优解。真要根治要补
  * `GET /sources/{id}/chunks/{chunk_id}`，那需要动后端路由。
  */
-export async function fetchChunks(
-  sourceId: number,
-  signal?: AbortSignal,
-): Promise<Chunk[]> {
+export async function fetchChunks(sourceId: number, signal?: AbortSignal): Promise<Chunk[]> {
   const cached = chunkCache.get(sourceId)
   if (cached) return cached
 
@@ -80,4 +188,3 @@ export async function fetchChunks(
 export function clearChunkCache(): void {
   chunkCache.clear()
 }
-

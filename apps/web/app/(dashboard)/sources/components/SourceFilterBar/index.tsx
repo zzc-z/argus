@@ -4,27 +4,53 @@ import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
 import { SegmentedTab, type SegmentedTabItem } from '@/components/common/SegmentedTab'
 import styles from './index.module.css'
-
-const SOURCE_TABS: SegmentedTabItem[] = [
-  { id: 'all', label: '全部', count: 847 },
-  { id: 'docs', label: '文档 Documents', count: 412 },
-  { id: 'urls', label: '网页 URLs', count: 287 },
-  { id: 'rss', label: '订阅源 RSS', count: 148 },
-]
+import { SOURCE_TYPE_FILTERS, type ApiSourceType } from '../../lib/sourceTypes'
 
 /**
- * Filter & control sub-bar — category tabs + search + sort.
- * Category state is local (visual only — the design lists counts per tab).
+ * Filter & control sub-bar — category tabs + search.
+ *
+ * ## tab 的分类依据是 `source_type`
+ *
+ * 设计稿原列是 全部 / 文档 / 网页 / 订阅源 RSS 四个，那几个数字是**画上去的**
+ * （847/412/287/148，与库里任何数据都无关）。这里改成后端真实的三类：
+ * `SourceType` 只有 pdf / html / text 三值，「订阅源」后端没有对应——RSS
+ * 要有订阅端点，而它没有。留着一个永远为 0、点了没反应的 tab 比删掉更差。
+ *
+ * 搜索框目前只过滤已加载的列表（`GET /sources` 一次返回全部，没有服务端
+ * 搜索参数），所以它是纯前端过滤，不是假功能。
  */
-export function SourceFilterBar() {
-  const [activeTabId, setActiveTabId] = React.useState<string>('all')
+export interface SourceFilterBarProps {
+  /** 各类资料的条数。key 与 `SOURCE_TYPE_FILTERS` 对齐。 */
+  counts: Record<ApiSourceType, number>
+  total: number
+  /** 当前分类。`null` = 全部。 */
+  active: ReadonlySet<ApiSourceType>
+  onChange: (next: ReadonlySet<ApiSourceType>) => void
+}
+
+export function SourceFilterBar({ counts, total, active, onChange }: SourceFilterBarProps) {
+  const items: SegmentedTabItem[] = [
+    { id: 'all', label: '全部', count: total },
+    ...SOURCE_TYPE_FILTERS.map((f) => ({
+      id: f.key,
+      label: f.label,
+      count: counts[f.key],
+    })),
+  ]
+  // tab 是单选（一次只看一类），侧栏的类型勾选是多选（可同时看几类），
+  // 两者共用同一份状态：点 tab = 把勾选收成那一个或清空（「全部」）。
+  // 非空集合的首元素在 noUncheckedIndexedAccess 下是 T | undefined，
+  // 而 empty 分支已保证它一定存在——用 ?? 兜住类型，不改变行为。
+  const activeId: string = active.size === 0 ? 'all' : ([...active][0] ?? 'all')
 
   return (
     <section className={styles.bar}>
       <SegmentedTab
-        items={SOURCE_TABS}
-        activeId={activeTabId}
-        onChange={setActiveTabId}
+        items={items}
+        activeId={activeId}
+        onChange={(id: string) =>
+          onChange(id === 'all' ? new Set() : new Set([id as ApiSourceType]))
+        }
         ariaLabel="资料库分类筛选"
       />
 
@@ -33,17 +59,11 @@ export function SourceFilterBar() {
           <IconSpan name="search" size={18} className="text-secondary" />
           <input
             type="text"
-            placeholder="按名称、Hash值或标签检索..."
+            placeholder="按名称检索..."
             className={`${styles.searchInput} font-body-sm`}
           />
           <span className={`${styles.kbd} font-code`}>⌘K</span>
         </label>
-
-        <button type="button" className={`${styles.sortBtn} font-body-sm`}>
-          <IconSpan name="sort" size={16} className="text-secondary" />
-          <span className="text-[12px]">排序: 最近添加</span>
-          <IconSpan name="expand_more" size={16} className="text-secondary" />
-        </button>
       </div>
     </section>
   )

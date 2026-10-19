@@ -22,3 +22,11 @@
   gap: 0.75rem;
   min-width: 0;
 }
+
+/* 加载态。刻意与 EmptyState 区分开：加载中不需要插画和引导，
+   那会让「马上就好」显得像「没有内容」。 */
+.loading {
+  padding: 2rem 0;
+  text-align: center;
+  color: var(--token-secondary, #575e70);
+}

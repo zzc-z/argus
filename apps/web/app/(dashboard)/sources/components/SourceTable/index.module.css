@@ -80,11 +80,6 @@
   color: var(--token-on-surface, #191c1d);
 }
 
-.sizePrimaryLive {
-  color: var(--token-primary, #5704e1);
-  font-weight: 500;
-}
-
 .sizeMeta {
   font-size: 11px;
   line-height: 16px;

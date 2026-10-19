@@ -6,7 +6,6 @@ import {
   Avatar,
   DotBadge,
   IconLabel,
-  ProgressBar,
   type ActionBtn,
 } from '@/components/common/TableCells'
 import {
@@ -14,8 +13,9 @@ import {
   type PlainTableColumnDef,
   type PlainTableSelection,
 } from '@/components/common/PlainTable'
-import { type SourceRow } from '../../mock'
+
 import styles from './index.module.css'
+import { type SourceRow } from '../../lib/sourceTypes'
 
 /* ── 列定义 ──────────────────────────────────────────────────
  * 表格骨架（裸 table / thead 浅底 / row hover / divide-y）由 PlainTable 接管。
@@ -58,15 +58,11 @@ export const sourceColumns: ReadonlyArray<PlainTableColumnDef<SourceRow>> = [
     id: 'size',
     cell: (row) => (
       <div className={styles.sizeBlock}>
-        <span
-          className={`${styles.sizePrimary} font-code ${row.status === 'live' ? styles.sizePrimaryLive : ''}`}
-        >
-          {row.size}
-        </span>
+        {/* URL 建源的 size_bytes 是 null（抓到内容前没有 Content-Length）。
+            占位「—」和下面实打实的「3 切片」摆在一起会读成「没有大小
+            却有切片」，所以这一格没体积时直接不渲染主行。 */}
+        {row.size && <span className={`${styles.sizePrimary} font-code`}>{row.size}</span>}
         <span className={`${styles.sizeMeta} font-code`}>{row.chunks}</span>
-        {row.status === 'processing' && row.progress !== undefined && (
-          <ProgressBar label={`Embedding ${row.progress}%`} percent={row.progress} />
-        )}
       </div>
     ),
     header: '切片状态 / 规模',
@@ -117,14 +113,8 @@ function SourceRowActions({ row }: { row: SourceRow }) {
         { label: '取消', tone: 'danger' },
         { label: '详情', tone: 'plain' },
       ],
-      ready: [
-        { label: '查看切片' },
-        { icon: 'more_vert', ariaLabel: '更多操作' },
-      ],
-      failed: [
-        { label: '查看切片' },
-        { icon: 'more_vert', ariaLabel: '更多操作' },
-      ],
+      ready: [{ label: '查看切片' }, { icon: 'more_vert', ariaLabel: '更多操作' }],
+      failed: [{ label: '查看切片' }, { icon: 'more_vert', ariaLabel: '更多操作' }],
     }),
     [],
   )
@@ -135,15 +125,14 @@ function SourceRowActions({ row }: { row: SourceRow }) {
 
 function StatusBadgeCell({ row }: { row: SourceRow }) {
   if (row.status === 'ready') {
-    return <DotBadge tone="ready" label="已就绪" className="font-label-sm" />
+    return <DotBadge tone="ready" label="已完全索引" className="font-label-sm" />
   }
   if (row.status === 'processing') {
-    return <DotBadge tone="processing" label="处理中" animate="spin" className="font-label-sm" />
+    return (
+      <DotBadge tone="processing" label="增量切片中" animate="spin" className="font-label-sm" />
+    )
   }
-  if (row.status === 'live') {
-    return <DotBadge tone="live" label="持续监听" animate="ping" className="font-label-sm" />
-  }
-  return <DotBadge tone="failed" label="失败" className="font-label-sm" />
+  return <DotBadge tone="failed" label="索引告警" className="font-label-sm" />
 }
 
 export interface SourceTableProps {
@@ -169,7 +158,7 @@ export function SourceTable({
     <PlainTable<SourceRow>
       columns={columns}
       data={data}
-      getRowId={(r) => r.id}
+      getRowId={(r) => String(r.id)}
       selection={selection}
       className={className}
     />

@@ -8,6 +8,7 @@ export interface SourceBulkRibbonProps {
   allChecked: boolean
   indeterminate: boolean
   onToggleAll: () => void
+  onBulkDelete: () => void
 }
 
 /**
@@ -19,6 +20,7 @@ export function SourceBulkRibbon({
   allChecked,
   indeterminate,
   onToggleAll,
+  onBulkDelete,
 }: SourceBulkRibbonProps) {
   const disabled = selectedCount === 0
 
@@ -42,24 +44,15 @@ export function SourceBulkRibbon({
           </label>
         </div>
         <div className={`${styles.sep} ${styles.showFromSmBlock}`} />
-        <span className={`${styles.hint} ${styles.showFromSm}`}>
-          批量操作工具箱
-        </span>
+        <span className={`${styles.hint} ${styles.showFromSm}`}>批量操作工具箱</span>
       </div>
 
       <div className={styles.actions}>
-        <button type="button" className={`${styles.actionBtn} font-body-sm`} disabled={disabled}>
-          <IconSpan name="refresh" size={16} />
-          <span>重新切片</span>
-        </button>
-        <button type="button" className={`${styles.actionBtn} font-body-sm`} disabled={disabled}>
-          <IconSpan name="folder_special" size={16} />
-          <span>加入专题</span>
-        </button>
         <button
           type="button"
           className={`${styles.actionBtn} ${styles.actionBtnDanger} font-body-sm`}
           disabled={disabled}
+          onClick={onBulkDelete}
         >
           <IconSpan name="delete" size={16} />
           <span>批量删除</span>

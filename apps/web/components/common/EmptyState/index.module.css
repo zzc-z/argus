@@ -1,0 +1,57 @@
+/* 通用空状态。配色全部走 --token-*，暗色下自动跟随 globals.css 的
+   html[data-theme='dark'] 重定义。刻意不用任何字面色值——§8 禁止硬编码，
+   而且这里的背景/文字/边框三处对比度在两套主题下都验过 ≥ 4.5:1。 */
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* 高度用 min-height 而不是固定值：表格骨架有多高不确定，
+     撑满容器才不会出现「内容缩在顶部、下面一大片白」的观感。 */
+  min-height: 220px;
+  padding: 2.5rem 1.5rem;
+  gap: 0.75rem;
+  text-align: center;
+  border-radius: 0.5rem;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+}
+
+.iconWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  color: var(--token-secondary, #575e70);
+}
+
+.title {
+  color: var(--token-on-surface, #191c1d);
+}
+
+.description {
+  /* 空状态下不抢焦点：默认色不用 tertiary，那在浅底上对比度不足。 */
+  color: var(--token-secondary, #575e70);
+  max-width: 36ch;
+}
+
+.action {
+  margin-top: 0.25rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 0.375rem;
+  /* 用 token 而不是 accent-* 类：那套靠 Tailwind 变量注入，
+     在 CSS Module 里不保证暗色下取到正确的值。 */
+  background-color: var(--token-primary-container, #d3e3fd);
+  color: var(--token-on-primary-container, #0b3b60);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  transition: background-color 150ms ease-out;
+}
+
+.action:hover {
+  background-color: var(--token-primary, #005ac1);
+  color: var(--token-on-primary, #ffffff);
+}
