@@ -65,6 +65,56 @@ pnpm tsc --noEmit               # 验类型
 pnpm lint                       # 验 ESLint
 ```
 
+### 2.5 工具拦不住的坑（2026-10-19 补）
+
+以下三类问题 lint / tsc / build **全绿**，只有肉眼或运行时能发现。
+每条都是本项目实际踩过的。
+
+#### CSS Modules 引用了不存在的类 → 样式静默失效
+
+```tsx
+<span className={styles.empty} />   // css 里没有 .empty
+```
+
+CSS Modules 把未定义的类解析成 `undefined`，模板字符串拼成字面量
+`"undefined"` 的 class 名，**不报错、样式不生效**。
+
+```bash
+# 单文件核对（推荐）：左边 < 是「用了但没定义」，右边 > 是「定义了没人用」
+diff <(grep -ohE "styles\.[A-Za-z_]+" index.tsx | sed 's/styles\.//' | sort -u) \
+     <(grep -ohE "^\.[A-Za-z_]+" index.module.css | sed 's/^\.//' | sort -u)
+```
+
+**必须逐文件跑**，不要全仓 diff——CSS 类可以跨文件复用
+（`TableCells/cells.module.css` 的类被多个组件 import），全仓比对会把
+「A 文件定义、B 文件引用」误报成缺失或死类。
+
+改了 `index.module.css` 后必须跑一遍。**同时清理死类**——删掉 UI 组件后
+对应的样式没人引用，属于纯负担（2026-10-19 在 add-sources 一次清掉 59 个）。
+
+#### `useSearchParams` 必须包在 Suspense 里
+
+哪怕调用方是 Server Component 也不行：只要**该路由会被静态预渲染**，
+`next build` 就以 `missing-suspense-with-csr-bailout` 失败。
+
+实测踩过：`(dashboard)/layout.tsx` 里的守卫用了 `useSearchParams`，
+`/error-404` 预渲染直接挂掉。
+
+替代方案（当只想读 `pathname` 时）：`usePathname()` 不需要 Suspense。
+
+#### prettier 会在 `cd` 进子目录后作用于整个仓库
+
+```bash
+cd apps/web/app/xxx && prettier --write .   # ❌ 把整个仓库都格式化了
+```
+
+实测一次误格式化 61 个无关文件（1960 增 / 1437 删，内容零变化），
+`git checkout --` 回滚。**必须传显式文件列表**：
+
+```bash
+prettier --write "app/(dashboard)/layout.tsx" lib/auth/UserContext.tsx
+```
+
 ## 3. 后端（apps/api/）
 
 ### 3.1 工具链一览

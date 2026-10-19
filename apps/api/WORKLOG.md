@@ -1,7 +1,89 @@
 # Argus API 开发工作日志
 
 > 用途：上下文压缩后据此恢复开发状态。**最新的章节在顶部**。
-> 最后更新：2026-10-16（中转站 429 阻塞；Critic 代码完成待验证）
+> 最后更新：2026-10-19（Word 支持 + CR 修复；前端的进度见 docs/WORKLOG-frontend-de-mock.md）
+
+---
+
+# 🔴 恢复指南（2026-10-19 上下文压缩前）
+
+## 一句话状态
+
+**Word (.docx) 支持 + CR 修复完成**，516 测试全绿，mypy 42 文件 0 issue。
+**全部未提交**，工作区 9 个 tracked 文件。
+
+## 本次改了什么
+
+### Word (.docx) 支持
+
+| 文件 | 改动 |
+|---|---|
+| `pyproject.toml` + `uv.lock` | `python-docx>=1.2`（MIT）。Python 3.14.4 上实测可导入/建文档/往返读写 |
+| `app/models/source.py` | `SourceType.DOCX = "docx"` |
+| `app/services/parser.py` | `DocxParser` |
+| `app/services/ingest.py` | `_PARSERS` 注册 + `asyncio.to_thread` |
+| `app/gateway/sources.py` | `_EXT_TO_TYPE` 加 `.docx`、415 文案、File 描述 |
+| `app/gateway/auth.py` | OAuth 深链 `next` |
+| `tests/test_parser.py` | +26 条（tester 写的 23 + 页眉页脚 3） |
+| `tests/test_auth_router.py` | +6 条（深链与注入） |
+
+**关键设计决策**
+
+- **不能并进 `SourceType.TEXT`**：docx 是 ZIP 包，`TextParser` 拿 utf-8 解二进制
+  会产出乱码**且不报错**——比直接失败更糟。必须独立一路分发。
+- **页码恒为 `None`**（产品决策）：docx 是流式格式，页码是 Word 排版的副产物。
+  代价：报告引用退化成 `[1]` 而非 `[1, p.3]`。
+- **不抽页眉页脚**：页眉是所有页共用的一个 part，抽进来按页数重复 N 份稀释正文
+  权重，且给不出真实页码。3 条测试 + 注入回归钉住这个决策。
+- **不支持 `.doc`**：Word 97-2003 的 Compound File Binary，`python-docx` 读不了。
+
+### CR 修复的 4 个严重（都是静默丢内容 / 资源耗尽）
+
+| | 问题 | 修法 |
+|---|---|---|
+| C1 | 嵌套表格整张丢失 | `_walk` 递归下降 + `_walk_extras`（跳过裸段落，专抽 `cell.text` 看不见的部分） |
+| C2 | `w:sdt`（自动目录 / 内容控件 / 封面页）整块被丢 | 加进 `_CONTAINER_TAGS` |
+| C3 | 解压放大 + 解析同步卡死事件循环 | `_guard_xml_size()` 读 ZIP 中央目录的 `file_size`（**不解压**，拒绝成本与内容无关）+ `asyncio.to_thread` |
+| C4 | 合并单元格去重吃掉合法数据 | 判据换成 **tc 元素身份**（横向合并 `row.cells` 返回同一个 `_tc`；纵向合并每行各有自己的 tc；合法重复是两个不同 tc） |
+
+另修 `lxml.etree.XMLSyntaxError` 漏网（它继承 `SyntaxError` 而非 `ValueError`，
+漏掉会让用户看到 500 而不是「这份文件读不了」）。
+
+### OAuth 深链
+
+`?next=` 存进**签名** cookie（`OAuthFlowState.next_path`），callback 登录完成后
+送回该页。`_safe_next` 四条硬约束：单 `/` 开头、非 `//`、长度上限、
+**不含控制字符**（含则整条拒，不是清洗）。
+
+## 门禁
+
+```bash
+cd apps/api
+.venv/bin/python -m pytest tests -q          # 516 passed
+.venv/bin/python -m mypy app                 # 42 files, 0 issue
+.venv/bin/python -m ruff check app tests     # All checks passed
+```
+
+> `ruff format --check` 全仓有 28 个文件既存不合规，**都不是本次引入**，没动
+> （本次改的 5 个生产文件里 4 个干净；剩 `app/gateway/auth.py` 的
+> `httponly=True,` / `samesite="lax",` 那两行注释对齐是 HEAD 就有的）。
+
+## 本次踩的坑
+
+1. **lxml 的 `XMLSyntaxError` 继承 `SyntaxError` 不是 `ValueError`** ——
+   `except (BadZipFile, ValueError)` 漏掉它，用户看到 500。
+2. **清洗危险输入不如整条拒**。`_safe_next` 原先「剥掉不可打印字符」，
+   `/path\r\nX-Injected: 1` 变成 `/pathX-Injected: 1`，注入内容还在。
+   是注入测试抓出来的。
+3. **「相邻文本相同」不能当合并单元格的代理**。
+4. **长函数改动先整体 Read 再一次性重写**。`_walk` 写错两次才收敛
+   （重复 → 全丢），靠逐场景实测才找到正确形态。
+5. **依赖必须同步进 `pyproject.toml` + `uv.lock`**。先写了 `import docx`
+   没声明，别人 `uv sync` 直接 ImportError（tester 抓出来的部署阻塞）。
+
+## 未提交
+
+9 个文件全部未提交。用户明确说本轮不 commit。
 
 ---
 

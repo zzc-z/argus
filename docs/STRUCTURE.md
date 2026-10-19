@@ -1,108 +1,89 @@
 # Argus 项目结构
 
-> 最后更新：2026-09-19 19:36
-> 总目录：9 个 · 总文件：17 个（不含 prd/、node_modules/、.git/）
+> 最后更新：2026-10-19（Word 支持 + add-sources 修复落地）
+> ⚠️ 2026-09 之前本文档描述的是**实施计划**（大量 "W1/W2 待写"），实际早已实现。
+> 现已按磁盘现状重写。
 
 ## 顶层
 
 ```
 argus/
-├── prd/                  # 13 份 W0 设计文档（已有）
-├── apps/                 # 应用层（前后端）
-├── packages/             # 共享层
-├── infra/                # 基础设施配置
-├── scripts/              # 一次性脚本（seed / migrate）
-├── docs/                 # 项目文档（STRUCTURE.md 等）
-├── package.json          # 根 monorepo 配置
-├── pnpm-workspace.yaml   # workspaces 配置
-├── turbo.json            # Turborepo 任务编排
-└── tsconfig.base.json    # 共享 TS 配置
+├── prd/                  # 13 份 W0 设计文档
+├── apps/
+│   ├── api/              # FastAPI 后端（uv）
+│   └── web/              # Next.js 16 前端（pnpm）
+├── packages/shared/      # 前后端共享 TS 类型
+├── docs/                 # 项目文档
+├── AGENTS.md             # agent 入口约定
+├── package.json          # 根 monorepo（pnpm workspace + turbo）
+├── pnpm-workspace.yaml
+├── turbo.json
+└── tsconfig.base.json
 ```
 
-## apps/
+> `infra/` 与 `scripts/` 在计划里出现过，**实际不存在**。数据库是 SQLite
+> （`apps/api/argus.db`），无 postgres / redis / nginx。
 
-### apps/api/ （Python 后端，FastAPI + LangGraph，uv 管）
+## apps/api/ — FastAPI 后端
 
-| 路径 | 作用 | 状态 |
-|---|---|---|
-| `app/gateway/` | FastAPI 路由 + OAuth | W1 待写 |
-| `app/agents/` | LangGraph 状态机 + 4 子 agent | W2 待写 |
-| `app/rag/` | chunking / embedding / rerank | W2 待写 |
-| `app/memory/` | Mem0 适配器 + 反思循环 | W2 待写 |
-| `app/tools/` | 工具注册表 + schema | W2 待写 |
-| `app/scheduler/` | APScheduler cron jobs | W3 待写 |
-| `app/models/` | SQLAlchemy ORM | W1 待写 |
-| `app/eval/` | Phoenix 客户端 + 自研指标 | W3 待写 |
-| `tests/` | pytest | 后续 |
-
-### apps/web/ （前端，Next.js 14 + React 19，pnpm 管）
-
-| 路径 | 作用 | 状态 |
-|---|---|---|
-| `app/(auth)/login` | OAuth 登录页 | W1 已实现 ✅ |
-| `app/(dashboard)/topics` | 主题订阅 / 管理 | W2 待写 |
-| `app/(dashboard)/sources` | 上传文档 / 链接 / RSS 管理 | W2 待写 |
-| `app/(dashboard)/research/[id]` | 研究会话 + 实时 agent 工作流 | W2 待写 |
-| `app/(dashboard)/reports/[id]` | 多视图报告查看 | W3 待写 |
-| `app/(dashboard)/notifications` | 通知中心 | W3 待写 |
-| `app/layout.tsx` | 全局 layout + Geist 字体 | W1 已写 ✅ |
-| `app/page.tsx` | 根路由 redirect → /login | W1 已写 ✅ |
-| `app/globals.css` | Tailwind 全局样式 | W1 已写 ✅ |
-| `components/ArgusLogo.tsx` | Argus Panoptes SVG | W1 已写 ✅ |
-| `components/agent-flow/` | 自研 agent 时间轴（参考 LangGraph Studio） | W2 待写 |
-| `components/report-views/` | 4 种视图渲染器 | W3 待写 |
-| `components/ui/` | shadcn 基础组件 | W1+ 累积 |
-| `lib/api/` | FastAPI 客户端 + SSE 订阅 | W2 待写 |
-| `lib/auth/` | OAuth helpers | W2 待写 |
-| `lib/utils/` | 通用工具 | W1+ 累积 |
-| `public/` | 静态资源 | 后续 |
-| `styles/` | 额外 CSS | 后续 |
-| `tests/` | Playwright e2e | W3 待写 |
-| `next.config.js` `tailwind.config.ts` `postcss.config.js` `tsconfig.json` `package.json` | Next.js 构建配置 | W1 已写 ✅ |
-
-## packages/
-
-### packages/shared/ （前后端共享类型 / prompt / 配置，pnpm 管）
-
-| 路径 | 作用 | 状态 |
-|---|---|---|
-| `types/index.ts` | TypeScript 类型定义（前端 import） | W1 占位已建 |
-| `schemas/index.ts` | Pydantic 对应 TS schema（前后端共享） | 后续 |
-| `prompts/` | 所有 agent prompt 模板 | W2 待写 |
-| `config/` | 环境变量 + 配置加载 | 后续 |
-| `package.json` | workspace 包配置 | W1 已写 |
-
-## infra/
+`app/` 下只有 4 个包：
 
 | 路径 | 作用 |
 |---|---|
-| `postgres/` | init.sql / 迁移 |
-| `redis/` | 配置 |
-| `nginx/` | 反向代理配置 |
+| `app/gateway/` | HTTP 路由。`auth` / `sources` / `reports` / `research` / `users` / `health` / `deps`（鉴权依赖） |
+| `app/services/` | 业务逻辑。`parser`（PDF/HTML/TXT/DOCX 解析）、`ingest`（摄取管线）、`chunker`、`embedder`、`retriever`、`vectorstore`、`bm25`、`fetcher`、`citation`、`faithfulness`（Critic 引用校验）、`agent`（LangGraph）、`llm`、`stream`（SSE 编码）、`storage`、`auth`、`token`（JWT）、`tools` |
+| `app/models/` | SQLAlchemy ORM。`user` / `source` / `report` |
+| `app/schemas/` | Pydantic 出入参。**改 API 前必读**（前端 `SourceV` 等类型与之对应） |
 
-## scripts/
+| 其他 | 作用 |
+|---|---|
+| `alembic/` `alembic.ini` | DB 迁移。**改了 `app/models/` 必须生成迁移** |
+| `tests/` | pytest，30 个文件 |
+| `scripts/dev_login.py` | 本地造 session（绕过 GitHub OAuth） |
+| `argus.db` | SQLite 数据库文件 |
+| `WORKLOG.md` | **后端开发日志，顶部优先** —— 恢复上下文先读它 |
+
+## apps/web/ — Next.js 16 前端
+
+### 路由组
 
 | 路径 | 作用 |
 |---|---|
-| `seed_demo_data.py` | 200 篇 AI / 科技演示数据采集 |
+| `app/(auth)/login/` | OAuth 登录页 |
+| `app/(dashboard)/` | 主应用（`layout.tsx` = 侧边栏 + 顶栏 + `AuthGuard`） |
+| `app/(error)/` | 500 错误页 |
 
-> 当前 `scripts/` 为空目录，seed 脚本 W1 待写。
+### (dashboard) 页面
+
+| 路径 | 后端状态 |
+|---|---|
+| `add-sources/` | ✅ 已接真接口（上传 / URL 建源 / 摄取队列轮询） |
+| `sources/` | ✅ 已接真接口 |
+| `explore/` | ⚠️ 仍有残留 mock（`explore/mock.ts`） |
+| `dashboard/` `topics/` `reports/` `report/[id]/` `notifications/` `settings/` | ❌ 仍用 mock（后端无对应端点） |
+| `components/` | `AuthGuard`（登录守卫）、`UserMenu`（顶栏用户菜单）、`QuickKeys`、`NavLink` |
+| `error-404/` | 静态 404 页 |
+
+### 共享层
+
+| 路径 | 作用 |
+|---|---|
+| `components/common/` | `PageLayout` `PageHeader` `DataTable` `PlainTable` `TableCells/` `EmptyState` `IconSpan` `SegmentedTab` `StatusDot` `ThemeToggle` `ArgusMark` |
+| `components/ui/` | shadcn 基础组件 |
+| `lib/api/` | `client.ts`（fetch 封装 + SSE）、`sources.ts`（资料 API + 模块级 chunk 缓存） |
+| `lib/auth/` | `UserContext.tsx`（登录态，含 `AuthStatus` 四态） |
+| `lib/notifications/` `lib/theme/` | 通知中心 / 主题 |
+
+## packages/shared/
+
+`types/index.ts` + `schemas/index.ts`（Pydantic 对应的 TS 类型）。目前实际使用很少。
 
 ---
 
-## 用法
+## 维护约定
 
-用户在以下场景调用本 agent：
-
-1. **新建文件 / 目录**——「我在 apps/web/components/agent-flow/ 加了 X.tsx，更新文档」
-2. **删除**——「删了 apps/web/lib/auth/，更新文档」
-3. **批量改动**——「W2 启动后，全面同步结构文档」
-4. **检查状态**——「现在结构长什么样」—— 读 STRUCTURE.md + find 对比
-
-**约束**：
-
-- 不修改 prd/ 下的设计文档
-- 只同步文档，不写代码
-- 每个目录 1-2 行说明，区块 ≤30 行
-- 顶部「最后更新：」时间戳每次刷新
-- 流程：先 `find` → diff STRUCTURE.md → 再更新，禁止主观臆断
+1. **先 `find` → diff 本文 → 再更新，禁止主观臆断**
+2. 不修改 `prd/` 下的设计文档
+3. 每个目录 1-2 行说明，区块 ≤30 行
+4. 顶部「最后更新：」时间戳每次刷新
+5. 状态标注区分三档：**✅ 已接真接口** / **⚠️ 部分残留** / **❌ 仍 mock**
