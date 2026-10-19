@@ -4,9 +4,31 @@
 
 ## 一句话状态
 
-Word (.docx) 支持 + add-sources 修复 + 登录态改造**全部完成并验证**。
+Word (.docx) 支持 + add-sources 修复 + 登录态改造 + CR 技术债**全部完成并验证**。
 后端 516 测试全绿，前端 `tsc` / `eslint` / `next build` 全绿。
-**全部未提交**，工作区 35 个 tracked + 6 个新目录。
+**已全部提交并推送到 `origin/master`**，代码工作区干净。
+
+## commit 清单（都在 `origin/master`）
+
+| commit | 内容 |
+|---|---|
+| `a8b2d57` | fix(web): CR 报出的前端技术债——轮询自调度、错误累积、类型收窄、死代码 |
+| `28f9e54` | docs: 结构文档 + 两份 worklog + CODE-QUALITY 新增「工具拦不住的坑」 |
+| `5f113c3` | feat: Word (.docx) 支持 + 登录态改造 + add-sources 页修复 |
+| `1487bc4` | feat(web): sources 页接真接口，删掉编不出来的设计稿元素 |
+| `915d150` | feat(api): 新建 reports 表并让研究跑完的报告落盘（上一轮） |
+| `d1af870` | feat(web): 前端渲染 Critic 的引用忠实度校验结论（上一轮） |
+
+## 新会话怎么接
+
+```bash
+cd /Users/zjp/Desktop/argus && git pull        # 拿最新 master
+cd apps/api && .venv/bin/python -m pytest tests -q   # 应 516 passed
+cd apps/web && pnpm exec tsc --noEmit && pnpm build  # 应全绿
+```
+
+**待办只剩两处**，都在下面「没清」一节：I13 搜索框、范围外的页面 mock。
+后端 CR 剩下的 I7-I13（parser 模块级契约没标 docx 例外等）也没动。
 
 ---
 
@@ -212,6 +234,21 @@ CR 报的后端 4 严重 + 前端 13 重要，**本轮全清**（用户明确说
    （重复 → 全丢），靠逐个场景实测才收敛。
 
 8. **凭记忆写后端 schema 会漏字段**（上一轮的教训，仍然成立）。
+
+9. **固定间隔轮询会堆叠请求**。`setInterval(1500)` + 每拍对 N 个 id 各发一个
+   请求，effect 依赖是 `[]` 所以定时器永不停。慢请求会叠在下一拍上。
+   正确形态是**自调度链**：请求完成才安排下一拍，资料进终态即停链。
+   浏览器实测（8 秒窗口）：旧代码对 2 条已完成资料发 10+ 个请求，新代码 0 个。
+
+10. **同一份映射写在两处 = 迟早漂移**。docx 标签在资料库显示 `DOCX`、
+    在添加页显示 `Word`，两份 `Record` 各写一遍。提取到共享模块
+    `sources/lib/sourceKind.ts` 后，两页各自的措辞保留但改一处不漏另一处。
+
+11. **类型收窄能把「不存在的映射」变成编译错误**。`TabKey` 从
+    `ApiSourceType`（4 值）收窄成 tab 集合（3 值）后，`docx: 'epub'`
+    直接 TS2322。这是 CR 说的「唯一没有编译期保护的一处」。
+    注意别写成 `(typeof ARR)[number]['key']`——那样 `SourceTypeFilter.key`
+    又要引用 TabKey，成了循环引用。真源是字面量联合。
 
 ---
 

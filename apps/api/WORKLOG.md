@@ -10,7 +10,8 @@
 ## 一句话状态
 
 **Word (.docx) 支持 + CR 修复完成**，516 测试全绿，mypy 42 文件 0 issue。
-**全部未提交**，工作区 9 个 tracked 文件。
+**已提交并推送到 `origin/master`**（`5f113c3` 与 `a8b2d57` 两个 commit
+含后端部分），代码工作区干净。
 
 ## 本次改了什么
 
@@ -81,9 +82,13 @@ cd apps/api
 5. **依赖必须同步进 `pyproject.toml` + `uv.lock`**。先写了 `import docx`
    没声明，别人 `uv sync` 直接 ImportError（tester 抓出来的部署阻塞）。
 
-## 未提交
+## commit 归属
 
-9 个文件全部未提交。用户明确说本轮不 commit。
+后端改动随前端那个 commit 一起提交（`5f113c3`）——两边是一次会话的产物，
+拆开会留下「前端用了后端还不存在的 API」的中间状态。
+本次共改 9 个后端文件：`gateway/auth.py` `gateway/sources.py` `models/source.py`
+`services/ingest.py` `services/parser.py` `pyproject.toml` `uv.lock`
+`tests/test_auth_router.py` `tests/test_parser.py`。
 
 ---
 
@@ -967,6 +972,10 @@ pytest  ✅ 157 passed
 | `services/stream.py::TextSlicer` | 标点贪心切片，窗口放宽到 `chunk_size * 1.5`，搜索范围是窗口内**最靠后**的标点。粒度 24 字 |
 
 ## 未完成 / 待办
+
+> ⚠️ **这是 2026-10-16 那轮的快照，状态可能已变。** 以顶部「2026-10-19」
+> 章节为准。已知过时：第 3 条的 `dev_login.py` 实际已提交（`fce41a6`），
+> 第 4 条的「7 个 commit 未推送」在 2026-10-19 已全部推送到 `origin/master`。
 
 1. **`tool_call` 事件驱动 InspectorDrawer 的 Input/Output/Prompt/Tabs** —— 现在 Tools 标签页有数据了，另外三个标签仍共用同一份 `jsonText`
 2. **`ToolCall` 类型与后端 `ToolCallEvent` 的映射**已做，但 citation 溯源（`Citation`）还没接 SSE
