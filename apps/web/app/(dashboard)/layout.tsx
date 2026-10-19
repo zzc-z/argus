@@ -5,6 +5,7 @@ import { IconSpan } from '@/components/common/IconSpan'
 import { ArgusMark } from '@/components/common/ArgusMark'
 import { ThemeToggle } from '@/components/common/ThemeToggle'
 
+import { AuthGuard } from './components/AuthGuard'
 import { UserMenu } from './components/UserMenu'
 import { QuickKeys } from './components/QuickKeys'
 
@@ -15,8 +16,24 @@ import styles from './layout.module.css'
  * Dashboard route group layout — sidebar (fixed left) + top header (fixed top)
  * + main scroll area. Both chrome pieces are 1:1 from argus_report_detail's
  * outer chrome; the right `children` is the page body.
+ *
+ * **这个文件保持 Server Component。** 登录守卫需要读 `/me` 的运行期结果
+ * （cookie 是 HttpOnly，服务端拿不到），所以它单独做成 client 子组件
+ * `AuthGuard`，包在 chrome 外面——把整个 layout 降级成 client 只是为了让
+ * 守卫跑起来，代价是侧边栏与顶栏的 CSS 全部进客户端 bundle，不值当。
+ *
+ * 登录页在 `(auth)` 这个**平级**的 route group 里，不受本守卫影响，
+ * 不会出现「跳 login → 又被守卫弹回来」。
  */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthGuard>
+      <Shell>{children}</Shell>
+    </AuthGuard>
+  )
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.shell}>
       <aside className={styles.sidebar}>

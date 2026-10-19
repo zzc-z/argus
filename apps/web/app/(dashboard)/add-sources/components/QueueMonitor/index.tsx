@@ -2,87 +2,70 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { queueSummary, type QueueItem } from '../../mock'
 import styles from './index.module.css'
+import type { QueueRowItem } from '../../lib/queueTypes'
 
-/**
- * 摄取队列监视器 —— 任务列表 + ETA 页脚 + 操作行。
- * 任务列表通过 props 传入，page 端可以追加用户上传 / 用户提交的任务，
- * 并观察它们从处理中动画推进到 `done` 终态。
- */
 export interface QueueMonitorProps {
-  items: QueueItem[]
+  items: QueueRowItem[]
 }
 
+/**
+ * 摄取队列。
+ *
+ * ## 显示什么、不显示什么
+ *
+ * 设计稿上这里有音频波形、「已注入概念图谱 N 个知识实体」、`3.2s` 耗时、
+ * 取消按钮——**后端都没有**：没有音频转录、没有知识图谱、ingest 不返回
+ * 耗时、没有取消端点。画上去就全是编的，所以删掉，只留真有的：阶段名、
+ * 切片数、失败原因。
+ *
+ * 进度条同理：后端只有 6 个阶段没有百分比，所以进行中画成**不定长动画**
+ * 而不是假的 37%。
+ */
 export function QueueMonitor({ items }: QueueMonitorProps) {
   return (
-    <section className={styles.panel}>
-      <div className={styles.head}>
-        <div className={styles.headLeft}>
-          <span className={`${styles.headTitle} font-headline-sm`}>当前处理队列</span>
-          <span className={`${styles.headChip} font-code`}>{items.length} Tasks</span>
-          <span className={`${styles.headSub} font-label-sm`}>
-            并发处理配额: {queueSummary.capacity}
-          </span>
-        </div>
-        <button type="button" className={`${styles.clearBtn} font-label-sm`}>
-          <IconSpan name="clear_all" size={15} />
-          <span>清空已完成</span>
-        </button>
-      </div>
+    <section className={styles.panel} aria-label="摄取队列">
+      <header className={styles.head}>
+        <span className={`${styles.headTitle} font-label-sm uppercase tracking-wider`}>
+          摄取队列
+        </span>
+        <span className={`${styles.headCount} font-code`}>{items.length}</span>
+      </header>
 
-      <div className={styles.list}>
-        {items.map((item) => (
-          <QueueRow key={item.id} item={item} />
-        ))}
-      </div>
-
-      <div className={styles.footer}>
-        <div className={styles.summary}>
-          <div className={styles.summaryLeft}>
-            <IconSpan name="speed" size={16} className="text-primary-container" />
-            <span className="font-code">
-              预计剩余处理:{' '}
-              <strong className={`${styles.summaryStrong} font-code`}>
-                {queueSummary.etaSeconds}
-              </strong>
-            </span>
-          </div>
-          <span className="font-code">
-            GPU 负载:{' '}
-            <strong className={`${styles.summaryGpu} font-code`}>{queueSummary.gpuLoad}</strong>
-          </span>
-        </div>
-        <div className={styles.actions}>
-          <button type="button" className={`${styles.cancelBtn} font-body-sm`}>
-            取消队列
-          </button>
-          <button type="button" className={`${styles.confirmBtn} font-body-sm font-medium`}>
-            <IconSpan name="verified" size={18} />
-            <span>确认全部入库</span>
-          </button>
-        </div>
-      </div>
+      {items.length === 0 ? (
+        <p className={styles.empty}>队列为空。拖入文件或粘贴网页地址后，进度会显示在这里。</p>
+      ) : (
+        <ul className={styles.list} role="list">
+          {items.map((item) => (
+            <QueueRow key={item.id} item={item} />
+          ))}
+        </ul>
+      )}
     </section>
   )
 }
 
-function QueueRow({ item }: { item: QueueItem }) {
-  const accentClass = styles[`accent_${item.iconAccent}`]
-
+function QueueRow({ item }: { item: QueueRowItem }) {
   return (
-    <div className={styles.item}>
+    <li className={styles.item}>
       <div className={styles.itemHead}>
         <div className={styles.itemLeft}>
-          <div className={`${styles.itemIcon} ${accentClass}`}>
+          <div className={styles.itemIcon}>
             <IconSpan name={item.iconName} size={16} />
           </div>
           <div className={styles.itemText}>
             <span className={`${styles.itemName} font-body-sm font-medium`}>{item.name}</span>
             <div className={`${styles.itemMeta} font-code`}>
               <span>{item.kindLabel}</span>
-              <span>·</span>
-              <span>{item.size}</span>
+              {/* 体积是可选的：URL 建源在抓到内容之前 size_bytes 就是
+                  null，渲染出来会变成「文稿 · · 已索引」这种孤儿分隔符。
+                  过滤掉再 join，而不是给 null 找个假值。 */}
+              {item.size ? (
+                <>
+                  <span>·</span>
+                  <span>{item.size}</span>
+                </>
+              ) : null}
               <span>·</span>
               <span
                 className={`${item.done ? styles.itemMetaDone : styles.itemMetaLive} font-code`}
@@ -93,108 +76,45 @@ function QueueRow({ item }: { item: QueueItem }) {
           </div>
         </div>
 
-        {item.done ? (
+        {item.failed ? (
+          <span className={`${styles.failedBadge} font-label-sm`}>
+            <IconSpan name="error" size={13} />
+            失败
+          </span>
+        ) : item.done ? (
           <span className={`${styles.doneBadge} font-label-sm`}>
             <IconSpan name="check_circle" size={13} />
             已索引
           </span>
         ) : (
-          <span className={`${styles.itemPercent} font-code`}>{item.progress}%</span>
+          <span className={`${styles.itemStage} font-label-sm`}>{item.stageLabel}</span>
         )}
       </div>
 
-      {/* Audio waveform visual (item.tsmc-audio) */}
-      {item.waveform && (
-        <div className={styles.waveRow}>
-          <div className={styles.wave}>
-            {[
-              { h: 'full', op: 80, pulse: true },
-              { h: 8, op: 60 },
-              { h: 'full', op: 90, pulse: true },
-              { h: 6, op: 40 },
-              { h: 'full', op: 100 },
-              { h: 10, op: 70, pulse: true },
-              { h: 4 },
-              { h: 6 },
-              { h: 4 },
-              { h: 8 },
-            ].map((bar, i) => {
-              const height =
-                bar.h === 'full' ? '100%' : typeof bar.h === 'number' ? `${bar.h}px` : 'auto'
-              const opacity = bar.op ?? 50
-              return (
-                <span
-                  key={i}
-                  className={`${styles.waveBar} ${bar.pulse ? 'animate-pulse' : ''}`}
-                  style={{
-                    height: height === 'auto' ? undefined : height,
-                    backgroundColor:
-                      opacity >= 50
-                        ? `color-mix(in srgb, var(--token-primary-container, #7039f9) ${opacity}%, transparent)`
-                        : 'var(--token-surface-container-high, #e7e8e9)',
-                  }}
-                />
-              )
-            })}
-          </div>
-          {item.timeCurrent && item.timeTotal && (
-            <span className={`${styles.waveTime} font-code`}>
-              {item.timeCurrent} / {item.timeTotal}
-            </span>
-          )}
-        </div>
+      {item.error && (
+        <p className={styles.errorText} role="alert">
+          {item.error}
+        </p>
       )}
 
-      <div className={styles.bar}>
+      <div
+        className={styles.bar}
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        // 进行中不给 valuenow——后端只有阶段没有百分比，给一个数就是编的。
+        // aria-valuetext 说清楚「到哪一步了」，读屏用户拿到的是阶段名。
+        {...(item.done || item.failed
+          ? { 'aria-valuenow': item.failed ? 0 : 100 }
+          : { 'aria-valuetext': item.progressLabel })}
+      >
         <div
-          className={`${item.done ? styles.barFillDone : styles.barFillLive}`}
-          style={{ width: `${item.progress}%` }}
+          className={
+            item.failed ? styles.barFillFailed : item.done ? styles.barFillDone : styles.barFillLive
+          }
+          style={item.done || item.failed ? { width: '100%' } : undefined}
         />
       </div>
-
-      <div className={styles.statusRow}>
-        <span
-          className={`${styles.statusText} font-label-sm ${
-            item.entities ? styles.statusTextDone : ''
-          }`}
-        >
-          {item.entities ? (
-            <>
-              <IconSpan name="hub" size={14} className="text-emerald-600" />
-              <span className="font-medium">{item.entities}</span>
-            </>
-          ) : (
-            <span>{item.statusLabel}</span>
-          )}
-        </span>
-
-        <div className={styles.statusRight}>
-          {item.timing && !item.done && (
-            <span className={`${styles.statusTiming} font-code`}>{item.timing}</span>
-          )}
-          {item.done && <span className={`${styles.statusTiming} font-code`}>{item.timing}</span>}
-          {!item.done && !item.waveform && (
-            <button
-              type="button"
-              className={styles.cancelIconBtn}
-              aria-label="取消任务"
-              title="取消任务"
-            >
-              <IconSpan name="close" size={15} />
-            </button>
-          )}
-          {!item.done && item.waveform && (
-            <button
-              type="button"
-              className={styles.cancelIconBtn}
-              aria-label="取消任务"
-              title="取消任务"
-            >
-              <IconSpan name="close" size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+    </li>
   )
 }

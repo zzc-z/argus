@@ -16,8 +16,14 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 })
 
+// 这里原本写死 `'登录 - Argus 多智能体深度研报平台'`——所有页签（包括
+// add-sources / sources）都显示「登录」，是登录页遗留的默认值。
+// 用 template：子路由的 title 会顶在前面，只有 login 页自己需要完整标题。
 export const metadata: Metadata = {
-  title: '登录 - Argus 多智能体深度研报平台',
+  title: {
+    default: 'Argus 多智能体深度研报平台',
+    template: '%s | Argus',
+  },
   description: '面向工程师与研究员的 AI 洞察引擎',
 }
 
@@ -27,7 +33,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       {/* 字体已由上方 next/font 的 geist / jetbrainsMono 变量注入。
           不要再加 Google Fonts 的 <link>——那会重复请求一次，
           并绕过 next/font 的自托管与预加载优化。 */}
-      <body className="bg-[var(--token-background)] text-[var(--token-on-background)] min-h-screen antialiased">
+      <body className="min-h-screen bg-[var(--token-background)] text-[var(--token-on-background)] antialiased">
         <UserProvider>
           <NotificationsProvider>{children}</NotificationsProvider>
         </UserProvider>

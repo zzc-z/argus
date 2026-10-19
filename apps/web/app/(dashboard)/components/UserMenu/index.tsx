@@ -11,6 +11,10 @@ import styles from './index.module.css'
 /**
  * 顶栏用户菜单：hover 头像弹出卡片，含用户资料与登出。
  *
+ * **本组件只处理已登录态。** 未登录时 `(dashboard)/layout.tsx` 的
+ * AuthGuard 已经把整页 replace 到 /login，页面根本不会渲染到这里——所以
+ * 这里没有「未登录」的分支，也没有顶栏「登录」链接。
+ *
  * 为什么不引 Radix Popover——一个 hover 卡片用不着一整套无障碍原语，
  * 而且项目里已有 radix 的 label/separator/slot，没有 popover 先例，
  * 手写保持依赖为零。
@@ -28,7 +32,7 @@ function initialsOf(displayName: string | null, email: string | null): string {
 }
 
 export function UserMenu() {
-  const { user, loading, logout } = useUser()
+  const { user, logout } = useUser()
   const [open, setOpen] = useState(false)
   const [loggingOut, setLoggingOut] = useState(false)
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -66,19 +70,10 @@ export function UserMenu() {
     }
   }
 
-  if (loading) {
-    // 骨架占位：header 高度不能因为等接口而跳动
-    return <div className={styles.avatar} aria-hidden="true" />
-  }
-
   if (!user) {
-    // 未登录时不该停在 dashboard。给一个入口而不是空白，
-    // 免得用户以为是 bug。
-    return (
-      <Link href="/login" className={styles.loginLink}>
-        登录
-      </Link>
-    )
+    // 理论不可达：AuthGuard 在本组件渲染前就已经把未登录的页面跳走了。
+    // 留这一行是为了类型收窄（user 在后面被当作非空用），不是为了兜底。
+    return null
   }
 
   return (
@@ -118,7 +113,6 @@ export function UserMenu() {
           <span className={`${styles.userName} font-body-sm font-medium`}>
             {user.display_name ?? '未命名用户'}
           </span>
-          <span className={`${styles.userRole} font-label-sm`}>GitHub 登录</span>
         </span>
       </button>
 

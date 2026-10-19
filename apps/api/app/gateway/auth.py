@@ -15,9 +15,11 @@ session 存储或 Redis：无状态、多worker 安全（登录请求打A worker
 state 校验与 token 交换都自己控制。
 """
 
+import contextlib
 import logging
 from dataclasses import dataclass
 from typing import Annotated, Any
+from urllib.parse import quote
 
 import httpx
 from authlib.common.security import generate_token
@@ -51,6 +53,9 @@ class OAuthFlowState:
 
     state: str
     code_verifier: str
+    #: 登录完成后要回的前端路径。由发起登录的页面通过 ?next= 传进来，
+    #: 存进**签名 cookie** 所以用户改不了。默认 /dashboard。
+    next_path: str = "/dashboard"
 
 
 def build_oauth_client(settings: Settings) -> OAuth:
@@ -84,7 +89,13 @@ def _serializer(settings: Settings) -> URLSafeTimedSerializer:
 def _set_state_cookie(response: Response, settings: Settings, flow: OAuthFlowState) -> None:
     response.set_cookie(
         key=OAUTH_STATE_COOKIE,
-        value=_serializer(settings).dumps({"state": flow.state, "verifier": flow.code_verifier}),
+        value=_serializer(settings).dumps(
+            {
+                "state": flow.state,
+                "verifier": flow.code_verifier,
+                "next": flow.next_path,
+            }
+        ),
         max_age=OAUTH_TTL_SECONDS,
         httponly=True,      # JS 读不到——XSS 也偷不走
         secure=settings.cookie_secure,
@@ -105,14 +116,48 @@ def _load_state_cookie(request: Request, settings: Settings) -> OAuthFlowState:
     except BadSignature as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "登录流程校验失败") from exc
 
-    return OAuthFlowState(state=data["state"], code_verifier=data["verifier"])
+    return OAuthFlowState(
+        state=data["state"],
+        code_verifier=data["verifier"],
+        next_path=_safe_next(data.get("next")),
+    )
+
+
+#: next 的长度上限。超过就当无效——这个值会进签名 cookie，
+#: 不限长等于允许把它撑成几 KB 的 cookie。
+_MAX_NEXT_LEN = 512
+
+
+def _safe_next(raw: object) -> str:
+    """把 ?next= 校验成一个**同源相对路径**，不合格就退回 /dashboard。
+
+    这是开放重定向与 header 注入的经典入口，四条硬约束：
+
+    - 必须以单个 ``/`` 开头——绝对 URL（``https://evil.com``）与
+      protocol-relative（``//evil.com``，浏览器会当外站）都要拒
+    - 长度有上限，挡住拿它塞超长串撑爆 cookie
+    - **不能含控制字符**（含 ``\\r`` ``\\n``）。这里的关键是「整条拒」而不是
+      「剥掉」：``/path\\r\\nX-Injected: 1`` 剥掉换行后剩下
+      ``/pathX-Injected: 1``，注入内容原封不动还在——清洗在这里
+      只会掩盖攻击，不会消除它
+    - 只能含 URL 路径与 query 允许的字符
+
+    cookie 有签名，但签名防的是篡改，不是「我们自己把一个外站 URL 存进去」。
+    """
+    if not isinstance(raw, str) or len(raw) > _MAX_NEXT_LEN:
+        return "/dashboard"
+    if not raw.startswith("/") or raw.startswith("//"):
+        return "/dashboard"
+    if any(not ch.isprintable() for ch in raw):
+        return "/dashboard"
+    return raw
 
 
 def _clear_state_cookie(response: Response, settings: Settings) -> None:
     response.delete_cookie(OAUTH_STATE_COOKIE, path="/api/v1/auth")
 
 
-def _bounce_to_login(settings: Settings, error: str) -> Response:
+def _bounce_to_login(request: Request, settings: Settings, error: str) -> Response:
     """用户放弃授权时送回登录页，而不是抛 400。
 
     「点取消」是用户的正常选择，不是系统故障。抛 400 会让浏览器停在
@@ -121,12 +166,28 @@ def _bounce_to_login(settings: Settings, error: str) -> Response:
 
     error 值来自 GitHub（受控枚举），拼进 Location 前仍做白名单校验，
     只保留字母和下划线，防止意外构造出可注入的 URL。
+
+    ``next`` 一并带回去，用户重新发起登录后仍能落到原来的页面。直接读
+    cookie 而不走 _load_state_cookie——这里正要把它清掉，而且 state 校验
+    还没做（GitHub 还没回来），走 _load_state_cookie 会因 state 不匹配抛 400。
     """
     safe_error = "".join(ch for ch in error if ch.isalnum() or ch == "_")[:32] or "unknown"
+    next_path = "/dashboard"
+    raw_state = request.cookies.get(OAUTH_STATE_COOKIE)
+    if raw_state is not None:
+        # cookie 过期或被篡改时静默回落——本来就要让用户重新发起登录，
+        # 深链丢了不影响主流程。
+        with contextlib.suppress(BadSignature, SignatureExpired, AttributeError):
+            next_path = _safe_next(_serializer(settings).loads(raw_state).get("next"))
     response = Response(
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
         headers={
-            "Location": f"{settings.frontend_base_url}/login?error={safe_error}",
+            # quote 而不是直接拼：next 里可能有 ? 与 #（如 /report/12?tab=x），
+            # 不转义会在 Location 里截断成另一条路径。
+            "Location": (
+                f"{settings.frontend_base_url}/login?error={safe_error}"
+                f"&next={quote(next_path, safe='')}"
+            )
         },
     )
     _clear_state_cookie(response, settings)
@@ -135,15 +196,23 @@ def _bounce_to_login(settings: Settings, error: str) -> Response:
 
 @router.get("/github/login", summary="发起 GitHub 登录")
 async def github_login(
+    request: Request,
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> Response:
     """生成授权 URL并 302 跳转到 GitHub。
 
     state 与 PKCE verifier 一并写进签名 cookie，回调时取回校验。
+    ``?next=`` 带着登录前的页面路径一并存进去，回调时用——
+    用户把 /sources 分享给同事，对方登录完直接落到 /sources，
+    而不是被丢回 /dashboard 再自己找路。
     """
     # Authlib 的 create_client 无返回类型标注，只能 ignore 到调用点。
     client = build_oauth_client(settings).create_client("github")  # type: ignore[no-untyped-call]
-    flow = OAuthFlowState(state=generate_token(32), code_verifier=generate_token(48))
+    flow = OAuthFlowState(
+        state=generate_token(32),
+        code_verifier=generate_token(48),
+        next_path=_safe_next(request.query_params.get("next")),
+    )
 
     result = await client.create_authorization_url(
         settings.github_oauth_callback_url,
@@ -173,7 +242,7 @@ async def github_callback(
     """
     error = request.query_params.get("error")
     if error:
-        return _bounce_to_login(settings, error)
+        return _bounce_to_login(request, settings, error)
 
     flow = _load_state_cookie(request, settings)
     returned_state = request.query_params.get("state", "")
@@ -198,16 +267,16 @@ async def github_callback(
         profile = await _fetch_github_profile(access_token)
     except httpx.HTTPStatusError as exc:
         logger.warning("GitHub 返回错误状态，登录流程中止", exc_info=exc)
-        return _bounce_to_login(settings, "provider_rejected")
+        return _bounce_to_login(request, settings, "provider_rejected")
     except httpx.HTTPError as exc:
         logger.warning("与 GitHub 通信失败，登录流程中止", exc_info=exc)
-        return _bounce_to_login(settings, "provider_unavailable")
+        return _bounce_to_login(request, settings, "provider_unavailable")
 
     result = await get_or_create_user(session, profile)
 
     redirect = Response(
         status_code=status.HTTP_307_TEMPORARY_REDIRECT,
-        headers={"Location": f"{settings.frontend_base_url}/dashboard"},
+        headers={"Location": f"{settings.frontend_base_url}{flow.next_path}"},
     )
     # session cookie 的属性，逐条都有理由：
     #

@@ -140,3 +140,9 @@
 .legendDot {
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
 }
+
+/* 不支持格式的提示。用 error token 而不是 secondary：这是个错误，不是状态。 */
+.dropError {
+  margin-top: 0.75rem;
+  color: var(--token-error, #ba1a1a);
+}

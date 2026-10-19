@@ -8,7 +8,7 @@ app.gateway.auth._exchange_code_for_token 与 _fetch_github_profile。
 cookie 属性——外部 HTTP 交互被桩函数接管，行为完全确定。
 """
 
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import httpx
 import pytest
@@ -146,7 +146,9 @@ def test_callback_handles_provider_denial(client: TestClient, github_state: str)
     )
 
     assert resp.status_code == 307
-    assert resp.headers["location"] == "http://localhost:3000/login?error=access_denied"
+    assert resp.headers["location"] == (
+        "http://localhost:3000/login?error=access_denied&next=%2Fdashboard"
+    )
 
 
 def test_denial_clears_state_cookie(client: TestClient, github_state: str) -> None:
@@ -178,7 +180,9 @@ def test_denial_without_state_cookie_still_redirects(client: TestClient) -> None
     resp = client.get("/api/v1/auth/github/callback?error=access_denied", follow_redirects=False)
 
     assert resp.status_code == 307
-    assert resp.headers["location"] == "http://localhost:3000/login?error=access_denied"
+    assert resp.headers["location"] == (
+        "http://localhost:3000/login?error=access_denied&next=%2Fdashboard"
+    )
 
 
 def test_callback_without_code_rejected(client: TestClient, github_state: str) -> None:
@@ -299,7 +303,9 @@ def test_network_failure_during_token_exchange_redirects(
     )
 
     assert resp.status_code == 307
-    assert resp.headers["location"] == "http://localhost:3000/login?error=provider_unavailable"
+    assert resp.headers["location"] == (
+        "http://localhost:3000/login?error=provider_unavailable&next=%2Fdashboard"
+    )
 
 
 def test_network_failure_during_profile_fetch_redirects(
@@ -353,7 +359,9 @@ def test_github_error_status_gets_distinct_code(
     )
 
     assert resp.status_code == 307
-    assert resp.headers["location"] == "http://localhost:3000/login?error=provider_rejected"
+    assert resp.headers["location"] == (
+        "http://localhost:3000/login?error=provider_rejected&next=%2Fdashboard"
+    )
 
 
 async def test_no_user_created_when_provider_unreachable(
@@ -394,3 +402,58 @@ def test_internal_error_not_exposed_to_user(
     assert "10.0.0.5" not in location
     assert "RemoteProtocolError" not in location
     assert "refused" not in location
+
+
+class TestLoginNextPath:
+    """``?next=`` 深链：登录完成后回到用户原本要去的页面。"""
+
+    @staticmethod
+    def _next_in_cookie(client: TestClient) -> str:
+        """解出签名 cookie 里的 next 字段。
+
+        cookie 是 itsdangerous 的 base64 签名载荷，**明文里看不到路径**——
+        直接在 cookie 字符串上找 `/sources` 是查不出来的（第一版就这么
+        写错了）。要 loads 之后再断言。
+        """
+        raw = client.cookies.get(OAUTH_STATE_COOKIE)
+        assert raw is not None, "登录时没写 state cookie"
+        # 局部导入：_serializer 需要 settings 里的密钥，走 get_settings()
+        # 拿测试环境的配置（conftest 已把它隔离好）。
+        from app.config import get_settings
+        from app.gateway.auth import _serializer
+
+        return str(_serializer(get_settings()).loads(raw).get("next", ""))
+
+    def test_next_is_stored_in_signed_cookie(self, client: TestClient) -> None:
+        client.get("/api/v1/auth/github/login?next=/sources", follow_redirects=False)
+
+        assert self._next_in_cookie(client) == "/sources"
+
+    def test_next_keeps_query_string(self, client: TestClient) -> None:
+        """/report/12?tab=bench 这种带 query 的路径要原样保留。"""
+        client.get(
+            "/api/v1/auth/github/login?next=/report/12%3Ftab%3Dbench",
+            follow_redirects=False,
+        )
+
+        assert self._next_in_cookie(client) == "/report/12?tab=bench"
+
+    @pytest.mark.parametrize(
+        "hostile",
+        [
+            "https://evil.example/steal",  # 绝对 URL → 开放重定向
+            "//evil.example/steal",  # protocol-relative
+            "javascript:alert(1)",  # 任意 scheme
+            "/path\r\nX-Injected: 1",  # header 注入
+        ],
+    )
+    def test_next_rejects_open_redirect_and_injection(
+        self, client: TestClient, hostile: str
+    ) -> None:
+        """非站内相对路径一律回落到 /dashboard。"""
+        client.get(
+            f"/api/v1/auth/github/login?next={quote(hostile, safe='')}",
+            follow_redirects=False,
+        )
+
+        assert self._next_in_cookie(client) == "/dashboard"

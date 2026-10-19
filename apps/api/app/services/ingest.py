@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Sequence
 
@@ -35,6 +36,7 @@ from app.services import bm25
 from app.services.chunker import Chunk, ChunkingError, TextChunker
 from app.services.embedder import embed_or_none
 from app.services.parser import (
+    DocxParser,
     HtmlParser,
     ParsedBlock,
     ParseError,
@@ -51,6 +53,7 @@ _PARSERS: dict[str, Parser] = {
     SourceType.PDF: PdfParser(),
     SourceType.HTML: HtmlParser(),
     SourceType.TEXT: TextParser(),
+    SourceType.DOCX: DocxParser(),
 }
 
 
@@ -82,10 +85,15 @@ async def ingest(
     chunker = chunker or TextChunker()
 
     try:
-        blocks = _parse(source, payload)
+        # 解析与切片是纯 CPU 的同步调用，必须挪出事件循环线程。
+        # 不用 run_in_executor 的后果不是「慢一点」：摄取由
+        # `_schedule_ingest` 用 `asyncio.create_task` 起，跑在 API 进程的事件
+        # 循环里，一份大 PDF 能让**整个进程的所有 HTTP 请求停摆**到解析结束。
+        # 实测 8000 段 docx 展开 0.7MB XML，秒级。
+        blocks = await asyncio.to_thread(_parse, source, payload)
         await _set_status(db, source, SourceStatus.PARSING, char_count=_total_chars(blocks))
 
-        chunks = chunker.chunk_blocks(blocks)
+        chunks = await asyncio.to_thread(chunker.chunk_blocks, blocks)
         await _set_status(db, source, SourceStatus.CHUNKING, chunk_count=len(chunks))
 
         await _set_status(db, source, SourceStatus.EMBEDDING)

@@ -1,195 +1,147 @@
 'use client'
 
 import * as React from 'react'
-import { useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
-
 import { PageLayout } from '@/components/common/PageLayout'
+import { ApiError } from '@/lib/api/client'
+import {
+  createSourceFromUrl,
+  fetchSources,
+  fetchSource,
+  uploadSource,
+  type SourceV,
+} from '@/lib/api/sources'
+import { QueueMonitor } from './components/QueueMonitor'
 import { UploadDropZone } from './components/UploadDropZone'
 import { UrlRssTabs } from './components/UrlRssTabs'
-import { ProcessingOptions } from './components/ProcessingOptions'
-import { QueueMonitor } from './components/QueueMonitor'
-import { IconSpan } from '@/components/common/IconSpan'
-
-import { queueItems as initialQueueItems, type QueueItem } from './mock'
-
+import { toQueueRow } from './lib/queueTypes'
 import styles from './page.module.css'
 
-type IngestTab = 'url' | 'rss'
-
-/** Stable counter for synthetic QueueItem IDs created by user actions. */
-let queueIdCounter = 0
-const nextQueueId = (prefix: string) => `${prefix}-${Date.now()}-${queueIdCounter++}`
+/** 轮询间隔。后端摄取分 6 个阶段，每阶段提交一次；1.5s 足够跟上也够省。 */
+const POLL_MS = 1500
 
 export default function AddSourcesPage() {
-  const [tab, setTab] = useState<IngestTab>('url')
-  const [queueItems, setQueueItems] = useState<QueueItem[]>(initialQueueItems)
-  const timersRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map())
+  // 原始 `SourceV` 而非展示行：轮询要按 id 逐个更新，映射留到渲染时做。
+  const [sources, setSources] = React.useState<SourceV[]>([])
+  const [busy, setBusy] = React.useState(false)
+  // 上传错误归 dropzone 自己报，URL 错误归表单自己报——所以这里只留一个
+  // state 给**上传**用。URL 错误由 UrlRssTabs 内部渲染（它离输入框更近，
+  // 用户不用眼睛来回扫）。
+  const [uploadError, setUploadError] = React.useState<string | null>(null)
+  const [urlError, setUrlError] = React.useState<string | null>(null)
 
-  /** Advance a single item's progress every 1s until 100, then mark done. */
-  const startProgressTimer = (id: string) => {
-    const timer = setInterval(() => {
-      setQueueItems((prev) =>
-        prev.map((it) => {
-          if (it.id !== id || it.done) return it
-          const next = Math.min(100, it.progress + 5)
-          if (next >= 100) {
-            return {
-              ...it,
-              progress: 100,
-              done: true,
-              timing: '100%',
-              entities: '已注入概念图谱',
-              statusLabel: '已索引至向量数据库',
-              progressLabel: `${next}/100 chunks`,
-            }
-          }
-          return { ...it, progress: next, progressLabel: `${next}/100 chunks` }
-        }),
+  // 后端两种建源入口的参数完全不同（文件上传走 multipart；URL 走 JSON + title 必填）。
+
+  // 挂载时先拉一次全量。**队列不能只装本次会话上传的**：用户在
+  // 另一个标签页上传、或摄取途中刷新页面，库里那些「正在切片」的资料
+  // 就再也不会出现在这里——用户会以为上传丢了。
+  React.useEffect(() => {
+    const controller = new AbortController()
+    void fetchSources(controller.signal)
+      .then((list) =>
+        setSources(
+          // **不按状态过滤**。这里显示的是「我这批资料的摄取记录」，
+          // 已完成的也要留着——只显示未完成的等于用户传完、刷新一下，
+          // 列表就空了，看起来像没传成功。
+          // 只有「正在处理」的才需要轮询，那件事由下面的定时器负责。
+          [...list.items].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
+        ),
       )
-    }, 1000)
-    timersRef.current.set(id, timer)
-  }
-
-  /** Clean up all running progress timers when the page unmounts. */
-  useEffect(() => {
-    const timers = timersRef.current
-    return () => {
-      timers.forEach((t) => clearInterval(t))
-      timers.clear()
-    }
+      // 401 不报：登录态由布局层的 UserMenu 负责。
+      .catch(() => undefined)
+    return () => controller.abort()
   }, [])
 
-  const handleFilesSelected = (files: File[]) => {
-    const added: QueueItem[] = files.map((file) => ({
-      id: nextQueueId('q-upload'),
-      name: file.name,
-      kindLabel: 'PDF',
-      size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
-      progress: 0,
-      progressLabel: '0/100 chunks',
-      statusLabel: '已加入处理队列,等待分配执行节点...',
-      iconName: 'picture_as_pdf',
-      iconAccent: 'errorContainer',
-    }))
-    setQueueItems((prev) => [...prev, ...added])
-    added.forEach((it) => startProgressTimer(it.id))
-  }
+  const queue = React.useMemo(() => sources.map(toQueueRow), [sources])
 
-  const handleUrlSubmit = (url: string) => {
-    const id = nextQueueId('q-url')
-    const item: QueueItem = {
-      id,
-      name: url,
-      kindLabel: 'Web HTML',
-      size: '—',
-      progress: 0,
-      progressLabel: '0/100 chunks',
-      statusLabel: '已加入处理队列,等待 Playwright 抓取调度...',
-      iconName: 'html',
-      iconAccent: 'surfaceHighest',
-    }
-    setQueueItems((prev) => [...prev, item])
-    startProgressTimer(id)
-  }
+  // 未完成的那几个要轮询。全部 indexed/failed 后 effect 自然停。
+  //
+  // 用 ref 而不是把 id 列表放进依赖：列表每次渲染都是新数组，写进 deps
+  // 会让定时器每拍重建（等于没节流）；写成 `pendingIds.join(',')` 能过
+  // lint 但闭包捕获的是**首次**那份列表——上传第二份资料后它就再也不会
+  // 被轮询到。ref 让定时器读到的永远是当前值，且 effect 只跑一次。
+  const pendingRef = React.useRef<number[]>([])
 
-  const handleRssSubmit = (url: string, period: '1h' | '6h' | '24h') => {
-    const id = nextQueueId('q-rss')
-    const item: QueueItem = {
-      id,
-      name: url,
-      kindLabel: 'RSS / Atom',
-      size: period,
-      progress: 0,
-      progressLabel: '0/100 chunks',
-      statusLabel: 'RSS 源已验证,正在生成语义向量图谱增量...',
-      iconName: 'rss_feed',
-      iconAccent: 'primaryFixed',
+  // 在 **effect 里**同步（不是渲染期写 ref——那在并发渲染下会拿到
+  // 未提交的队列），定时器读 ref 拿到的永远是最近一次提交后的值。
+  React.useEffect(() => {
+    pendingRef.current = queue.filter((q) => !q.done && !q.failed).map((q) => q.id)
+  }, [queue])
+
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      for (const id of pendingRef.current) {
+        void fetchSource(id)
+          .then((fresh) => setSources((prev) => prev.map((s) => (s.id === fresh.id ? fresh : s))))
+          .catch(() => {
+            /* 单次轮询失败不打断整体——下一拍再试。真失败会在
+               后端把 status 置成 failed 并带 error_message。 */
+          })
+      }
+    }, POLL_MS)
+    return () => clearInterval(timer)
+  }, [])
+
+  const handleFiles = React.useCallback(async (files: File[]) => {
+    if (files.length === 0) return
+    setBusy(true)
+    setUploadError(null)
+    for (const file of files) {
+      try {
+        const created = await uploadSource(file)
+        setSources((prev) => [created, ...prev])
+      } catch (err) {
+        // 逐条上报而不是第一批失败就停：用户传 5 个文件，前 2 个
+        // 不支持不代表后 3 个也不行。
+        setUploadError(
+          // `ApiError.message` 已经带上后端的 `detail`（client.ts 里合并过），
+          // ApiError 上没有独立的 detail 字段。
+          err instanceof ApiError ? `${file.name}：${err.message}` : `${file.name}：上传失败`,
+        )
+      }
     }
-    setQueueItems((prev) => [...prev, item])
-    startProgressTimer(id)
-  }
+    setBusy(false)
+  }, [])
+
+  const handleUrl = React.useCallback(async (input: { url: string; title: string }) => {
+    setBusy(true)
+    setUrlError(null)
+    try {
+      const created = await createSourceFromUrl({
+        url: input.url,
+        title: input.title,
+        source_type: 'html',
+      })
+      setSources((prev) => [created, ...prev])
+    } catch (err) {
+      // 同步失败（422 title/url 不合法、401）只能在这里报——请求根本没建源，
+      // 队列里没有对应行。抓取失败是异步的，落在队列的 error_message 上。
+      setUrlError(err instanceof ApiError ? err.message : 'URL 建源失败')
+    } finally {
+      setBusy(false)
+    }
+  }, [])
 
   return (
     <PageLayout
       header={{
-        breadcrumb: [
-          { label: '资料库', href: '/sources', icon: 'database' },
-          { label: '添加新数据源', current: true },
-        ],
-        title: '添加研究资料 Add Sources',
-        subtitle:
-          '上传离线研究文档、输入网页链接或订阅专业 RSS 数据流以扩充 Argus 知识库与推演图谱',
-        stats: [
-          { label: 'INGEST_V2', pill: true, pillTone: 'primary' },
-          { label: '端到端加密通道 · 零留存模式' },
-        ],
+        title: '添加资料源',
+        subtitle: '摄取后的资料会在提问时被检索',
       }}
     >
       <div className={styles.grid}>
-        <div className={styles.left}>
-          <UploadDropZone onFilesSelected={handleFilesSelected} />
-          <UrlRssTabs
-            tab={tab}
-            onTabChange={setTab}
-            onUrlSubmit={handleUrlSubmit}
-            onRssSubmit={handleRssSubmit}
-          />
-          <ProcessingOptions />
-          <ArchBadge />
-        </div>
-
+        <section className={styles.left}>
+          <UploadDropZone onFilesSelected={handleFiles} />
+          <UrlRssTabs onSubmit={handleUrl} submitting={busy} error={urlError} />
+          {uploadError && (
+            <p className={styles.error} role="alert">
+              {uploadError}
+            </p>
+          )}
+        </section>
         <div className={styles.right}>
-          <QueueMonitor items={queueItems} />
-          <SecurityTip />
-          <BackLink />
+          <QueueMonitor items={queue} />
         </div>
       </div>
     </PageLayout>
-  )
-}
-
-function ArchBadge() {
-  return (
-    <div className={styles.arch}>
-      <div className={styles.archInner}>
-        <div className={styles.archIcon}>
-          <IconSpan name="account_tree" size={20} className="text-primary-container" />
-        </div>
-        <div>
-          <span className={`${styles.archTitle} font-body-sm`}>双层拓扑向量索引模式已就绪</span>
-          <span className={`${styles.archMeta} font-label-sm`}>
-            HNSW Dense Index (1536d) + Sparse BM25 Fusion Engine
-          </span>
-        </div>
-      </div>
-      <div className={styles.archRight}>
-        <span className={`${styles.archQps} font-code`}>QPS: 124.8</span>
-        <span className={styles.archLive} />
-      </div>
-    </div>
-  )
-}
-
-function SecurityTip() {
-  return (
-    <section className={styles.tip}>
-      <div className={styles.tipHead}>
-        <IconSpan name="info" size={18} className="text-primary-container" />
-        <span className={`${styles.tipTitle} font-headline-sm`}>知识索引准则</span>
-      </div>
-      <p className={`${styles.tipBody} font-body-sm`}>
-        所有非结构化文献将通过本地隔离沙箱进行消毒与语义切片。敏感数据自动脱敏,生成出的向量索引将实时绑定至对应工作区专有推演图谱,不参与通用基础模型再训练。
-      </p>
-    </section>
-  )
-}
-
-function BackLink() {
-  return (
-    <Link href="/sources" className={`${styles.backLink} font-body-sm`}>
-      <IconSpan name="arrow_back" size={16} />
-      <span>返回资料库</span>
-    </Link>
   )
 }

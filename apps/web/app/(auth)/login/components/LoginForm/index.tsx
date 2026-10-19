@@ -43,9 +43,29 @@ function LoginErrorBanner() {
   )
 }
 
-export function LoginForm() {
+/**
+ * OAuth 按钮。单独拆出来是因为它要读 `?next=`（useSearchParams）——
+ * Next 16 要求任何读 URL 的 Client Component 都在 <Suspense> 边界内。
+ *
+ * `next` 透传给后端：用户在「因为登录态被清空而被踢到 /login」的情况下
+ * 点 GitHub，登录完仍回到原来那页，而不是又被弹回 /dashboard。
+ */
+function GithubOAuthButton() {
   const { loginWithGithub } = useUser()
+  const next = useSearchParams().get('next')
 
+  return (
+    <OAuthButton
+      provider="github"
+      label="使用 GitHub 账号继续"
+      shortcut="⌘G"
+      tone="dark"
+      onClick={() => loginWithGithub(next ?? undefined)}
+    />
+  )
+}
+
+export function LoginForm() {
   return (
     <div className={styles.root}>
       <Suspense fallback={null}>
@@ -53,9 +73,7 @@ export function LoginForm() {
       </Suspense>
 
       <div className={styles.welcome}>
-        <h1
-          className={`${styles.title} font-headline-lg font-semibold tracking-tight`}
-        >
+        <h1 className={`${styles.title} font-headline-lg font-semibold tracking-tight`}>
           登录您的研究工作台
         </h1>
         <p className={`${styles.subtitle} font-body-sm text-secondary leading-relaxed`}>
@@ -64,13 +82,9 @@ export function LoginForm() {
       </div>
 
       <div className={styles.oauth}>
-        <OAuthButton
-          provider="github"
-          label="使用 GitHub 账号继续"
-          shortcut="⌘G"
-          tone="dark"
-          onClick={loginWithGithub}
-        />
+        <Suspense fallback={null}>
+          <GithubOAuthButton />
+        </Suspense>
         <OAuthButton
           provider="google"
           label="使用 Google Workspace 账号继续"

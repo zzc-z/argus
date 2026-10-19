@@ -40,6 +40,7 @@ class SourceType(StrEnum):
     PDF = "pdf"
     HTML = "html"
     TEXT = "text"
+    DOCX = "docx"
 
 
 class SourceStatus(StrEnum):

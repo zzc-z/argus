@@ -1,3 +1,14 @@
+/*
+ * 网址导入卡片。
+ *
+ * 之前这里还有 RSS tab、周期下拉、订阅按钮和一组「选项」checkbox——
+ * 后端没有任何订阅端点，`POST /sources/url` 只收 url/title/source_type。
+ * 那些类（tabSwitch / rssRow / periodSelect / subscribeBtn / toggles…）
+ * 已连同对应 UI 一起删掉，留着就是没人引用的死样式。
+ *
+ * 剩下的类都在 index.tsx 里被引用，改任一边都要同步另一边。
+ */
+
 .section {
   display: flex;
   flex-direction: column;
@@ -16,60 +27,8 @@
   gap: 0.5rem;
 }
 
-.headLeft {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.headDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 9999px;
-  background-color: var(--token-primary-container, #7039f9);
-}
-
 .headTitle {
   color: var(--token-on-surface, #191c1d);
-}
-
-.tabSwitch {
-  display: flex;
-  align-items: center;
-  padding: 0.125rem;
-  background-color: var(--token-surface-container-low, #f3f4f5);
-  border-radius: 0.5rem;
-}
-
-.tabBtn {
-  padding: 0.25rem 0.75rem;
-  border-radius: 0.375rem;
-  border: none;
-  background: transparent;
-  color: var(--token-secondary, #575e70);
-  cursor: pointer;
-  transition: all 150ms ease-out;
-}
-
-.tabBtn:hover {
-  color: var(--token-on-surface, #191c1d);
-}
-
-.tabBtnActive {
-  background-color: var(--token-surface-container-lowest, #ffffff);
-  color: var(--token-on-surface, #191c1d);
-  font-weight: 500;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-}
-
-.pane {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.paneHidden {
-  display: none;
 }
 
 .urlRow {
@@ -120,6 +79,23 @@
   box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
 }
 
+/* 标题输入框沿用 .urlInput，但左边距要收回来——它没有前置的链接图标 */
+.titleLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.titleHint {
+  color: var(--token-secondary, #575e70);
+}
+
+.titleInput {
+  padding-left: 0.75rem;
+}
+
 .fetchBtn {
   display: inline-flex;
   align-items: center;
@@ -140,92 +116,12 @@
   background-color: var(--token-on-surface, #191c1d);
 }
 
-.toggles {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.25rem 0;
-  padding-inline: 0.25rem;
+.fetchBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
-.toggleLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  user-select: none;
-}
-
-.toggleBox {
-  width: 16px;
-  height: 16px;
-  border-radius: 0.25rem;
-  background-color: var(--token-surface-container-high, #e7e8e9);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--token-on-primary, #ffffff);
-  transition: background-color 150ms ease-out;
-}
-
-.toggleLabel input:checked + .toggleBox {
-  background-color: var(--token-primary-container, #7039f9);
-}
-
-.toggleText {
-  color: var(--token-on-surface, #191c1d);
-}
-
-.togglesMeta {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--token-secondary, #575e70);
-}
-
-.rssRow {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-@media (min-width: 640px) {
-  .rssRow {
-    flex-direction: row;
-  }
-}
-
-.periodSelect {
-  padding: 0.5rem 0.75rem;
-  background-color: var(--token-surface-container-low, #f3f4f5);
-  color: var(--token-on-surface, #191c1d);
-  border-radius: 0.5rem;
-  border: none;
-  cursor: pointer;
-  outline: none;
-}
-
-.subscribeBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  background-color: var(--token-primary-container, #7039f9);
-  color: var(--token-on-primary, #ffffff);
-  border: none;
-  cursor: pointer;
-  flex-shrink: 0;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  transition: opacity 150ms ease-out;
-}
-
-.subscribeBtn:hover {
-  opacity: 0.9;
-}
-
-.rssNote {
-  color: var(--token-secondary, #575e70);
-  padding-inline: 0.25rem;
+.error {
+  margin-top: 0.5rem;
+  color: var(--token-error, #ba1a1a);
 }

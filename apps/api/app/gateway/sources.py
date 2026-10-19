@@ -57,6 +57,12 @@ router = APIRouter(prefix="/api/v1/sources", tags=["sources"])
 DbSession = Annotated[AsyncSession, Depends(get_session)]
 
 # 扩展名 → 资料类型。映射不到就拒——猜类型会解析出乱码。
+# 扩展名 → 资料类型。映射不到就拒——猜类型会解析出乱码。
+#
+# **`.doc` 不在表里**：那是 Word 97-2003 的二进制格式（Compound File
+# Binary），与 .docx 的 OOXML 是两种东西，python-docx 读不了。给它硬塞
+# 一个 parser 的结果是解析出乱码且不报错。要支持得另找方案，不在这里
+# 半吊子兜住。
 _EXT_TO_TYPE: dict[str, SourceType] = {
     ".pdf": SourceType.PDF,
     ".html": SourceType.HTML,
@@ -64,6 +70,7 @@ _EXT_TO_TYPE: dict[str, SourceType] = {
     ".txt": SourceType.TEXT,
     ".md": SourceType.TEXT,
     ".markdown": SourceType.TEXT,
+    ".docx": SourceType.DOCX,
 }
 
 
@@ -71,7 +78,7 @@ _EXT_TO_TYPE: dict[str, SourceType] = {
 async def upload_source(
     user: CurrentUser,
     db: DbSession,
-    file: Annotated[UploadFile, File(description="PDF / HTML / TXT / Markdown")],
+    file: Annotated[UploadFile, File(description="PDF / DOCX / HTML / TXT / Markdown")],
 ) -> SourceResponse:
     """上传文件建源。立刻返回，摄取在后台跑。
 
@@ -81,7 +88,7 @@ async def upload_source(
     if source_type is None:
         raise HTTPException(
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            "只支持 PDF / HTML / TXT / Markdown 文件",
+            "只支持 PDF / DOCX / HTML / TXT / Markdown 文件",
         )
 
     payload = await file.read()

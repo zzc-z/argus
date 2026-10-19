@@ -1,3 +1,21 @@
+/*
+ * 摄取队列卡片。
+ *
+ * index.tsx 引用的类必须都在这里定义——CSS Modules 里没定义的类解析成
+ * `undefined`，模板字符串会把它拼成字面量 "undefined" 的 class 名，
+ * 样式静默失效（不报错，只有肉眼看得出「这块没样式」）。2026-10-18 之前
+ * 这里就缺了 headCount / empty / failedBadge / itemStage / errorText /
+ * barFillFailed 六个。
+ *
+ * 之前还有一批设计稿残留的死样式：音频波形（waveRow / wave / waveBar /
+ * waveTime）、知识图谱摘要（summary*）、耗时（statusTiming / statusRight）、
+ * 取消与确认按钮（cancel* / confirmBtn / actions / footer）、
+ * 4 个 accent_* 配色变体。后端对应能力一个都没有（见 index.tsx 顶部注释），
+ * 连同 UI 一起删了。
+ *
+ * 剩下的类都在 index.tsx 里被引用，改任一边都要同步另一边。
+ */
+
 .panel {
   display: flex;
   flex-direction: column;
@@ -17,12 +35,6 @@
   gap: 0.5rem;
 }
 
-.headLeft {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-}
-
 .headTitle {
   display: inline-flex;
   align-items: center;
@@ -30,38 +42,14 @@
   color: var(--token-on-surface, #191c1d);
 }
 
-.headChip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.125rem 0.375rem;
-  border-radius: 9999px;
-  background-color: color-mix(in srgb, var(--token-primary-container, #7039f9) 10%, transparent);
-  color: var(--token-primary-container, #7039f9);
-  font-weight: 600;
-  align-self: flex-start;
-}
-
-.headSub {
-  font-size: 11px;
+.headCount {
   color: var(--token-secondary, #575e70);
+  flex-shrink: 0;
 }
 
-.clearBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0.625rem;
-  border-radius: 0.25rem;
-  background-color: var(--token-surface-container-low, #f3f4f5);
-  border: none;
+.empty {
   color: var(--token-secondary, #575e70);
-  cursor: pointer;
-  transition: all 150ms ease-out;
-}
-
-.clearBtn:hover {
-  background-color: var(--token-surface-container, #edeeef);
-  color: var(--token-on-surface, #191c1d);
+  line-height: 1.625;
 }
 
 .list {
@@ -105,26 +93,8 @@
   justify-content: center;
   flex-shrink: 0;
   margin-top: 0.125rem;
-}
-
-.accent_primaryFixed {
   background-color: var(--token-primary-fixed, #e8deff);
   color: var(--token-primary-container, #7039f9);
-}
-
-.accent_surfaceHighest {
-  background-color: var(--token-surface-container-highest, #e1e3e4);
-  color: var(--token-secondary, #575e70);
-}
-
-.accent_errorContainer {
-  background-color: color-mix(in srgb, var(--token-error, #ba1a1a) 10%, transparent);
-  color: var(--token-error, #ba1a1a);
-}
-
-.accent_onSurfaceVariant {
-  background-color: var(--token-surface-container-highest, #e1e3e4);
-  color: var(--token-on-surface-variant, #494456);
 }
 
 .itemText {
@@ -159,10 +129,13 @@
   font-weight: 500;
 }
 
-.itemPercent {
-  flex-shrink: 0;
+/* 进行中的阶段名。徽章样式是给「失败 / 已索引」当参照的：
+   它们有底色有图标，这一个只有文字，避免三态看起来一样重。 */
+.itemStage {
   color: var(--token-primary-container, #7039f9);
-  font-weight: 600;
+  font-weight: 500;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .doneBadge {
@@ -177,32 +150,22 @@
   flex-shrink: 0;
 }
 
-.waveRow {
-  display: flex;
+.failedBadge {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
   gap: 0.25rem;
-  padding: 0.125rem 0.25rem;
-  background-color: var(--token-surface-container-lowest, #ffffff);
+  padding: 0.125rem 0.5rem;
   border-radius: 0.25rem;
+  background-color: color-mix(in srgb, var(--token-error, #ba1a1a) 10%, transparent);
+  color: var(--token-error, #ba1a1a);
+  font-weight: 500;
+  flex-shrink: 0;
 }
 
-.wave {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  height: 12px;
-  flex: 1;
-}
-
-.waveBar {
-  width: 4px;
-  border-radius: 9999px;
-}
-
-.waveTime {
+.errorText {
+  color: var(--token-error, #ba1a1a);
   font-size: 12px;
-  color: var(--token-secondary, #575e70);
+  line-height: 1.5;
 }
 
 .bar {
@@ -213,11 +176,26 @@
   overflow: hidden;
 }
 
+/*
+ * 进行中：后端只有 6 个阶段、没有百分比，所以**不能**给固定宽度——
+ * 那等于编一个进度数字出来。这里让它在 1/3 与 2/3 之间来回滑，
+ * 表达「在动」而不是「到哪了」。
+ */
 .barFillLive {
   height: 100%;
+  width: 40%;
   border-radius: 9999px;
   background-color: var(--token-primary-container, #7039f9);
-  transition: width 300ms ease;
+  animation: bar-slide 1.4s ease-in-out infinite;
+}
+
+@keyframes bar-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
 }
 
 .barFillDone {
@@ -226,123 +204,16 @@
   background-color: rgb(16 185 129);
 }
 
-.statusRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  padding-top: 0.125rem;
+.barFillFailed {
+  height: 100%;
+  border-radius: 9999px;
+  background-color: var(--token-error, #ba1a1a);
 }
 
-.statusText {
-  color: var(--token-secondary, #575e70);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding-right: 0.5rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-}
-
-.statusTextDone {
-  color: var(--token-on-surface, #191c1d);
-}
-
-.statusRight {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-.statusTiming {
-  font-size: 12px;
-  color: var(--token-secondary, #575e70);
-}
-
-.cancelIconBtn {
-  background: transparent;
-  border: none;
-  color: var(--token-secondary, #575e70);
-  cursor: pointer;
-  padding: 0;
-  transition: color 150ms ease-out;
-}
-
-.cancelIconBtn:hover {
-  color: var(--token-error, #ba1a1a);
-}
-
-.footer {
-  margin-top: 1rem;
-  padding-top: 0.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.625rem;
-  border-radius: 0.5rem;
-  background-color: var(--token-surface-container-low, #f3f4f5);
-  font-size: 12px;
-  color: var(--token-secondary, #575e70);
-}
-
-.summaryLeft {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
-.summaryStrong {
-  color: var(--token-on-surface, #191c1d);
-  font-weight: 600;
-}
-
-.summaryGpu {
-  color: var(--token-primary-container, #7039f9);
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.cancelBtn {
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  background-color: var(--token-surface-container-low, #f3f4f5);
-  color: var(--token-secondary, #575e70);
-  border: none;
-  cursor: pointer;
-  transition: all 150ms ease-out;
-}
-
-.cancelBtn:hover {
-  background-color: var(--token-surface-container, #edeeef);
-}
-
-.confirmBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  background-color: var(--token-primary-container, #7039f9);
-  color: var(--token-on-primary, #ffffff);
-  border: none;
-  cursor: pointer;
-  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
-  transition: opacity 150ms ease-out;
-}
-
-.confirmBtn:hover {
-  opacity: 0.9;
+@media (prefers-reduced-motion: reduce) {
+  .barFillLive {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
 }
