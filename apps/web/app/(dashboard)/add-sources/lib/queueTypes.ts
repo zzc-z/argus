@@ -16,6 +16,8 @@
 
 import type { SourceV } from '@/lib/api/sources'
 
+import { KIND_LABELS } from '../../sources/lib/sourceKind'
+
 export interface QueueRowItem {
   id: number
   /** 资料名（后端 `title`）。 */
@@ -47,12 +49,15 @@ export interface QueueRowItem {
  * 条目（它列的是 Audio / Voice 与 Excel / Sheet，后端不支持），这里用
  * 中性的「文稿」——不改成更「规范」的措辞，用户看的是这份稿子。
  */
-const KIND: Record<SourceV['source_type'], { label: string; icon: string }> = {
-  pdf: { label: 'PDF', icon: 'picture_as_pdf' },
-  html: { label: 'Web HTML', icon: 'language' },
-  text: { label: '文稿', icon: 'article' },
-  docx: { label: 'Word', icon: 'article' },
-}
+// 标签与图标与资料库页共用一份（sources/lib/sourceKind.ts）——
+// 之前两边各一份 Record，改 docx 的措辞时不会报错，实测同一份资料在
+// 资料库显示「DOCX」、在这里显示「Word」。
+const KIND = Object.fromEntries(
+  (Object.keys(KIND_LABELS) as (keyof typeof KIND_LABELS)[]).map((type) => [
+    type,
+    { label: KIND_LABELS[type].queueLabel, icon: KIND_LABELS[type].icon },
+  ]),
+) as Record<SourceV['source_type'], { label: string; icon: string }>
 
 /**
  * 后端 6 态 → 两段中文文案。

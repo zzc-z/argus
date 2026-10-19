@@ -4,7 +4,7 @@ import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
 import { SegmentedTab, type SegmentedTabItem } from '@/components/common/SegmentedTab'
 import styles from './index.module.css'
-import { SOURCE_TYPE_FILTERS, type ApiSourceType } from '../../lib/sourceTypes'
+import { SOURCE_TYPE_FILTERS, type TabKey } from '../../lib/sourceTypes'
 
 /**
  * Filter & control sub-bar — category tabs + search.
@@ -21,11 +21,11 @@ import { SOURCE_TYPE_FILTERS, type ApiSourceType } from '../../lib/sourceTypes'
  */
 export interface SourceFilterBarProps {
   /** 各类资料的条数。key 与 `SOURCE_TYPE_FILTERS` 对齐。 */
-  counts: Record<ApiSourceType, number>
+  counts: Record<TabKey, number>
   total: number
   /** 当前分类。`null` = 全部。 */
-  active: ReadonlySet<ApiSourceType>
-  onChange: (next: ReadonlySet<ApiSourceType>) => void
+  active: ReadonlySet<TabKey>
+  onChange: (next: ReadonlySet<TabKey>) => void
 }
 
 export function SourceFilterBar({ counts, total, active, onChange }: SourceFilterBarProps) {
@@ -48,9 +48,7 @@ export function SourceFilterBar({ counts, total, active, onChange }: SourceFilte
       <SegmentedTab
         items={items}
         activeId={activeId}
-        onChange={(id: string) =>
-          onChange(id === 'all' ? new Set() : new Set([id as ApiSourceType]))
-        }
+        onChange={(id: string) => onChange(id === 'all' ? new Set() : new Set([id as TabKey]))}
         ariaLabel="资料库分类筛选"
       />
 

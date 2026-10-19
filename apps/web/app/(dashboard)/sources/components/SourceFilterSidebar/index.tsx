@@ -8,6 +8,7 @@ import {
   type RowStatus,
   type RowStatusFilter,
   type SourceTypeFilter,
+  type TabKey,
 } from '../../lib/sourceTypes'
 
 /** 类型筛选的选中态。空集合 = 全选（与设计稿的「5 类全勾」一致）。 */
@@ -19,7 +20,7 @@ export type StatusSelection = ReadonlySet<RowStatusFilter['key']>
 export interface SourceFilterSidebarProps {
   /** 每种类型的资料条数，由列表数据现算。 */
   /** 条数允许缺失：某个类型 0 条时就不该显示这一行。 */
-  typeCounts: Record<SourceTypeFilter['key'], number | undefined>
+  typeCounts: Record<TabKey, number>
   /** 每个状态（`indexed` / `processing` / `failed`）的条数，现算。 */
   statusCounts: Record<RowStatusFilter['key'], number | undefined>
   selectedTypes: TypeSelection
@@ -84,7 +85,7 @@ export function SourceFilterSidebar({
                 />
                 <span className={`${styles.checkLabel} font-body-sm`}>{f.label}</span>
               </div>
-              <span className={`${styles.checkCount} font-code`}>{typeCounts[f.key] ?? 0}</span>
+              <span className={`${styles.checkCount} font-code`}>{typeCounts[f.key]}</span>
             </label>
           ))}
         </div>

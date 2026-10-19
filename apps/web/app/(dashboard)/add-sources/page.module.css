@@ -38,3 +38,8 @@
   font-size: var(--text-body-sm-size, 14px);
   line-height: 1.5;
 }
+
+/* 上传失败可能有 N 条（一个文件一条），容器要留出条目间距 */
+.errorLine + .errorLine {
+  margin-top: 0.25rem;
+}

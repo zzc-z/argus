@@ -115,7 +115,7 @@ export function UploadDropZone({ onFilesSelected }: UploadDropZoneProps) {
         {/* 「一次可传多个文件」不是「并发」：page.tsx 的 handleFiles 是
             `for...of await` 顺序传的。后端 upload_source 一次只接一个
             文件，并发只是把 N 个请求同时打出去，没有收益。
-            「扫描件暂不支持」对应 parser.py:80——PDF 提不出文字时直接
+            「扫描件暂不支持」对应后端 PdfParser——PDF 提不出文字时直接
             抛 ParseError，后端没有 OCR。 */}
         <div className={styles.legend}>
           <span className={styles.legendItem}>

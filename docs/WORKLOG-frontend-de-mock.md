@@ -142,25 +142,37 @@ pathlib.Path('/path/to/apps/web/public/_state.json').write_text(json.dumps({
 
 ---
 
-## 还没做
+## 技术债（2026-10-19 已清）
 
-### 后端（低优先，不紧急但真实）
+CR 报的后端 4 严重 + 前端 13 重要，**本轮全清**（用户明确说"技术债直接处理"）。
 
-- **I10 轮询定时器永不停**：`add-sources/page.tsx` 的 `setInterval` 依赖是 `[]`，
-  一旦建成就跑到组件卸载（注释说「全部 indexed/failed 后自然停」是**错的**）。
-  每拍对每个 pending id 各发一个 `fetchSource`，**无在途保护、无 AbortSignal**。
-  传 20 份 PDF 稳态 40+ 并发请求，后端 QPS 悄悄涨一个量级。
+### 已清
 
-### 前端（都不影响功能）
+- **I10 轮询定时器**（`add-sources/page.tsx`）：`setInterval` 依赖 `[]` 永不停
+  → 改成**自调度链**（每个 pending id 一条链，请求完成才安排下一拍）。
+  慢请求不再堆叠；资料进入终态（indexed/failed）即停。
+  浏览器实测：8 秒内对 2 条已 indexed 的资料**一个请求都没发**（旧代码会发 10+ 个）。
+- **I11a 上传错误覆盖**：`setUploadError` 是覆盖不是追加 → 改成 `uploadErrors[]` 累积。
+- **I11b 初次加载吞错**：`.catch(() => undefined)` 吞掉 500 和网络错误 →
+  非 401 的错误现在显示「加载资料列表失败」。实测后端 500 时页面留在原地并提示。
+- **I7 TYPE_TO_FILTER 值域**：`TabKey` 从字面量联合派生，「映射到不存在的 tab」
+  现在是**编译错误**（实测 `docx: 'epub'` → TS2322）。这是 CR 说的
+  「唯一没有编译期保护的一处」。
+- **I8 countByType 返回类型**：`Record<SourceTypeV, number>` → `Record<TabKey, number>`，
+  不再有恒为 0 的 `counts.docx` 静默错误。
+- **I9 死代码**：删掉 `SourceRow.progress` / `STAGE_LABEL` / `processing`
+  （上一轮删了 ProgressBar 渲染，这边没跟上）。
+- **I12 矛盾注释**：修掉「UserMenu 负责」（现在�� AuthGuard）、
+  `meta` 字段注释自相矛盾、`parser.py:80` 硬编码行号（已漂到 :86）。
+- **docx 标签两页不一致**：`DOCX` vs `Word` —— 两份 `Record` 各写一遍，
+  改一处忘另一处无提示。提取到 `sources/lib/sourceKind.ts` 共享，
+  两页各自的措辞（`libraryLabel` / `queueLabel`）保留。
 
-- I7 `TYPE_TO_FILTER` 值类型没和手写数组 `SOURCE_TYPE_FILTERS` 绑定 →
-  「映射到不存在的 tab」编译器拦不住
-- I8 `countByType` 返回 `Record<ApiSourceType, number>` 但 `counts.docx` 恒 0
-- I9 死代码 `progress` / `STAGE_LABEL` / `processing`（上轮删了 ProgressBar 渲染，这边没跟上）
-- I11 `setUploadError` 是覆盖不是追加（注释说「逐条上报」）；
-  初次加载 `.catch(() => undefined)` 吞掉 500 和网络错误
-- I12 六处自相矛盾注释（含硬编码行号 `parser.py:80` 已漂到 `:86`）
-- I13 `SourceFilterBar` 搜索框**完全没接逻辑**，但 docstring 声称「不是假功能」
+### 没清（有意留下）
+
+- **I13 搜索框没接逻辑**：`SourceFilterBar` 的输入框无 `value`/`onChange`，
+  用户输关键词列表不动。docstring 声称"不是假功能"——**这句话是错的**。
+  属上一轮 de-mock 组，本轮未动。下轮要么接上要么删掉输入框。
 
 ### 页面 mock（范围外，用户明确不改）
 

@@ -15,6 +15,7 @@ import { deleteSource, fetchSources, type SourceV as ApiSource } from '@/lib/api
 import {
   countByStatus,
   countByType,
+  type TabKey,
   filterSources,
   toSourceRows,
   type RowStatus,
@@ -32,9 +33,9 @@ export default function SourcesPage() {
   // 真要发请求时 Number() 转回——后端 id 是 int。
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   // 筛选状态。空集合 = 不过滤该维度。
-  const [selectedTypes, setSelectedTypes] = React.useState<ReadonlySet<ApiSource['source_type']>>(
-    new Set(),
-  )
+  // 筛选的语义是**tab**（pdf/html/text），不是后端的 source_type。
+  // 用 tab key 做 state 类型，「映射到一个不存在的 tab」就变成编译错误。
+  const [selectedTypes, setSelectedTypes] = React.useState<ReadonlySet<TabKey>>(new Set())
   const [selectedStatuses, setSelectedStatuses] = React.useState<ReadonlySet<RowStatus>>(new Set())
 
   const refresh = React.useCallback(async (signal: AbortSignal) => {
@@ -44,9 +45,9 @@ export default function SourcesPage() {
       setErrorText(null)
     } catch (err) {
       if (signal.aborted) return
-      // 401 不在这里报：登录态由布局层的 UserMenu 负责（未登录时它给的是
-      // 「去登录」入口）。列表页再弹一条「未登录」横幅，等于把同一件事说
-      // 两遍，且它会盖在筛选栏上方、看起来像筛选坏了。
+      // 401 不在这里报：登录态由布局层的 AuthGuard 负责（未登录时它把
+      // 整页换成登录入口）。列表页再弹一条「未登录」横幅，等于把同一件事
+      // 说两遍，且它会盖在筛选栏上方、看起来像筛选坏了。
       if (err instanceof ApiError && err.status === 401) {
         setErrorText(null)
         return

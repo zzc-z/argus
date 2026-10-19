@@ -15,6 +15,7 @@
  * 字段，多加的会让人对不上「表格在读什么」。
  */
 
+import { mapIcon, mapLibraryLabel } from './sourceKind'
 import type { SourceStatusV, SourceTypeV, SourceV } from '@/lib/api/sources'
 
 export type ApiSourceStatus = SourceStatusV
@@ -49,8 +50,10 @@ export interface SourceRow {
    *  `(row, index) => string`，直接塞 number 会与选择态的 `Set<string>` 打架。 */
   id: number
   title: string
-  /** 副标题：URL 建源显示地址，上传文件显示「文件名」。后端没有文件名——
-   *  `SourceCreate` 只收 `title`，**不存原始文件名**，所以这里退化成类型标签。 */
+  /** 副标题：URL 建源显示地址，上传文件**退化成类型标签**。
+   *  后端不存原始文件名——`SourceCreate` 只收 `title`，上传端点也只把
+   *  文件名塞进 `title`（见 gateway/sources.py 的 upload_source），
+   *  所以拿不到「原始文件名 vs 用户改过的 title」这个区分。 */
   meta: string
   kind: string
   /** 体积。URL 建源时后端没有 Content-Length，为 null——表格据此不显示
@@ -64,38 +67,12 @@ export interface SourceRow {
   timeLabel: string
   iconName: string
   iconAccent: string
-  /** 摄取中的阶段说明，仅 `status === 'processing'` 时有值。后端不给
-   *  阶段内的百分比（`chunk_count` 是终态值），所以这里只能写阶段名。 */
-  progress?: string
-}
-
-const KIND_LABEL: Record<ApiSourceType, string> = {
-  pdf: 'PDF',
-  html: 'URL',
-  text: 'Text',
-  // docx 就是一种文档，单独给它开一个 tab 会让筛选栏多一列而内容不变
-  docx: 'DOCX',
-}
-
-const ICON_NAME: Record<ApiSourceType, string> = {
-  pdf: 'picture_as_pdf',
-  html: 'link',
-  text: 'description',
-  docx: 'article',
 }
 
 const ICON_ACCENT: Record<RowStatus, string> = {
   ready: 'text-emerald-600',
   processing: 'text-amber-600',
   failed: 'text-red-600',
-}
-
-/** 阶段中文名。后端 6 态里有 4 个是「处理中」，分开写才能告诉用户卡在哪。 */
-const STAGE_LABEL: Partial<Record<ApiSourceStatus, string>> = {
-  pending: '等待摄取',
-  parsing: '解析正文中',
-  chunking: '语义切片中',
-  embedding: '向量化中',
 }
 
 /**
@@ -142,20 +119,18 @@ export function formatRelativeTime(iso: string, now: Date = new Date()): string 
 /** 后端单条 → 表格行。 */
 export function toSourceRow(source: SourceV, now: Date = new Date()): SourceRow {
   const status = toRowStatus(source.status)
-  const processing = status === 'processing'
   return {
     id: source.id,
     title: source.title,
-    meta: source.url ?? KIND_LABEL[source.source_type],
-    kind: KIND_LABEL[source.source_type],
+    meta: source.url ?? mapLibraryLabel(source.source_type),
+    kind: mapLibraryLabel(source.source_type),
     size: source.size_bytes === null ? null : formatBytes(source.size_bytes),
     chunks: source.chunk_count > 0 ? `${source.chunk_count} 切片` : '—',
     citations: source.citation_count,
     status,
     timeLabel: formatRelativeTime(source.created_at, now),
-    iconName: ICON_NAME[source.source_type],
+    iconName: mapIcon(source.source_type),
     iconAccent: ICON_ACCENT[status],
-    ...(processing && STAGE_LABEL[source.status] ? { progress: STAGE_LABEL[source.status] } : {}),
   }
 }
 
@@ -166,9 +141,13 @@ export function toSourceRows(sources: readonly SourceV[], now: Date = new Date()
 
 // ── 筛选项 ──────────────────────────────────────────────────
 
-/** 类型筛选项。`key` 是后端 `source_type` 的原值。 */
+/**
+ * 类型筛选项。`key` 是 tab 的 key（见下方 `TabKey`），不是后端
+ * `source_type` 的原值——`docx` 归进「纯文本」tab，筛选的语义是
+ * **用户看到的分类**，不是后端枚举。
+ */
 export interface SourceTypeFilter {
-  key: ApiSourceType
+  key: TabKey
   label: string
 }
 
@@ -187,6 +166,21 @@ export const SOURCE_TYPE_FILTERS: readonly SourceTypeFilter[] = [
 ]
 
 /**
+ * tab 的 key。**这个字面量联合是 tab 集合的唯一真源**——
+ * `SOURCE_TYPE_FILTERS` 与 `TYPE_TO_FILTER` 的值域都从它派生。
+ *
+ * 之前 `TYPE_TO_FILTER` 的值类型是 `ApiSourceType`（全部后端类型），与 tab
+ * 的 key 域没有任何类型关系——`{ pdf: 'pdf', ..., docx: 'epub' }` 能过类型
+ * 检查，但 'epub' 不在 tab 里，那份资料既点不出来、计数也不会显示。
+ * 值域收窄到 TabKey 后，那种错误直接编译失败。
+ *
+ * 不能反过来从 `SOURCE_TYPE_FILTERS` 派生（`(typeof ARR)[number]['key']`）——
+ * 那样 `SourceTypeFilter.key` 的类型又得引用 TabKey，成了循环引用。
+ * 所以真源是这个字面量联合，数组只是它的使用处。
+ */
+export type TabKey = 'pdf' | 'html' | 'text'
+
+/**
  * 后端类型 → 它归属的筛选 tab。
  *
  * **必须显式列全**。`SOURCE_TYPE_FILTERS` 是手写的数组，加了新
@@ -196,7 +190,7 @@ export const SOURCE_TYPE_FILTERS: readonly SourceTypeFilter[] = [
  * docx 归入「纯文本」：它在用户眼里就是一份文档，开第四个 tab 只让筛选
  * 栏变长而不改变筛选结果。
  */
-export const TYPE_TO_FILTER: Record<ApiSourceType, ApiSourceType> = {
+export const TYPE_TO_FILTER: Record<ApiSourceType, TabKey> = {
   pdf: 'pdf',
   html: 'html',
   text: 'text',
@@ -232,7 +226,7 @@ export const ROW_STATUS_FILTERS: readonly RowStatusFilter[] = [
  */
 export function filterSources(
   sources: readonly SourceV[],
-  types: ReadonlySet<ApiSourceType>,
+  types: ReadonlySet<TabKey>,
   statuses: ReadonlySet<RowStatus>,
 ): SourceV[] {
   return sources.filter((s) => {
@@ -251,8 +245,12 @@ export function filterSources(
  * `matchesFilters` 用的是同一套归并，否则 tab 上的数字会和点进去看到的
  * 行数对不上（数字少算，点进去却变多）。
  */
-export function countByType(sources: readonly SourceV[]): Record<ApiSourceType, number> {
-  const counts: Record<ApiSourceType, number> = { pdf: 0, html: 0, text: 0, docx: 0 }
+export function countByType(sources: readonly SourceV[]): Record<TabKey, number> {
+  const counts: Record<TabKey, number> = {
+    pdf: 0,
+    html: 0,
+    text: 0,
+  }
   for (const s of sources) counts[TYPE_TO_FILTER[s.source_type]] += 1
   return counts
 }
