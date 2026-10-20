@@ -39,7 +39,13 @@ from app.services.faithfulness import (
     load_source_texts,
     verify_citations,
 )
-from app.services.llm import get_anthropic_client
+from app.services.llm import (
+    STREAM_INTERRUPT_BACKOFF_SECONDS,
+    STREAM_INTERRUPT_RETRIES,
+    get_anthropic_client,
+    is_stream_interrupt,
+    is_timeout,
+)
 from app.services.stream import (
     AgentEvent,
     DeltaEvent,
@@ -394,7 +400,7 @@ async def run_agent(
         # 缺了它，已经烧掉的 token 就成了用量统计的黑洞——而这恰恰是
         # 最需要留痕的场景（重试也才知道上次烧了多少）。
         yield ledger.done()
-        yield ErrorEvent(code="llm_unavailable", message="模型服务暂时不可用，请稍后重试")
+        yield _error_event_for(exc)
         return
 
     # 一个字的正文都没产出时，必须发 error 让前端显示失败。
@@ -705,6 +711,37 @@ async def _settle(
 # ── 单轮请求 ──────────────────────────────────────────────────
 
 
+def _error_event_for(exc: BaseException) -> ErrorEvent:
+    """把异常翻译成给用户看的错误事件。
+
+    ## 为什么不一律说「模型服务暂时不可用」
+
+    那是**兜底**文案，不是诊断。它把四种完全不同的失败揉成一句话：
+    流被掐断、超时、参数错、key 失效。用户看到它只知道「再试一次」，
+    但「key 失效」重试一万次也没用。
+
+    分开报，用户至少知道该等还是该改配置。
+
+    ``code`` 也跟着变——前端可以按 code 决定要不要给「重试」按钮。
+    """
+    if is_stream_interrupt(exc):
+        return ErrorEvent(
+            code="llm_stream_interrupted",
+            message="模型连接在生成途中被中断，已自动重试仍失败，请稍后重试",
+        )
+    if is_timeout(exc):
+        return ErrorEvent(
+            code="llm_timeout",
+            message="模型响应超时，请缩小问题范围后重试",
+        )
+    # 其余异常（400 参数错、401 key 错、500）统一归为「不可用」——
+    # 具体的 HTTP 状态码不该原样透给用户看。
+    #
+    # 「模型服务未配置」不在这里：那个异常在拿 client 时就抛了（见
+    # run_agent 开头），有自己独立的 ErrorEvent。
+    return ErrorEvent(code="llm_unavailable", message="模型服务暂时不可用，请稍后重试")
+
+
 async def _run_turn(
     client: AsyncAnthropic,
     messages: list[dict[str, Any]],
@@ -716,7 +753,46 @@ async def _run_turn(
     非流式响应不带完整 usage。中转站会把整个 text 块缓冲成一次
     text_delta（实测 243 字符只给 1 个事件），逐字流式在这里拿不到；
     展示节奏由 ``_slice_for_display`` 补。
+
+    ## 流被掐断时的整轮重发
+
+    中转站会在 SSE 流消费途中随机断开连接（实测同一请求 8 次里能挂 2 次），
+    而 SDK 的 ``max_retries`` 只覆盖建连阶段，够不到这里。见
+    ``llm.is_stream_interrupt`` 的说明。断流后整轮重发，最多
+    ``STREAM_INTERRUPT_RETRIES`` 次；仍失败则把异常抛给调用方。
     """
+    request = _build_turn_request(messages, tools)
+    last_exc: BaseException | None = None
+
+    for attempt in range(STREAM_INTERRUPT_RETRIES + 1):
+        try:
+            async with client.messages.stream(**cast("Any", request)) as stream:
+                final = await stream.get_final_message()
+        except Exception as exc:
+            if not is_stream_interrupt(exc):
+                raise
+            last_exc = exc
+            logger.warning(
+                "模型流被中断，第 %d 次重发整轮请求：%s",
+                attempt + 1,
+                type(exc).__name__,
+            )
+            if attempt < STREAM_INTERRUPT_RETRIES:
+                await asyncio.sleep(STREAM_INTERRUPT_BACKOFF_SECONDS)
+            continue
+        return _to_turn_result(final)
+
+    # 走到这里说明每次尝试都被掐断了。把最后一次的异常原样抛出去——
+    # 调用方要靠它判断「流中断」还是别的错误来决定错误文案。
+    assert last_exc is not None
+    raise last_exc
+
+
+def _build_turn_request(
+    messages: list[dict[str, Any]],
+    tools: tuple[ToolSpec, ...],
+) -> dict[str, Any]:
+    """拼出一轮请求的载荷。空 tools 时不带 tools 参数。"""
     settings = get_settings()
     request: dict[str, Any] = {
         "model": settings.anthropic_complex_model,
@@ -726,10 +802,11 @@ async def _run_turn(
     }
     if tools:
         request["tools"] = tool_schemas(tools)
+    return request
 
-    async with client.messages.stream(**cast("Any", request)) as stream:
-        final = await stream.get_final_message()
 
+def _to_turn_result(final: Any) -> TurnResult:
+    """把 SDK 的 Message 收成 TurnResult。"""
     # exclude_none：text block 的 citations 字段在无引用时是 None。
     # 中转站实测能接受，但直连官方 API 时可能被严格模式拒收，
     # 带上 exclude_none 没有代价。

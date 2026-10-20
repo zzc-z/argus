@@ -59,22 +59,19 @@ class Reference:
 
     ## 字段名对齐前端既有契约
 
-    ``apps/web/app/(dashboard)/explore/mock.ts`` 里已有 ``Citation``：
+    前端的引用类型在 ``apps/web/lib/api/sse.ts`` 的 ``ReferenceV``，
+    与本 dataclass 一一对应（``n`` / ``chunk_id`` / ``source_id`` /
+    ``chunk_index`` / ``page`` / ``title`` / ``excerpt`` / ``recall``）。
 
-        interface Citation { id: number; sourceTitle: string; url: string; date: string }
+    两边字段名保持一致，省掉前端一层转换——而转换迟早会漏。
 
-    前端点角标直接吃这个形状（``InspectorDrawer.buildCitationPayload``）。
-    所以这里**沿用它的字段名**而不是另立一套——多一列就得在前端多写一层
-    转换，而两边字段名不一致时，那个转换迟早会漏。
-
-    ``chunk_id`` / ``page`` / ``recall`` 是后端额外的：前端点开后调
+    ``chunk_id`` / ``page`` 前端都在用：点角标后调
     ``GET /sources/{id}/chunks`` 要用 ``chunk_id`` 定位，``page`` 用来决定
-    显示「第 N 页」。当前前端还没用到，不算破坏契约——多字段不影响
-    它按名字取已有那几个。
+    显示「第 N 页」。
     """
 
     n: int
-    """引用编号。前端 ``Citation.id``。"""
+    """引用编号。正文里的 ``[n]``。"""
     chunk_id: int
     source_id: int
     chunk_index: int

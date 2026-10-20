@@ -42,6 +42,12 @@ class ReportSummaryV(BaseModel):
     output_tokens: int
     elapsed_ms: int
     created_at: datetime
+    # 这份报告引用了多少个**切片**（不是资料数）。列表页要显示「N 条引用」。
+    #
+    # 不在 ORM 上：它要从 ``report_sources`` 数出来，而那个表与 reports
+    # 是多对多。要么在列表查询里带子查询，要么多打一次查询——列表页
+    # 一次要渲染 20 行，逐行查就是 N+1。
+    citation_count: int = 0
 
 
 class ReportDetailV(ReportSummaryV):

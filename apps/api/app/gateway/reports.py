@@ -44,13 +44,22 @@ async def list_reports(
 
     ``total`` 单独 count：``items`` 是分页后的那一段，拿 ``len(items)``
     当总数会让最后一页的页码算错。
+
+    引用数用**标量子查询**带出来，不逐行查——列表页一次渲染 20 行，
+    逐行查就是 N+1 次往返。
     """
     total = await db.scalar(
         select(func.count()).select_from(Report).where(Report.user_id == user.id)
     )
+    citation_count = (
+        select(func.count())
+        .select_from(ReportSource)
+        .where(ReportSource.report_id == Report.id)
+        .scalar_subquery()
+    )
     rows = (
-        await db.scalars(
-            select(Report)
+        await db.execute(
+            select(Report, citation_count.label("citation_count"))
             .where(Report.user_id == user.id)
             .order_by(Report.created_at.desc(), Report.id.desc())
             .limit(limit)
@@ -58,7 +67,13 @@ async def list_reports(
         )
     ).all()
     return ReportListResponse(
-        items=[ReportSummaryV.model_validate(r) for r in rows],
+        items=[
+            ReportSummaryV(
+                **ReportSummaryV.model_validate(report).model_dump(exclude={"citation_count"}),
+                citation_count=count,
+            )
+            for report, count in rows
+        ],
         total=total or 0,
         limit=limit,
         offset=offset,
@@ -71,9 +86,10 @@ async def read_report(report_id: int, user: CurrentUser, db: DbSession) -> Repor
     report = await _owned(db, report_id, user.id)
     citations = await _load_citations(db, report.id)
     return ReportDetailV(
-        **ReportSummaryV.model_validate(report).model_dump(),
+        **ReportSummaryV.model_validate(report).model_dump(exclude={"citation_count"}),
         content=report.content,
         citations=citations,
+        citation_count=len(citations),
     )
 
 
