@@ -38,6 +38,11 @@ export async function apiFetch<T>(
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     credentials: 'include',
+    // no-store：所有 API 都是带 cookie 的私有读，而 fetch 默认走 HTTP 启发式
+    // 缓存，GET 响应可被缓存。登录/登出后同一个 URL 的语义已经变了（/me 从
+    // 200 变 401），复用旧响应会让 AuthGuard 拿着过期结论把已登录用户踢回
+    // 登录页。放在 spread 之后是有意的——不允许调用方覆盖。
+    cache: 'no-store',
     headers: {
       'Content-Type': 'application/json',
       ...init.headers,

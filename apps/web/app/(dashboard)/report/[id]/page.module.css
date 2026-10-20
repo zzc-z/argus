@@ -33,3 +33,19 @@
 }
 
 
+
+/* ── 加载 / 错误态 ──────────────────────────────────────────
+   报告正文是异步取的，首帧没有内容。给出明确的一行字，
+   而不是空白——空白让用户以为页面坏了。 */
+
+.stateText {
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 14px;
+  padding: 3rem 0;
+}
+
+.stateError {
+  color: var(--token-error, #b3261e);
+  font-size: 14px;
+  padding: 3rem 0;
+}

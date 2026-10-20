@@ -3,13 +3,10 @@
 /**
  * /explore — Argus 多智能体深度研究控制台。
  *
- * 设计稿是 argus_2/code.html 的还原，但配色已全部改走项目 Material 3
- * token（`--token-surface-*` / `--token-primary` 等），跟随全局主题切换。
- * UI 主字体用 Inter，通过 next/font/google 按页面加载，不影响其他路由。
+ * 配色全部走项目 Material 3 token（`--token-surface-*` / `--token-primary`），
+ * 跟随全局主题切换。UI 主字体用 Inter，通过 next/font/google 按页面加载。
  *
- * 顶栏与侧边栏来自 `(dashboard)/layout.tsx`，本页不再自带一套——早期版本
- * 有一根 56px 的深色 TopBar，与 layout 的全局 topbar 叠成两层头部，
- * 内容被顶到视口外。现在只留页面级标题栏（标题 + 检查器开关）。
+ * 顶栏与侧边栏来自 `(dashboard)/layout.tsx`，本页不再自带一套。
  *
  * 布局（中心栏 + 可折叠检查器）：
  *   ┌─────────────────────────────────┬────────────┐
@@ -18,23 +15,39 @@
  *   │ Center column (920px)           │ (380px)    │
  *   │  ├ AgentDAG (5 nodes)           │ collapsible│
  *   │  ├ 收尾统计 + FaithfulnessPanel │            │
- *   │  ├ StreamingReport (H1 + prose) │            │
+ *   │  ├ StreamingReport (正文)       │            │
  *   └─────────────────────────────────┴────────────┘
  *           ┌──────────────────────────┐
  *           │ PromptInput (48px fixed) │
  *           └──────────────────────────┘
+ *
+ * 页面无任何演示数据：节点名册来自 `constants.ts`（后端 Stage 枚举的镜像），
+ * 其余一切——正文、引用、工具轨迹、校验结论——都来自 `/research/ask` 的
+ * SSE 流或 chunks 接口。
  */
 
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type Dispatch,
+  type SetStateAction,
+} from 'react'
 import { Inter } from 'next/font/google'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 
 import { AgentDAG } from './components/AgentDAG'
 import { StreamingReport } from './components/StreamingReport'
 import {
   InspectorDrawer,
-  getDefaultInspectorPayload,
   buildNodePayload,
   buildCitationPayload,
+  emptyInspectorPayload,
   type InspectorPayload,
   type SourceTextState,
 } from './components/InspectorDrawer'
@@ -44,8 +57,10 @@ import {
   FaithfulnessPending,
 } from './components/FaithfulnessPanel'
 import { PromptInput } from './components/PromptInput'
+import { ResumeRunCard } from './components/ResumeRunCard'
 import { apiStream, type SseEvent } from '@/lib/api/client'
 import { clearChunkCache, fetchChunks } from '@/lib/api/sources'
+import { parseEvent } from '@/lib/api/sse'
 import type {
   DoneEventV,
   FaithfulnessEventV,
@@ -54,14 +69,20 @@ import type {
   ToolCallEventV,
 } from '@/lib/api/sse'
 import {
-  AGENT_NODES,
-  CITATIONS,
+  initialNodes,
+  SLASH_COMMANDS,
   type AgentNode,
   type Citation,
   type NodeLifecycle,
   type SlashCommand,
   type ToolCall,
-} from './mock'
+} from './constants'
+import {
+  getLastRunSnapshot,
+  parseLastRun,
+  subscribeLastRun,
+  writeLastRun,
+} from './lastRun'
 import styles from './page.module.css'
 
 const inter = Inter({
@@ -69,9 +90,6 @@ const inter = Inter({
   display: 'swap',
   weight: ['400', '500', '600'],
 })
-
-/** 把所有 agent 节点重置为 pending —— 每次提问都从 0 重新跑。 */
-const INITIAL_NODES: AgentNode[] = AGENT_NODES.map((n) => ({ ...n, lifecycle: 'pending' }))
 
 /**
  * 运行态。刻意不含 'error'——错误由 `errorText` 单独承担。
@@ -81,31 +99,37 @@ const INITIAL_NODES: AgentNode[] = AGENT_NODES.map((n) => ({ ...n, lifecycle: 'p
 type RunState = 'idle' | 'running' | 'completed'
 
 /**
- * 把一次工具调用转成 InspectorDrawer 要的展示态。
+ * 把一次工具调用的 start 帧转成 InspectorDrawer 要的展示态。
  *
- * 后端把一次调用拆成两段发（开始时立刻显示「正在搜索」，结束后补耗时），
- * 前端按 call_id 配对：start 建的记录，end 时补齐耗时与成败。
- *
- * `end` 是同一 call_id 的 end 事件；没有就说明还在跑，duration 显示
- * 「执行中…」。start 事件一定存在——后端先发 start 再执行工具。
+ * 只有 start 帧带 `tool_input`——后端在开始时把参数带上，end 帧的空对象
+ * 是「结束帧不带参数」而非「参数为空」。
  */
-function toToolCall(v: ToolCallEventV, end?: ToolCallEventV): ToolCall {
-  const source = end ?? v
+function toToolCall(v: ToolCallEventV): ToolCall {
   return {
-    id: source.call_id,
-    name: source.name,
-    args: JSON.stringify(source.tool_input).slice(0, 120),
-    duration: end ? `${(source.elapsed_ms / 1000).toFixed(1)}s` : '执行中…',
+    id: v.call_id,
+    name: v.name,
+    args: JSON.stringify(v.tool_input).slice(0, 120),
+    duration: '执行中…',
   }
 }
 
-/** 把后端 node 事件合并到前端 AgentNode 上。 */
+/**
+ * 把后端 node 事件合并到前端 AgentNode 上。
+ *
+ * `detail` 存进行时的描述，节点跑完后后端发 completed 且 detail 为空串，
+ * 此时回落到静态 `role`——「正在检索与取证」配着完成勾是错的。
+ */
 function applyNode(node: AgentNode, nv: NodeEventV): AgentNode {
   return {
     ...node,
-    role: nv.detail || node.role,
+    detail: nv.detail,
     lifecycle: nv.lifecycle as NodeLifecycle,
-    latency: nv.elapsed_ms != null ? `${(nv.elapsed_ms / 1000).toFixed(1)}s` : node.latency,
+    latency:
+      nv.lifecycle === 'active'
+        ? '运行中'
+        : nv.elapsed_ms != null
+          ? `${(nv.elapsed_ms / 1000).toFixed(1)}s`
+          : node.latency,
   }
 }
 
@@ -132,10 +156,18 @@ type RunHandlers = {
   setFaithfulness: Dispatch<SetStateAction<FaithfulnessState>>
   setToolCalls: Dispatch<SetStateAction<ToolCall[]>>
   setCitations: Dispatch<SetStateAction<Citation[]>>
-  setCitationsLive: Dispatch<SetStateAction<boolean>>
   setQuestion: Dispatch<SetStateAction<string>>
-  /** 作废在飞的原文请求并清空原文区。每轮开跑与收到新 reference 帧时都要调。 */
+  setInspectorPayload: Dispatch<SetStateAction<InspectorPayload>>
+  /** 作废在飞的原文请求并清空原文区。每轮开跑时调用。 */
   invalidateSourceText: () => void
+  /**
+   * 本轮的问题原文。
+   *
+   * 不是 setter——``done`` 事件到达时要把它写进「上次研究」的本地记录，
+   * 而那时 state 里的值可能还没更新（setState 是异步的）。所以由调用方
+   * 直接给出这一轮的问题。
+   */
+  question: string
 }
 
 /**
@@ -144,13 +176,23 @@ type RunHandlers = {
  * 后端把一次调用拆成 start / end 两段发，start 先占位显示「执行中…」，
  * end 到达时用真实耗时覆盖同一 call_id。start 一定先于 end（后端先发 start
  * 再执行工具），所以找不到已有记录就一定是首帧。
+ *
+ * **参数只能取自 start 帧**：end 帧的 `tool_input` 是空对象（后端只在
+ * 开始时带参数）。end 帧到达时若整条覆盖过去，入参就变成 `{}`——参数
+ * 恰好是工具轨迹最该展示的东西，丢了它这一栏就只剩一个函数名。
  */
 function mergeToolCall(prev: ToolCall[], tv: ToolCallEventV): ToolCall[] {
-  const merged = toToolCall(tv, tv.phase === 'end' ? tv : undefined)
   const i = prev.findIndex((c) => c.id === tv.call_id)
-  if (i < 0) return [...prev, merged]
+  if (i < 0) return [...prev, toToolCall(tv)]
+  const existing = prev[i]
+  if (existing === undefined) return prev
   const next = [...prev]
-  next[i] = merged
+  next[i] = {
+    ...existing,
+    name: tv.name,
+    duration:
+      tv.phase === 'end' ? `${(tv.elapsed_ms / 1000).toFixed(1)}s` : existing.duration,
+  }
   return next
 }
 
@@ -162,48 +204,52 @@ function mergeToolCall(prev: ToolCall[], tv: ToolCallEventV): ToolCall[] {
  * CONVENTIONS §3 的 50 行上限。
  */
 function applyEvent(event: SseEvent, h: RunHandlers): void {
-  const v = event.v
   switch (event.type) {
     case 'node': {
-      const nv = v as unknown as NodeEventV
+      const nv = parseEvent<NodeEventV>(event)
       h.setNodes((prev) => prev.map((n) => (n.id === nv.node_id ? applyNode(n, nv) : n)))
       break
     }
-    case 'delta': {
-      const dv = v as unknown as { text: string }
-      h.setStreamedText((prev) => prev + dv.text)
+    case 'delta':
+      h.setStreamedText((prev) => prev + parseEvent<{ text: string }>(event).text)
       break
-    }
-    case 'error': {
-      const ev = v as unknown as { message: string }
-      h.setErrorText(ev.message)
+    case 'error':
+      h.setErrorText(parseEvent<{ message: string }>(event).message)
       break
-    }
-    case 'done':
-      h.setSummary(v as unknown as DoneEventV)
+    case 'done': {
+      const done = parseEvent<DoneEventV>(event)
+      h.setSummary(done)
       h.setRunState('completed')
       // done 先于校验帧发出（见 FaithfulnessPanel 的模块注释），所以
       // 这里把校验切到 pending 而不是等 faithfulness 到了才显示。
       h.setFaithfulness({ kind: 'pending' })
-      break
-    case 'faithfulness':
-      h.setFaithfulness({ kind: 'done', report: v as unknown as FaithfulnessEventV })
-      break
-    case 'tool_call': {
-      h.setToolCalls((prev) => mergeToolCall(prev, v as unknown as ToolCallEventV))
+      // 记下「上次的研究」。只记 report_id 非 null 的——没有落盘就没有
+      // 可恢复的东西，记一条指向不存在报告的记录只会让入口点进去 404。
+      if (done.report_id != null) {
+        writeLastRun({
+          reportId: done.report_id,
+          question: h.question,
+          sessionId: done.session_id,
+          savedAt: new Date().toISOString(),
+        })
+      }
       break
     }
+    case 'faithfulness':
+      h.setFaithfulness({ kind: 'done', report: parseEvent<FaithfulnessEventV>(event) })
+      break
+    case 'tool_call':
+      h.setToolCalls((prev) => mergeToolCall(prev, parseEvent<ToolCallEventV>(event)))
+      break
     case 'reference': {
-      const rv = v as unknown as ReferenceEventV
       // 整体替换而非 append：后端 ReferenceTable.all 每次下发的是
       // 已编号的全表，append 会让编号重复。
-      h.setCitations(rv.references)
-      h.setCitationsLive(true)
-      // 编号含义变了，在飞的原文请求必须作废。reference 帧一次流里
-      // 会发多次（每次工具调用命中就发一帧），重新编号后角标 [1]
-      // 指的是另一个 chunk——不失效的话抽屉会给出旧编号的全文，
-      // 而正文角标已指向新切片，恰好是这个功能要防的事。
-      h.invalidateSourceText()
+      //
+      // **不需要作废在飞的原文请求**：后端 ReferenceTable 按 chunk_id 记账
+      // （`citation.py` 的 `_numbers`），编号只增不减、跨轮稳定，同一个
+      // `[n]` 永远指向同一个 chunk。早期版本这里假设「重新编号」并清空原文区，
+      // 那个前提是错的——真实后果是流式中途用户点开的角标被无端抹掉。
+      h.setCitations(parseEvent<ReferenceEventV>(event).references)
       break
     }
     default:
@@ -219,10 +265,9 @@ function applyEvent(event: SseEvent, h: RunHandlers): void {
  *
  * 会停在 pending 的路径有两条：
  *  1. done 与 faithfulness 之间有最长约 6 分钟的零字节静默窗口
- *     （`llm.py` 的 MODEL_TIMEOUT_SECONDS=120 × 3 次尝试——SDK 的
- *     `range(max_retries + 1)`，实测 `max_retries=2` 是 3 次而非 2 次）。
+ *     （`llm.py` 的 MODEL_TIMEOUT_SECONDS=120 × 3 次尝试）。
  *     窗口内**不发任何字节**，中间层的空闲超时（代理 / 网关）会掐断连接。
- *     `[未核实]` 本仓没有部署配置，具体阈值取决于部署形态。
+ *     本仓没有部署配置，具体阈值取决于部署形态。[未核实]
  *  2. `llm_unavailable` / `empty_response` 两条错误路径（`agent.py`
  *     在 yield 完 done + ErrorEvent 后直接 return，从不进 `_settle`）。
  *
@@ -238,7 +283,7 @@ function settleFaithfulness(h: RunHandlers): void {
 
 /** 一次提问开始前把所有单次运行的产物清干净。 */
 function resetForRun(h: RunHandlers, question: string): void {
-  h.setNodes(INITIAL_NODES)
+  h.setNodes(initialNodes())
   h.setStreamedText('')
   h.setErrorText(null)
   h.setSummary(null)
@@ -247,9 +292,11 @@ function resetForRun(h: RunHandlers, question: string): void {
   h.setRunState('running')
   // 引用表和工具轨迹一样属于单次运行的产物，重问时必须清空——否则上一轮
   // 的编号会跟这一轮的正文对不上。
-  h.setCitations(CITATIONS)
-  h.setCitationsLive(false)
+  h.setCitations([])
   h.setToolCalls([])
+  // 检查器载荷也是单次运行的产物：上一轮点开的节点/引用带着旧 latency 与
+  // 旧 chunk_id，留着会让用户对着上一轮的数据看这一轮的正文。
+  h.setInspectorPayload(emptyInspectorPayload())
   // 令牌自增作废旧请求：上一轮点开的原文属于上一轮的 chunk_id，
   // 而 chunk_id 是自增主键，新一轮很可能命中不同的 id。令牌拦的是
   // 「写进 state」，abort 拦的是「继续下载」——长文档的 payload 有十几 MB，
@@ -259,18 +306,16 @@ function resetForRun(h: RunHandlers, question: string): void {
 }
 
 export default function ExplorePage() {
-  const [inspectorOpen, setInspectorOpen] = useState(true)
-  const [inspectorPayload, setInspectorPayload] = useState<InspectorPayload>(() =>
-    getDefaultInspectorPayload(),
-  )
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [inspectorPayload, setInspectorPayload] = useState<InspectorPayload>(emptyInspectorPayload)
 
   const [promptValue, setPromptValue] = useState('')
-  // Popover 仅在输入恰好是单个 '/' 时显示（设计稿要求）；输入更多字符即隐藏。
+  // Popover 仅在输入恰好是单个 '/' 时显示；输入更多字符即隐藏。
   const slashVisible = promptValue === '/'
 
   // 运行态：驱动 DAG 节点推进 + StreamingReport 尾段打字机。
   const [runState, setRunState] = useState<RunState>('idle')
-  const [nodes, setNodes] = useState<AgentNode[]>(INITIAL_NODES)
+  const [nodes, setNodes] = useState<AgentNode[]>(initialNodes)
   const [streamedText, setStreamedText] = useState('')
   const [errorText, setErrorText] = useState<string | null>(null)
   // 收尾统计：done 事件带的 session_id / 耗时 / token 数。
@@ -279,17 +324,22 @@ export default function ExplorePage() {
   // 两个 boolean 下 `pending=true && report!==null`（同时声称「进行中」和
   // 「已有结论」）这类自相矛盾的组合是可表示的，画出来必然出错。
   const [faithfulness, setFaithfulness] = useState<FaithfulnessState>({ kind: 'idle' })
-  // 当前提问。标题要从它取——后端返回的正文不含标题。
+  // 当前提问。空态与收尾行都要读它。
   const [question, setQuestion] = useState('')
   // 工具调用轨迹：InspectorDrawer 的「已执行工具调用」区读它。
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([])
-  // 引用表：后端 reference 事件下发。初始给 mock 的 CITATIONS，让未提问
-  // 时的静态段落仍有可点角标；一旦流开始就会被真实数据整体替换。
-  const [citations, setCitations] = useState<Citation[]>(CITATIONS)
-  // 引用表是否已来自真实 reference 事件。mock 的 source_id / chunk_id 全是
-  // 假值（17 / 4211），真去拉只会得到 404——于是演示态和真出错在界面上
-  // 一模一样，评审时无法区分「这是 mock」和「这是 bug」。
-  const [citationsLive, setCitationsLive] = useState(false)
+  // 引用表：后端 reference 事件下发。未提问时为空，正文里也就没有角标。
+  const [citations, setCitations] = useState<Citation[]>([])
+
+  // 上次跑完的研究（存在 localStorage）。切页回来时用它给出「去看报告」
+  // 的入口——运行态本身不持久化，但报告是落盘的。
+  //
+  // 用 `useSyncExternalStore`：localStorage 是**外部系统**，这个 hook 就是
+  // 为它设计的。`useState` + `useEffect` 读它会触发 React 的
+  // `react-hooks/set-state-in-effect` 规则（级联渲染），而且首帧会先渲染
+  // 一遍「没有上次」再跳到「有上次」——闪一下。
+  const lastRunSnapshot = useSyncExternalStore(subscribeLastRun, getLastRunSnapshot, () => null)
+  const lastRun = useMemo(() => parseLastRun(lastRunSnapshot), [lastRunSnapshot])
 
   // 原文区：点角标后按 chunk_id 拉全文。三态而非 null——「不显示」与
   // 「加载中」「拉取失败」要显示的东西完全不同，合并成一个值就会把
@@ -309,9 +359,9 @@ export default function ExplorePage() {
   const sourceAbortRef = useRef<AbortController | null>(null)
 
   const handleSelectNode = useCallback(
-    (node: Parameters<typeof buildNodePayload>[0]) => {
+    (node: AgentNode) => {
       setInspectorOpen(true)
-      setInspectorPayload({ ...buildNodePayload(node), toolCalls })
+      setInspectorPayload(buildNodePayload(node))
       // 令牌要自增 + 请求要 abort，两件事缺一不可：
       // 令牌拦住「响应写进 state」，abort 拦住「继续下载」。少了后者，
       // 「点角标 → 点 DAG 节点」之后那个请求仍会跑完全量 payload。
@@ -319,22 +369,13 @@ export default function ExplorePage() {
       sourceTextToken.current += 1
       setSourceText({ kind: 'none' })
     },
-    [toolCalls],
+    [],
   )
 
   const handleSelectCitation = useCallback(
-    async (citation: Parameters<typeof buildCitationPayload>[0]) => {
+    async (citation: Citation) => {
       setInspectorOpen(true)
       setInspectorPayload(buildCitationPayload(citation))
-
-      // mock 引用的 source_id 是编出来的，真去拉必然 404。不拦的话，
-      // 未提问时的静态段落点角标会显示「原文拉取失败：资料不存在」——
-      // 与真出错一模一样，评审时没法分辨。
-      if (!citationsLive) {
-        sourceTextToken.current += 1
-        setSourceText({ kind: 'none' })
-        return
-      }
 
       const token = (sourceTextToken.current += 1)
       sourceAbortRef.current?.abort()
@@ -369,7 +410,7 @@ export default function ExplorePage() {
         })
       }
     },
-    [citationsLive],
+    [],
   )
 
   const handleToggleInspector = useCallback(() => {
@@ -396,13 +437,14 @@ export default function ExplorePage() {
       setFaithfulness,
       setToolCalls,
       setCitations,
-      setCitationsLive,
+      setInspectorPayload,
       setQuestion,
       invalidateSourceText: () => {
         sourceAbortRef.current?.abort()
         sourceTextToken.current += 1
         setSourceText({ kind: 'none' })
       },
+      question,
     }
 
     resetForRun(handlers, question)
@@ -426,7 +468,7 @@ export default function ExplorePage() {
   }, [])
 
   const handleSlashSelect = useCallback((cmd: SlashCommand) => {
-    setPromptValue(`${cmd.cmd} `)
+    setPromptValue(`${cmd.template} `)
   }, [])
 
   const handlePromptSubmit = useCallback(
@@ -440,6 +482,19 @@ export default function ExplorePage() {
     [runState, run],
   )
 
+  // 报告页「继续推演」带 ?question= 跳过来时预填输入框。
+  const handlePrefillQuestion = useCallback((value: string) => {
+    setPromptValue(value)
+  }, [])
+
+  // 「重新提问」：把上次的问题填回输入框。
+  //
+  // **不自动提交**——理由同 QuestionPrefill：自动提交等于替用户花一次
+  // 真金白银的模型调用，且不可撤销。
+  const handleReask = useCallback((value: string) => {
+    setPromptValue(value)
+  }, [])
+
   // 卸载时中断挂起的请求，否则组件没了 fetch 还在跑。
   useEffect(
     () => () => {
@@ -448,6 +503,8 @@ export default function ExplorePage() {
     },
     [],
   )
+
+  const reportId = summary?.report_id ?? null
 
   return (
     <div className={`${styles.shell} ${inter.className}`}>
@@ -477,11 +534,24 @@ export default function ExplorePage() {
               {errorText}
             </p>
           )}
+          {/* 恢复条只在**本轮还没跑**时出现。跑完的当次，summary 行里
+              已经有「查看完整报告 ↗」了，两处入口重复。 */}
+          {!summary && lastRun && (
+            <ResumeRunCard run={lastRun} onReask={handleReask} />
+          )}
           {summary && (
             <p className={styles.summary}>
               会话 {summary.session_id.slice(0, 8)} · {summary.turns} 轮 ·{' '}
               {(summary.elapsed_ms / 1000).toFixed(1)} 秒 · 输入 {summary.input_tokens} / 输出{' '}
               {summary.output_tokens} tokens{summary.truncated && ' · 已截断'}
+              {reportId != null && (
+                <>
+                  {' · '}
+                  <Link href={`/report/${reportId}`} className={styles.reportLink}>
+                    查看完整报告 ↗
+                  </Link>
+                </>
+              )}
             </p>
           )}
           {faithfulness.kind === 'pending' && <FaithfulnessPending />}
@@ -493,8 +563,8 @@ export default function ExplorePage() {
             onSelectCitation={handleSelectCitation}
             citations={citations}
             streamedText={streamedText}
+            streaming={runState === 'running'}
             query={question || undefined}
-            title={question ? `${question} · 研究报告` : undefined}
           />
         </main>
 
@@ -502,6 +572,7 @@ export default function ExplorePage() {
         <InspectorDrawer
           open={inspectorOpen}
           payload={inspectorPayload}
+          toolCalls={toolCalls}
           sourceText={sourceText}
           onClose={handleCloseInspector}
         />
@@ -515,10 +586,46 @@ export default function ExplorePage() {
             onChange={setPromptValue}
             onSubmit={handlePromptSubmit}
             slashVisible={slashVisible}
+            slashCommands={SLASH_COMMANDS}
+            disabled={runState === 'running'}
             onSlashSelect={handleSlashSelect}
           />
         </div>
       </div>
+
+      {/* 预填：报告页的「继续推演」带 ?question= 跳过来。
+          Suspense 边界包住读 URL 的部分——Next 16 要求 read-URL 的
+          Client Component 在边界内，否则整条路由无法静态预渲染。 */}
+      <Suspense fallback={null}>
+        <QuestionPrefill onFill={handlePrefillQuestion} />
+      </Suspense>
     </div>
   )
+}
+
+/**
+ * 从 URL 的 `?question=` 预填输入框。
+ *
+ * ## 为什么单独拆一个组件
+ *
+ * `useSearchParams` 要求组件在 `<Suspense>` 边界内——Next 16 里读 URL 的
+ * Client Component 会让整条路由失去静态预渲染能力，`next build` 直接以
+ * missing-suspense-with-csr-bailout 失败。把读 URL 的部分隔离到叶子
+ * 组件里，边界就只需要包住它一个。
+ *
+ * ## 为什么**不自动提交**
+ *
+ * 预填只是把问题放进输入框。用户可能想改、想删、想先看看上下文。
+ * 自动提交等于替他花掉一次真金白银的模型调用（一次完整的多轮检索几十秒
+ * + 真实 token 花费），且不可撤销。
+ */
+function QuestionPrefill({ onFill }: { onFill: (value: string) => void }) {
+  const params = useSearchParams()
+  const question = params.get('question')
+
+  useEffect(() => {
+    if (question) onFill(question)
+  }, [question, onFill])
+
+  return null
 }

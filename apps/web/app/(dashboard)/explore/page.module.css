@@ -123,3 +123,12 @@
 .inspectorToggle:hover {
   background: var(--token-surface-container, #edeeef);
 }
+
+.reportLink {
+  color: var(--token-primary, #5704e1);
+  text-decoration: none;
+}
+
+.reportLink:hover {
+  text-decoration: underline;
+}

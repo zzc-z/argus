@@ -57,6 +57,16 @@
   background-color: var(--token-surface-container-low, #f3f4f5);
 }
 
+/* 键盘高亮行。跟 hover 区分开：键盘操作时鼠标不在这一行上，
+   没有独立样式的话方向键移动看不出移动到哪了。 */
+.rowActive {
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 10%, transparent);
+}
+
+.rowActive:hover {
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 14%, transparent);
+}
+
 .rowLeft {
   display: flex;
   align-items: center;

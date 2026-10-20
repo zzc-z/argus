@@ -60,7 +60,10 @@
   padding: 0.625rem;
   border-radius: 0.5rem;
   background-color: var(--token-surface-container-low, #f3f4f5);
-  text-decoration: none;
+  text-align: left;
+  border: none;
+  font: inherit;
+  cursor: pointer;
   transition: background-color 150ms ease-out;
 }
 
@@ -80,38 +83,19 @@
   gap: 0.5rem;
 }
 
-.itemCategory {
+.itemIndex {
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
   background-color: var(--token-surface-container-highest, #e1e3e4);
   color: var(--token-on-surface-variant, #494456);
   font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.itemScore {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-  font-size: 12px;
   white-space: nowrap;
 }
 
-.authority {
-  color: #047857;
-  font-weight: 700;
-}
-
-.scoreSep {
-  color: var(--token-outline-variant, #cac3d9);
-}
-
-.match {
+.itemCiteCount {
   color: var(--token-on-surface-variant, #494456);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .itemTitle {
@@ -129,6 +113,17 @@
   color: var(--token-primary, #5704e1);
 }
 
+/* 切片摘要：最多两行，超出省略——完整摘要在正文里能看到。 */
+.itemExcerpt {
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .itemFoot {
   display: flex;
   align-items: center;
@@ -136,22 +131,4 @@
   color: var(--token-on-surface-variant, #494456);
   font-size: 11px;
   padding-top: 0.125rem;
-}
-
-.viewAllBtn {
-  width: 100%;
-  margin-top: 0.5rem;
-  padding: 0.5rem;
-  border-radius: 0.5rem;
-  background-color: var(--token-surface-container, #edeeef);
-  color: var(--token-on-surface, #191c1d);
-  border: none;
-  cursor: pointer;
-  font-size: 11px;
-  transition: background-color 150ms ease-out;
-  text-align: center;
-}
-
-.viewAllBtn:hover {
-  background-color: var(--token-surface-container-high, #e7e8e9);
 }

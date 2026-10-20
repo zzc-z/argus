@@ -2,44 +2,46 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { StatusDot } from '@/components/common/StatusDot'
 import { cn } from '@/lib/utils'
-import { reportMeta } from '../../mock'
 import styles from './index.module.css'
 
-/**
- * Title hero — tag chips + h1 + meta info row.
- * Pure presentation; parent provides nothing.
- */
-export function TitleHero() {
-  const m = reportMeta
+export interface TitleHeroProps {
+  /** 报告标题——后端不另存标题，用原始提问当标题。 */
+  question: string
+  /** ISO 时间串。 */
+  createdAt: string
+  inputTokens: number
+  outputTokens: number
+  elapsedMs: number
+  /** 引用条目数。 */
+  citationCount: number
+}
 
+/**
+ * 报告标题区：原始提问 + 生成元信息。
+ *
+ * 纯展示，不自己取数——数据由页面层从 `GET /api/v1/reports/{id}` 拿。
+ */
+export function TitleHero({
+  question,
+  createdAt,
+  inputTokens,
+  outputTokens,
+  elapsedMs,
+  citationCount,
+}: TitleHeroProps) {
   return (
     <section className={styles.card}>
-      <div className={styles.tagRow}>
-        {m.tags.map((tag) => (
-          <span key={tag} className={cn(styles.tag, 'font-label-sm')}>
-            {tag}
-          </span>
-        ))}
-        <span className={cn(styles.dagChip, 'font-code')}>
-          <StatusDot color="purple" ping />
-          DAG 拓扑流水线已校验 (SHA-256: {m.dagSha})
-        </span>
-      </div>
-
-      <h1 className={cn(styles.title, 'font-headline-xl')}>{m.title}</h1>
+      <h1 className={cn(styles.title, 'font-headline-xl')}>{question}</h1>
 
       <div className={cn(styles.metaRow, 'font-label-sm')}>
-        <MetaItem icon="schedule" label={`${m.generatedHoursAgo} 小时前自动生成`} />
+        <MetaItem icon="schedule" label={`生成于 ${formatDateTime(createdAt)}`} />
         <Sep />
-        <MetaItem icon="smart_toy" label={`${m.agentCount} 个智能体协同构建`} />
+        <MetaItem icon="menu_book" label={`${citationCount} 条引用`} />
         <Sep />
-        <MetaItem icon="menu_book" label={`${m.citationCount} 篇权威白皮书引用`} />
+        <MetaItem icon="memory" label={formatTokens(inputTokens, outputTokens)} />
         <Sep />
-        <MetaItem icon="memory" label={`${m.tokenCostK}k Token 消耗`} />
-        <Sep />
-        <MetaItem icon="verified" label={`综合置信度 ${m.confidencePct}%`} highlight />
+        <MetaItem icon="timer" label={`耗时 ${formatDuration(elapsedMs)}`} />
       </div>
     </section>
   )
@@ -48,12 +50,11 @@ export function TitleHero() {
 interface MetaItemProps {
   icon: string
   label: string
-  highlight?: boolean
 }
 
-function MetaItem({ icon, label, highlight }: MetaItemProps) {
+function MetaItem({ icon, label }: MetaItemProps) {
   return (
-    <span className={cn(styles.metaItem, highlight && styles.metaItemHighlight)}>
+    <span className={styles.metaItem}>
       <IconSpan name={icon} size={15} />
       {label}
     </span>
@@ -62,4 +63,32 @@ function MetaItem({ icon, label, highlight }: MetaItemProps) {
 
 function Sep() {
   return <span className={styles.metaSep}>·</span>
+}
+
+/**
+ * ISO → `2026-10-20 14:32`（本地时区）。
+ *
+ * 非法时间戳原样返回：坏数据不该让整个标题区白屏。
+ */
+function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** token 用量。输入输出都留着——只给总数看不出是检索还是成稿烧的。 */
+function formatTokens(inputTokens: number, outputTokens: number): string {
+  return `${inputTokens.toLocaleString('zh-CN')} 输入 / ${outputTokens.toLocaleString('zh-CN')} 输出 Token`
+}
+
+/** 耗时。毫秒级保留整数，秒级一位小数，再长就用分秒。 */
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '未知'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const minutes = Math.floor(ms / 60_000)
+  const seconds = Math.round((ms % 60_000) / 1000)
+  return `${minutes} 分 ${seconds} 秒`
 }

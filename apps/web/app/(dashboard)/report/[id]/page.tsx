@@ -1,198 +1,176 @@
 'use client'
 
 /**
- * Report detail page — `/report/[id]`.
+ * 报告详情页 —— `/report/[id]`。
  *
- * Layout (1:1 from argus_report_detail/code.html):
- *   ┌─ ReportHeader (breadcrumb + share/export/... actions)
- *   ├─ Title hero (full-width)
- *   ├─ View switcher (4 tabs: report / comparison / timeline / decision)
- *   ├─ Active view body — each view owns a 12-col grid (xl:8 main + xl:4 drawer)
- *   │    └─ Right drawer — SourcesPanel + (report-only) AgentLogPanel + RelatedReports
- *   └─ ResearchDock (fixed bottom, floating)
+ * ## 页面能显示什么
  *
- * Interaction state owned here:
- *   - active view tab (4 tabs, all wired)
- *   - highlighted source id (click a citation mark → highlight source row)
- *   - comparison scope (H100 / B200 / Rack)
+ * 后端 `GET /api/v1/reports/{id}` 只返回这些：
+ *   - `question`（原始提问，当标题用）· `created_at` · token 数 · 耗时
+ *   - `content`（正文 markdown 原文）
+ *   - `citations[]`（角标 + 切片信息 + 资料名 + 摘要 + 被引次数）
  *
- * Note: layout.tsx in `(dashboard)` owns the sidebar + top header chrome.
+ * 早期版本这页是整页 mock：规格矩阵、benchmark 柱状图、TCO 成本卡、
+ * 决策项表、agent 逐步日志、技术演进时间线、相关报告推荐——**后端一个
+ * 字段都没有**，那些组件已随 mock 一起删除。留空壳不如不留。
+ *
+ * 现在的形态：一个「带角标的 markdown 报告阅读器」+ 右侧引用面板。
  */
 
 import * as React from 'react'
-import { useMemo, useState } from 'react'
+import { use, useCallback, useEffect, useState } from 'react'
 
 import { TitleHero } from './components/TitleHero'
-import { ViewSwitcher } from './components/ViewSwitcher'
 import { ReportHeader } from './components/ReportHeader'
 import { ChapterSection } from './components/ChapterSection'
-import { SpecTable } from './components/SpecTable'
-import { BenchmarkBars } from './components/BenchmarkBars'
-import { TcoCards } from './components/TcoCards'
 import { SourcesPanel } from './components/SourcesPanel'
-import { AgentLogPanel } from './components/AgentLogPanel'
 import { RelatedReports } from './components/RelatedReports'
 import { ResearchDock } from './components/ResearchDock'
 
-import { ComparisonTabs } from './components/ComparisonTabs'
-import { TimelineTrack } from './components/TimelineTrack'
-import { DecisionList } from './components/DecisionList'
-
-import {
-  agents,
-  benchmarks,
-  chapter1,
-  citations,
-  decisionItems,
-  relatedReports,
-  sources,
-  specRows,
-  tcoCards,
-  timelineEvents,
-  type ViewKey,
-} from './mock'
-
+import { fetchReport, fetchReports, type ReportDetailV, type ReportSummaryV } from '@/lib/api/reports'
 import styles from './page.module.css'
 
-export default function ReportPage({ params }: { params: { id: string } }) {
-  // 当前 mock：声明所有 id 都映射到同一份详情。后续接 API 时改成按 id 选 mock。
-  void params
+/**
+ * 加载结果。
+ *
+ * 刻意**不**用 `loading | error | ready` 三态判别联合 + 在 effect 里
+ * `setState({kind:'loading'})`——那个写法触发级联渲染（React 的
+ * `react-hooks/set-state-in-effect` 规则会报）。
+ *
+ * 改成「结果 + 它属于哪个 id」：加载中与否从 `loadedFor !== reportId`
+ * **推导**出来，而不是主动去 set。切换 id 时旧数据还在，但 id 对不上，
+ * 页面照样显示加载态——用户看不到上一次报告的内容闪一下。
+ */
+type LoadResult =
+  | { kind: 'error'; message: string; loadedFor: number }
+  | { kind: 'ready'; report: ReportDetailV; loadedFor: number }
 
-  const [activeView, setActiveView] = useState<ViewKey>('report')
-  const [highlightedSourceId, setHighlightedSourceId] = useState<string | undefined>()
+export default function ReportPage({ params }: { params: Promise<{ id: string }> }) {
+  const [result, setResult] = useState<LoadResult | null>(null)
+  const [others, setOthers] = useState<ReportSummaryV[]>([])
+  // 当前高亮的角标编号。点正文角标或引用条目时更新。
+  const [highlightedN, setHighlightedN] = useState<number | undefined>()
 
-  // Citation id → surface label ("1"…"4"). Used by ChapterSection to render
-  // the inline superscript marks at the end of a paragraph.
-  const citationSurfaceMap = useMemo(() => {
-    const map = new Map<string, string>()
-    for (const c of citations) map.set(c.id, c.surface)
-    return map
+  // Next 16 的 params 是 Promise（见 next/dist/docs 的 metadata 示例）。
+  // 用 `use()` 解包——它能在 Client Component 里同步取值，而 `await params`
+  // 会让整个组件变成 async（Client Component 不允许）。
+  const { id } = use(params)
+  const reportId = Number(id)
+  const idValid = Number.isInteger(reportId) && reportId > 0
+
+  useEffect(() => {
+    if (!idValid) return
+    const controller = new AbortController()
+
+    void (async () => {
+      try {
+        const report = await fetchReport(reportId, controller.signal)
+        setResult({ kind: 'ready', report, loadedFor: reportId })
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setResult({
+          kind: 'error',
+          message: err instanceof Error ? err.message : '加载失败',
+          loadedFor: reportId,
+        })
+      }
+    })()
+
+    return () => controller.abort()
+  }, [reportId, idValid])
+
+  // 「我的其它报告」：排除当前这篇。失败就空着——它是侧栏锦上添花，
+  // 拉不到不该让整页报错。
+  useEffect(() => {
+    if (!idValid) return
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        const list = await fetchReports({ limit: 6 }, controller.signal)
+        setOthers(list.items.filter((r) => r.id !== reportId))
+      } catch {
+        setOthers([])
+      }
+    })()
+    return () => controller.abort()
+  }, [reportId, idValid])
+
+  const handleCitationClick = useCallback((n: number) => {
+    setHighlightedN(n)
   }, [])
 
-  // Highlighted source id is derived from a citation click. Look up the
-  // source that owns this citation (1:1 by indexLabel stripping brackets).
-  const handleCitationClick = (citationId: string) => {
-    const surface = citationSurfaceMap.get(citationId)
-    if (!surface) return
-    const src = sources.find((s) => s.indexLabel === `[${surface}]`)
-    if (src) setHighlightedSourceId(src.id)
+  const handleCopyMarkdown = useCallback(() => {
+    if (result?.kind !== 'ready') return
+    void navigator.clipboard?.writeText(result.report.content)
+  }, [result])
+
+  if (!idValid) {
+    return (
+      <div className={styles.body}>
+        <p role="alert" className={styles.stateError}>
+          报告编号无效
+        </p>
+      </div>
+    )
   }
 
-  // Right drawer — SourcesPanel + RelatedReports always shown; AgentLogPanel
-  // only on the long-form report view.
-  const drawer = (
-    <aside className={styles.drawer}>
-      <SourcesPanel sources={sources} totalCount={23} highlightedId={highlightedSourceId} />
-      {activeView === 'report' && <AgentLogPanel agents={agents} />}
-      <RelatedReports reports={relatedReports} />
-    </aside>
-  )
+  // 加载中：还没结果，或结果是另一个 id 的。
+  if (!result || result.loadedFor !== reportId) {
+    return (
+      <div className={styles.body}>
+        <p className={styles.stateText}>正在加载报告…</p>
+      </div>
+    )
+  }
+
+  if (result.kind === 'error') {
+    return (
+      <div className={styles.body}>
+        <p role="alert" className={styles.stateError}>
+          报告加载失败：{result.message}
+        </p>
+      </div>
+    )
+  }
+
+  const { report } = result
 
   return (
     <div className={styles.body}>
-      <ReportHeader />
-      <TitleHero />
-      <ViewSwitcher value={activeView} onChange={setActiveView} />
+      <ReportHeader
+        reportId={report.id}
+        question={report.question}
+        onCopyMarkdown={handleCopyMarkdown}
+      />
+      <TitleHero
+        question={report.question}
+        createdAt={report.created_at}
+        inputTokens={report.input_tokens}
+        outputTokens={report.output_tokens}
+        elapsedMs={report.elapsed_ms}
+        citationCount={report.citations.length}
+      />
 
-      {activeView === 'report' && (
-        <div className={styles.grid}>
-          <div className={styles.mainCol}>
-            <ChapterSection
-              chapter={chapter1}
-              citationSurface={(id: string) => citationSurfaceMap.get(id)}
-              onCitationClick={handleCitationClick}
-            />
-
-            <ChapterSection
-              chapter={{
-                id: 'ch-2-spec',
-                number: '02',
-                title: '微架构横向演进关键数据',
-                meta: '标称规格矩阵对比',
-                blocks: [
-                  {
-                    kind: 'p',
-                    text: '下表罗列了单卡 H100 SXM、B200 Tensor Core GPU 与整机架交付的 GB200 NVL72 平台在关键硬件维度的技术指标演进比对：',
-                  },
-                ],
-              }}
-              citationSurface={(id: string) => citationSurfaceMap.get(id)}
-              onCitationClick={handleCitationClick}
-            >
-              <SpecTable rows={specRows} />
-            </ChapterSection>
-
-            <ChapterSection
-              chapter={{
-                id: 'ch-3-bench',
-                number: '03',
-                title: '推理性能基准与吞吐量评测',
-                meta: 'Llama 3 70B · Mixtral 8x22B',
-                blocks: [
-                  {
-                    kind: 'p',
-                    text: '针对目前工业界最常用的两个开源基准模型 —— Llama 3 70B (Dense) 与 Mixtral 8x22B (Sparse MoE)，在并发批处理（Batch Size = 128 / 256）下的单卡/节点等效吞吐量（Tokens/sec/GPU）测算：',
-                  },
-                ],
-              }}
-              citationSurface={(id: string) => citationSurfaceMap.get(id)}
-              onCitationClick={handleCitationClick}
-            >
-              <BenchmarkBars cards={benchmarks} />
-            </ChapterSection>
-
-            <ChapterSection
-              chapter={{
-                id: 'ch-4-tco',
-                number: '04',
-                title: 'TCO 综合拥有成本模型拆解',
-                meta: '3年生命周期折算',
-                blocks: [
-                  {
-                    kind: 'p',
-                    text: '很多采购决策者误以为 Blackwell 单卡功耗攀升至 1000W+、GB200 NVL72 机架高达 120kW 会极大增加机房运营开支。但按照「每百万 Token 推理总持有成本 (TCO per 1M Tokens)」进行全口径折算，结果却呈现截然相反的成本曲线。',
-                    citationIds: ['4'],
-                  },
-                ],
-              }}
-              citationSurface={(id: string) => citationSurfaceMap.get(id)}
-              onCitationClick={handleCitationClick}
-            >
-              <TcoCards cards={tcoCards} />
-            </ChapterSection>
-          </div>
-          {drawer}
+      <div className={styles.grid}>
+        <div className={styles.mainCol}>
+          <ChapterSection
+            content={report.content}
+            citations={report.citations}
+            onCitationClick={handleCitationClick}
+          />
         </div>
-      )}
+        <aside className={styles.drawer}>
+          <SourcesPanel
+            citations={report.citations}
+            totalCount={report.citations.length}
+            highlightedN={highlightedN}
+            onSelect={(c) => setHighlightedN(c.n)}
+          />
+          <RelatedReports reports={others} />
+        </aside>
+      </div>
 
-      {activeView === 'comparison' && (
-        <div className={styles.grid}>
-          <div className={styles.mainCol}>
-            <ComparisonTabs specRows={specRows} benchmarks={benchmarks} />
-          </div>
-          {drawer}
-        </div>
-      )}
-
-      {activeView === 'timeline' && (
-        <div className={styles.grid}>
-          <div className={styles.mainCol}>
-            <TimelineTrack events={timelineEvents} />
-          </div>
-          {drawer}
-        </div>
-      )}
-
-      {activeView === 'decision' && (
-        <div className={styles.grid}>
-          <div className={styles.mainCol}>
-            <DecisionList items={decisionItems} tcoCards={tcoCards} />
-          </div>
-          {drawer}
-        </div>
-      )}
-
-      <ResearchDock />
+      <ResearchDock question={report.question} />
     </div>
   )
 }

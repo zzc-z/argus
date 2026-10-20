@@ -42,48 +42,74 @@
   border: 1px solid var(--token-outline-variant, #cac3d9);
 }
 
-/* ──────── H1 ──────── */
+/* ──────── Body ──────── */
 
-/* 设计稿：text-3xl / font-bold / tracking-tight(-0.025em) / leading-tight(1.25)
-   字重是 700 不是 600 —— 600 在 30px 上明显偏轻，跟设计稿差一档。 */
-.h1 {
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: -0.025em;
-  color: var(--token-on-surface, #191c1d);
-  margin: 0 0 1.5rem 0;
-  line-height: 1.25;
-}
-
-/* ──────── Prose ──────── */
-
+/* 正文：设计稿 leading-[1.75]，长段落易读。首段与后续段同色即可——模型
+   每次输出的段落数不固定，用「第 1 段 / 第 2 段」做视觉分级没有意义。 */
 .prose {
   font-size: 14px;
-  /* 设计稿 leading-[1.75] = 24.5px，比原来的 1.7 松，长段落更易读 */
   line-height: 1.75;
   color: var(--token-on-surface-variant, #494456);
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
-/* 正文色。原先写死 rgba(250,250,250,.9) 近白色，而 .article 底色是白的
-   —— 亮色主题下正文完全隐形。段 1/3 用 on-surface，段 2 稍弱一级，
-   与设计稿的三级正文色差（#1e293b / #334155）对齐。 */
-.p1,
-.p3 {
+.paragraph {
+  margin: 0;
+  color: var(--token-on-surface, #191c1d);
+  white-space: pre-wrap;
+}
+
+/* 后端 prompt 要求「该用小标题就用」，所以标题是真实产物而非装饰。
+   ## 20px、### 17px、#### 15px —— 同一套层级缩进，避免每级都改字号导致
+   正文里的小标题反而比正文还醒目。 */
+.heading {
+  margin: 0.5rem 0 0;
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.heading[data-level='2'] {
+  font-size: 20px;
+  letter-spacing: -0.015em;
+}
+
+.heading[data-level='3'] {
+  font-size: 17px;
+}
+
+.heading[data-level='4'] {
+  font-size: 15px;
+}
+
+.list {
+  margin: 0;
+  padding-left: 1.5rem;
   color: var(--token-on-surface, #191c1d);
 }
 
-.p3 {
-  color: var(--token-on-surface-variant, #494456);
+.list li {
+  margin-block: 0.35rem;
+}
+
+.list li::marker {
+  color: var(--token-primary, #5704e1);
+}
+
+.inlineCode {
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: color-mix(in srgb, var(--token-on-surface, #191c1d) 8%, transparent);
 }
 
 /* ──────── Citation superscript ──────── */
 
 /* 引用角标：设计稿是淡紫底 + 强调色字 + 强调色 25% 边框 ——
-   一眼就要能认出「这是可点的引用」。之前是灰底灰字，跟正文里的
-   普通小字号数字混在一起，完全没有可点提示。 */
+   一眼就要能认出「这是可点的引用」。 */
 .cite {
   font-feature-settings: 'sups' 1;
   font-variant-numeric: super;
@@ -111,96 +137,38 @@
 }
 
 .cite:hover {
-  color: var(--token-primary, #5704e1);
   background-color: color-mix(in srgb, var(--token-primary, #5704e1) 18%, transparent);
   border-color: var(--token-primary, #5704e1);
   /* 设计稿 hover 上浮 1px */
   translate: 0 -1px;
 }
 
-/* ──────── Hardware metrics card ──────── */
+/* ──────── Empty state ──────── */
 
-.metricsCard {
-  /* 设计稿这张卡是「白底 + 极淡发丝边框」，落在一档浅表面而非中间调 ——
-     之前 token 名挂的是 -container（#edeeef）但值取了 -low（#f3f4f5），
-     两边对不上。统一按 token 名。 */
-  background-color: var(--token-surface-container-lowest, #ffffff);
-  border: 1px solid var(--token-outline-variant, #cac3d9);
-  border-radius: 8px;
-  padding: 1rem;
-  margin-block: 1.5rem;
-  transition: border-color 150ms ease-out;
-}
-
-.metricsCard:hover {
-  border-color: color-mix(in srgb, var(--token-primary, #5704e1) 40%, transparent);
-}
-
-.metricsHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--token-outline-variant, #cac3d9);
-  font-size: 12px;
-  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-  color: var(--token-on-surface-variant, #494456);
-}
-
-.metricsHeadEmphasis {
-  color: var(--token-on-surface, #191c1d);
-}
-
-.metricsGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
-  font-size: 12px;
-  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
-}
-
-.metricCol {
+.empty {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 3rem 1rem 2rem;
+  text-align: center;
 }
 
-.metricCol + .metricCol {
-  border-left: 1px solid var(--token-outline-variant, #cac3d9);
-  padding-left: 1rem;
+.emptyIcon {
+  color: var(--token-outline, #79747e);
 }
 
-.metricLabel {
-  color: var(--token-on-surface-variant, #494456);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-/* 设计稿 headline 是 font-bold(700)，之前 500 让它跟 label 权重太接近，
-   数字反而不是视觉焦点。 */
-.metricHeadline {
-  color: var(--token-on-surface, #191c1d);
-  font-weight: 700;
+.emptyText {
+  margin: 0;
   font-size: 14px;
-  margin-top: 2px;
+  color: var(--token-on-surface, #191c1d);
 }
 
-.metricDetail {
+.emptySub {
+  margin: 0;
+  font-size: 12px;
   color: var(--token-on-surface-variant, #494456);
-  font-size: 11px;
-}
-
-/* 高亮项设计稿是「淡紫底 + 紫字」的小胶囊，不只是把字变紫。 */
-.metricDetailHighlight {
-  display: inline-block;
-  color: var(--token-primary, #5704e1);
-  font-weight: 600;
-  font-size: 11px;
-  padding: 2px 4px;
-  border-radius: 4px;
-  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 12%, transparent);
+  max-width: 34rem;
 }
 
 /* ──────── Blinking cursor ──────── */
@@ -224,4 +192,48 @@
   100% {
     opacity: 0;
   }
+}
+
+/* ──────── Table ──────── */
+
+/* 横向可滚：本项目主力场景是「多份资料横向对比」，窄视口下表格必然溢出。
+   包一层 overflow-x 是因为 <table> 自身设了 min-width，不这样做横向滚不动。 */
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  border-radius: 8px;
+}
+
+.table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--token-outline-variant, #cac3d9);
+}
+
+.table th {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.table td {
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover td {
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 4%, transparent);
 }

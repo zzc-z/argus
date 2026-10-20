@@ -1,26 +1,42 @@
+/* 可点的引用角标：设计稿是淡紫底 + 强调色字 + 强调色 25% 边框——
+   一眼就要能认出「这是可点的引用」。视觉照搬 explore 页 StreamingReport
+   的 .cite（角标样式不跨 CSS Module 共享，只能各写各的）。 */
 .mark {
+  font-feature-settings: 'sups' 1;
+  font-variant-numeric: super;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 1.1rem;
-  height: 1.1rem;
-  padding-inline: 0.3rem;
-  border-radius: 0.25rem;
-  background-color: var(--token-primary-fixed, #e8deff);
-  color: var(--token-on-primary-fixed, #20005f);
   font-size: 11px;
-  font-weight: 700;
   line-height: 1;
-  border: none;
+  padding: 1px 5px;
+  margin: 0 2px;
+  border-radius: 4px;
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-primary, #5704e1) 25%, transparent);
+  color: var(--token-primary, #5704e1);
+  font-weight: 600;
   cursor: pointer;
-  transform: translateY(-0.125rem);
-  margin-inline: 0.125rem;
+  position: relative;
+  top: -0.45em;
   transition:
-    background-color 150ms ease-out,
-    color 150ms ease-out;
+    color 120ms ease-out,
+    background-color 120ms ease-out,
+    border-color 120ms ease-out,
+    translate 120ms ease-out;
+  font-family: inherit;
 }
 
 .mark:hover {
-  background-color: var(--token-primary, #5704e1);
-  color: var(--token-on-primary, #ffffff);
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 18%, transparent);
+  border-color: var(--token-primary, #5704e1);
+  /* 设计稿 hover 上浮 1px */
+  translate: 0 -1px;
+}
+
+/* 查不到对应引用的编号：不做成按钮，也不高亮——它不是可点的东西。
+   保持普通文字颜色，只靠「[n]」的方括号形状让用户看出模型编了号。 */
+.unresolved {
+  color: inherit;
+  font-size: 0.9em;
 }

@@ -2,26 +2,42 @@
 
 import * as React from 'react'
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { IconSpan } from '@/components/common/IconSpan'
 import { cn } from '@/lib/utils'
 import styles from './index.module.css'
 
-const DOCK_PLACEHOLDER =
-  '针对本篇研报提问，或指示智能体进一步推演（例如：测算在 512k 极端长文本下的显存溢出概率）...'
+export interface ResearchDockProps {
+  /** 报告标题。用作「针对这篇报告继续问」的上下文。 */
+  question: string
+}
+
+const DOCK_PLACEHOLDER = '针对本篇研报继续提问...'
 
 /**
- * Bottom floating "research query" dock — pinned above the report body so the
- * user can always ask follow-ups without scrolling. Self-contained:
- *   - local input state (the page is otherwise purely presentation)
- *   - submit is a no-op (placeholder; real handler plumbed via props later)
+ * 底部「继续提问」浮条。
+ *
+ * ## 为什么提交是「带上下文跳到 explore」而不是直接开流
+ *
+ * 报告页的正文是**已落盘的历史**。继续提问是一次**新的研究**——它要跑
+ * 完整的 agent 循环、要重新检索、要新的 SSE 流。explore 页已经把这套
+ * 跑通了（含 DAG 推进、引用角标、忠实度校验），在报告页再实现一遍是重复。
+ *
+ * 所以这里把问题带上下文跳到 explore：`/explore?question=<原文>`。
+ * explore 页读这个 query 参数预填输入框——**不自动提交**。用户看到自己
+ * 填的内容、可以改，再按发送。自动提交等于替他花掉一次真金白银的模型调用。
  */
-export function ResearchDock() {
+export function ResearchDock({ question }: ResearchDockProps) {
   const [draft, setDraft] = useState('')
+  const router = useRouter()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // no-op: real handler plumbed when the API lands
-    setDraft('')
+    const trimmed = draft.trim()
+    if (!trimmed) return
+    // 把原问题作为上下文带过去，用户在前面续写。
+    const next = `${question}\n\n追问：${trimmed}`
+    router.push(`/explore?question=${encodeURIComponent(next)}`)
   }
 
   return (
@@ -39,8 +55,6 @@ export function ResearchDock() {
           aria-label="针对本篇研报提问"
         />
         <div className={styles.toolbar}>
-          <IconBtn name="attach_file" title="添加附加资料" />
-          <IconBtn name="mic" title="语音输入" />
           <button type="submit" className={cn(styles.submitBtn, 'font-headline-sm')}>
             <span>继续推演</span>
             <IconSpan name="arrow_upward" size={16} />
@@ -48,18 +62,5 @@ export function ResearchDock() {
         </div>
       </form>
     </div>
-  )
-}
-
-interface IconBtnProps {
-  name: string
-  title: string
-}
-
-function IconBtn({ name, title }: IconBtnProps) {
-  return (
-    <button type="button" title={title} aria-label={title} className={styles.toolBtn}>
-      <IconSpan name={name} size={18} />
-    </button>
   )
 }

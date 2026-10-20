@@ -88,14 +88,13 @@ export interface DoneEventV {
   /**
    * 刚落盘的报告 id。没有 db 或落盘失败时为 null。
    *
-   * **[尚未接线]** 目前前端没有任何地方读它——`explore/page.tsx` 还是
-   * `v as unknown as DoneEventV` 裸 cast。接线的位置在 explore 页：拿它
-   * 跳到 `/report/${report_id}`（注意是单数 `report`，`/reports` 是列表
-   * 页、没有 `[id]`），因为报告只在落盘后才在 `/api/v1/reports` 里存在，
-   * session_id 不是列表的查询键。
+   * explore 页读它渲染「查看完整报告」链接，跳 `/report/${report_id}`
+   * （注意是单数 `report`，`/reports` 是列表页、没有 `[id]`），因为报告
+   * 只在落盘后才在 `/api/v1/reports` 里存在，session_id 不是列表的查询键。
    *
-   * 目标页 `app/(dashboard)/report/[id]/page.tsx` 当前仍是 mock 数据，
-   * 接上后还要再改那一页。
+   * ⚠️ 目标页 `app/(dashboard)/report/[id]/page.tsx` 当前**仍是 mock 数据**。
+   * 链接会跳过去，但显示的是编造的基准与 TCO 数字。改那一页之前，
+   * 这个链接是有害的。
    */
   report_id: number | null
 }
@@ -140,7 +139,12 @@ export interface ErrorEventV {
  * 按事件类别取 `v` 字段。
  *
  * `SseEvent.v` 是 `Record<string, unknown>`（信封形状与具体类型无关），
- * 这里做一次带检查的窄化，避免每个调用点各写一遍 double-cast。
+ * 这里做一次窄化，避免每个调用点各写一遍 double-cast。
+ *
+ * ⚠️ **这是编译期断言，不是运行时校验**——`event.v as T` 不检查任何字段。
+ * 后端改字段名不会在前端报错，只会得到 undefined。所以它替代的是
+ * `as unknown as T` 这种双重断言（那种写法连类型都不关联），**不是**
+ * 运行时契约校验。真要防后端漂移得写 schema 校验，那是另一件事。
  */
 export function parseEvent<T>(event: { type: string; v: Record<string, unknown> }): T {
   return event.v as T

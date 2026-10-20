@@ -5,89 +5,104 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 0.75rem;
-  margin-bottom: 1rem;
-  gap: 0.5rem;
-}
-
-.headerLeft {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-}
-
-.badge {
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.25rem;
-  background-color: var(--token-surface-container, #edeeef);
+/* 正文排版照搬 explore 页 StreamingReport 的视觉：长段落 leading 1.75、
+   标题层级 ## 20px / ### 17px / #### 15px，同一套层级缩进，
+   避免正文里的小标题反而比正文还醒目。 */
+.prose {
+  font-size: 15px;
+  line-height: 1.75;
   color: var(--token-on-surface-variant, #494456);
-  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
 }
 
-.title {
+.paragraph {
+  margin: 0;
   color: var(--token-on-surface, #191c1d);
-  letter-spacing: -0.02em;
+  white-space: pre-wrap;
+}
+
+.heading {
+  margin: 0.5rem 0 0;
+  color: var(--token-on-surface, #191c1d);
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.heading[data-level='2'] {
   font-size: 20px;
-  line-height: 1.33;
+  letter-spacing: -0.015em;
+}
+
+.heading[data-level='3'] {
+  font-size: 17px;
+}
+
+.heading[data-level='4'] {
+  font-size: 15px;
+}
+
+.list {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: var(--token-on-surface, #191c1d);
+}
+
+.list li {
+  margin-block: 0.35rem;
+}
+
+.list li::marker {
+  color: var(--token-primary, #5704e1);
+}
+
+.inlineCode {
+  font-family: var(--font-jetbrains-mono, 'JetBrains Mono'), monospace;
+  font-size: 0.9em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background-color: color-mix(in srgb, var(--token-on-surface, #191c1d) 8%, transparent);
+}
+
+/* 横向可滚：本项目主力场景是「多份资料横向对比」，窄视口下表格必然溢出。
+   包一层 overflow-x 是因为 <table> 自身设了 min-width，不这样做横向滚不动。 */
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  border-radius: 8px;
+}
+
+.table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th,
+.table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--token-outline-variant, #cac3d9);
+}
+
+.table th {
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-on-surface, #191c1d);
   font-weight: 600;
-}
-
-@media (min-width: 1024px) {
-  .title {
-    font-size: 24px;
-  }
-}
-
-.meta {
-  color: var(--token-on-surface-variant, #494456);
-  font-size: 11px;
   white-space: nowrap;
 }
 
-.body {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.callout {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-radius: 0.75rem;
-  background-color: color-mix(in srgb, var(--token-secondary-container, #d9dff5) 40%, transparent);
-}
-
-.calloutInner {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.calloutHeadline {
-  color: var(--token-on-surface, #191c1d);
-  font-size: 16px;
-  line-height: 1.5;
-  font-weight: 500;
-}
-
-.calloutBody {
+.table td {
   color: var(--token-on-surface-variant, #494456);
-  font-size: 14px;
-  line-height: 1.57;
-  margin: 0;
 }
 
-.para {
-  color: var(--token-on-surface-variant, #494456);
-  font-size: 16px;
-  line-height: 1.625;
-  margin: 0;
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.table tbody tr:hover td {
+  background-color: color-mix(in srgb, var(--token-primary, #5704e1) 4%, transparent);
 }

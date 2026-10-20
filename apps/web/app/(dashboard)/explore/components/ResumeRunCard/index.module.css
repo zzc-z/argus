@@ -1,0 +1,94 @@
+/* 「上次的研究已保存」恢复条。
+   配色跟 explore 页一致，全走项目 Material 3 token。 */
+
+.card {
+  margin: 12px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  background: var(--token-surface-container-low, #f5f2fa);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon {
+  color: var(--token-primary, #5704e1);
+}
+
+.title {
+  font-family: var(--font-family-sans);
+  font-size: var(--text-title-small-size, 14px);
+  line-height: var(--text-title-small-line-height, 20px);
+  font-weight: var(--text-title-small-weight, 500);
+  color: var(--token-on-surface, #191c1d);
+}
+
+.question {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  font-size: var(--text-body-medium-size, 14px);
+  line-height: var(--text-body-medium-line-height, 20px);
+  color: var(--token-on-surface, #191c1d);
+  /* 提问可能很长，限制两行后省略——完整内容在报告页。 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.meta {
+  display: flex;
+  gap: 12px;
+  color: var(--token-on-surface-variant, #494456);
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.primaryBtn,
+.secondaryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-family: var(--font-family-sans);
+  font-size: var(--text-label-large-size, 14px);
+  line-height: var(--text-label-large-line-height, 20px);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.primaryBtn {
+  border: 1px solid transparent;
+  background: var(--token-primary, #5704e1);
+  color: var(--token-on-primary, #ffffff);
+}
+
+.primaryBtn:hover {
+  background: var(--token-primary-container, #eaddff);
+  color: var(--token-on-primary-container, #21005d);
+}
+
+.secondaryBtn {
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  background: transparent;
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.secondaryBtn:hover {
+  background: var(--token-surface-container, #edeeef);
+}

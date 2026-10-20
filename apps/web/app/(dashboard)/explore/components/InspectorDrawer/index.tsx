@@ -2,19 +2,24 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { ANALYST_RAW_STATE, type AgentNode, type Citation, type ToolCall } from '../../mock'
+import type { AgentNode, Citation, ToolCall } from '../../constants'
 import styles from './index.module.css'
 
-export type InspectorTab = 'Input' | 'Output' | 'Prompt' | 'Tools'
+export type InspectorTab = 'State' | 'Tools'
 
 export interface InspectorPayload {
   title: string
-  latency: string
+  /**
+   * 头部右侧的一行短标签。
+   *
+   * 刻意不叫 latency：节点载荷放的是耗时，引用载荷放的是召回方式
+   * （"向量+BM25"）——两者语义不同，硬塞进一个 latency 字段会让引用
+   * 抽屉把召回方式当耗时显示。
+   */
+  meta: string
   jsonText: string
   /** Drives status dot color (active / completed / default). */
   dotState: 'active' | 'completed' | 'default'
-  /** 本节点关联的工具调用。空数组表示这次运行没调过工具。 */
-  toolCalls: ToolCall[]
 }
 
 /**
@@ -31,6 +36,8 @@ export type SourceTextState =
 export interface InspectorDrawerProps {
   open: boolean
   payload: InspectorPayload
+  /** 本轮已发出的工具调用。与 payload 分开传：节点快照与实时轨迹是两个源。 */
+  toolCalls: ToolCall[]
   /** 必填——「不显示」由 `SourceTextState` 的 `{kind:'none'}` 表达，
    *  再叠一层 undefined 等于同一语义两种写法，且新调用方忘传就静默不显示。 */
   sourceText: SourceTextState
@@ -38,21 +45,32 @@ export interface InspectorDrawerProps {
 }
 
 /**
- * Right-side inspector — vertical 4-tab strip (Input/Output/Prompt/Tools) +
- * content area showing tool-call summary + monospace raw state JSON.
+ * Right-side inspector — 节点 / 引用的实时状态 JSON + 工具调用轨迹。
  *
- * The "Output" tab is the default active tab because it is the most-referenced
- * surface in the design.
+ * 只有两个 tab：设计稿里的 Input / Prompt 两栏没有任何数据源，后端不下发
+ * 输入载荷与系统提示词，画出来只能靠编——故删除而非留空壳。
  */
-export function InspectorDrawer({ open, payload, sourceText, onClose }: InspectorDrawerProps) {
-  const [tab, setTab] = React.useState<InspectorTab>('Output')
+export function InspectorDrawer({
+  open,
+  payload,
+  toolCalls,
+  sourceText,
+  onClose,
+}: InspectorDrawerProps) {
+  const [tab, setTab] = React.useState<InspectorTab>('State')
 
   const drawerClass = [styles.drawer, open ? styles.drawerOpen : styles.drawerClosed]
     .filter(Boolean)
     .join(' ')
 
   return (
-    <aside className={drawerClass} aria-hidden={!open}>
+    // inert：关闭时把整块内容移出可交互树。
+    //
+    // 只用 aria-hidden 不够——它只影响读屏，键盘 Tab 仍能聚焦到抽屉里的
+    // 按钮（关闭键与两个 tab），于是键盘用户会 Tab 到一个看不见的控件上，
+    // 而读屏又因为 aria-hidden 跳过它（WCAG 2.4.3 焦点顺序 / 4.1.2 名称值）。
+    // inert 一次性解决两者：不可聚焦、不可点击、不可被读屏访问。
+    <aside className={drawerClass} aria-hidden={!open} inert={!open}>
       {/* Header */}
       <div className={styles.head}>
         <div className={styles.headLeft}>
@@ -68,7 +86,7 @@ export function InspectorDrawer({ open, payload, sourceText, onClose }: Inspecto
           <h3 className={styles.headTitle}>{payload.title}</h3>
         </div>
         <div className={styles.headRight}>
-          <span className={styles.headLatency}>运行耗时 {payload.latency}</span>
+          <span className={styles.headLatency}>{payload.meta}</span>
           <button type="button" onClick={onClose} className={styles.closeBtn} title="关闭检查器">
             <IconSpan name="close" size={14} />
           </button>
@@ -78,12 +96,7 @@ export function InspectorDrawer({ open, payload, sourceText, onClose }: Inspecto
       {/* Body: left tab strip + right content */}
       <div className={styles.body}>
         <TabStrip tab={tab} onTabChange={setTab} />
-        <ContentArea
-          tab={tab}
-          jsonText={payload.jsonText}
-          toolCalls={payload.toolCalls}
-          sourceText={sourceText}
-        />
+        <ContentArea tab={tab} payload={payload} toolCalls={toolCalls} sourceText={sourceText} />
       </div>
     </aside>
   )
@@ -96,104 +109,84 @@ interface TabStripProps {
   onTabChange: (tab: InspectorTab) => void
 }
 
-const TAB_LABELS: Record<InspectorTab, string> = {
-  Input: '输入载荷 (INPUT PAYLOAD)',
-  Output: '输出状态 (JSON)',
-  Prompt: '系统提示词 (SYSTEM PROMPT)',
-  Tools: '工具调用记录 (TOOL TRACE)',
-}
+const TABS: Array<{ id: InspectorTab; label: string; icon: string }> = [
+  { id: 'State', label: '状态 (JSON)', icon: 'description' },
+  { id: 'Tools', label: '工具调用记录', icon: 'build_circle' },
+]
 
 function TabStrip({ tab, onTabChange }: TabStripProps) {
-  const tabs: InspectorTab[] = ['Input', 'Output', 'Prompt', 'Tools']
   return (
     <div className={styles.tabStrip} role="tablist">
-      {tabs.map((t) => (
+      {TABS.map((t) => (
         <button
-          key={t}
+          key={t.id}
           type="button"
           role="tab"
-          aria-selected={tab === t}
-          className={`${styles.tabBtn} ${tab === t ? styles.tabBtnActive : ''}`}
-          onClick={() => onTabChange(t)}
-          title={TAB_LABELS[t]}
+          aria-selected={tab === t.id}
+          aria-label={t.label}
+          className={`${styles.tabBtn} ${tab === t.id ? styles.tabBtnActive : ''}`}
+          onClick={() => onTabChange(t.id)}
+          title={t.label}
         >
-          <TabIcon tab={t} active={tab === t} />
+          <IconSpan
+            name={t.icon}
+            size={16}
+            className={tab === t.id ? styles.tabIconActive : styles.tabIcon}
+          />
         </button>
       ))}
     </div>
   )
 }
 
-function TabIcon({ tab, active }: { tab: InspectorTab; active: boolean }) {
-  const iconClass = active ? styles.tabIconActive : styles.tabIcon
-  const size = 16
-  switch (tab) {
-    case 'Input':
-      return <IconSpan name="chevron_left" size={size} className={iconClass} />
-    case 'Output':
-      return <IconSpan name="chevron_right" size={size} className={iconClass} />
-    case 'Prompt':
-      return <IconSpan name="description" size={size} className={iconClass} />
-    case 'Tools':
-      return <IconSpan name="build_circle" size={size} className={iconClass} />
-  }
-}
-
 /* ───────── Content area ───────── */
 
 interface ContentAreaProps {
   tab: InspectorTab
-  jsonText: string
+  payload: InspectorPayload
   toolCalls: ToolCall[]
   sourceText: SourceTextState
 }
 
-function ContentArea({ tab, jsonText, toolCalls: calls, sourceText }: ContentAreaProps) {
-  const tabStatusLabel = TAB_LABELS[tab]
+function ContentArea({ tab, payload, toolCalls, sourceText }: ContentAreaProps) {
+  const label = TABS.find((t) => t.id === tab)?.label ?? ''
 
   return (
     <div className={styles.content}>
       <div className={styles.contentHead}>
-        <span>{tabStatusLabel}</span>
-        <span className={styles.contentSize}>utf-8 · 1.4KB</span>
-      </div>
-
-      {/* Tool calls summary (always visible) */}
-      <div className={styles.toolsBlock}>
-        <div className={styles.toolsHead}>
-          <span>已执行工具调用 ({calls.length})</span>
-          {calls[0] && <span className={styles.toolsTrace}>{calls[0].id}</span>}
-        </div>
-        {calls.map((tc) => (
-          <div key={tc.id} className={styles.toolRow}>
-            <div className={styles.toolRowHead}>
-              <div className={styles.toolRowName}>
-                <IconSpan name="deployed_code" size={13} className={styles.toolRowIcon} />
-                <span>{tc.name}</span>
-              </div>
-              <span className={styles.toolRowDuration}>{tc.duration}</span>
-            </div>
-            <div className={styles.toolRowArgs}>参数: {tc.args}</div>
-          </div>
-        ))}
+        <span>{label}</span>
+        {tab === 'State' && (
+          <span className={styles.contentSize}>utf-8 · {payload.jsonText.length} 字符</span>
+        )}
       </div>
 
       {/* 原文区。只在点开角标后出现——它是引用溯源的一部分，不是常驻控件。 */}
       {sourceText.kind !== 'none' && <SourceTextBlock state={sourceText} />}
 
-      {/* JSON viewer (Output tab primary, others also show for brevity) */}
-      <div className={styles.jsonBlock}>
-        <pre className={styles.jsonPre}>{jsonText}</pre>
-      </div>
-
-      {/* Footer */}
-      <div className={styles.footer}>
-        <a className={styles.phoenixLink} href="#phoenix-trace">
-          <span>在 Phoenix 中查看</span>
-          <IconSpan name="open_in_new" size={13} className={styles.phoenixIcon} />
-        </a>
-        <span className={styles.spanId}>跨度 ID: a82f71b9</span>
-      </div>
+      {tab === 'Tools' ? (
+        <div className={styles.toolsBlock}>
+          <div className={styles.toolsHead}>
+            <span>已执行工具调用 ({toolCalls.length})</span>
+          </div>
+          {toolCalls.length === 0 && <p className={styles.sourceHint}>本轮尚未调用任何工具</p>}
+          {toolCalls.map((tc) => (
+            <div key={tc.id} className={styles.toolRow}>
+              <div className={styles.toolRowHead}>
+                <div className={styles.toolRowName}>
+                  <IconSpan name="deployed_code" size={13} className={styles.toolRowIcon} />
+                  <span>{tc.name}</span>
+                </div>
+                <span className={styles.toolRowDuration}>{tc.duration}</span>
+              </div>
+              <div className={styles.toolRowArgs}>参数: {tc.args}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={styles.jsonBlock}>
+          <pre className={styles.jsonPre}>{payload.jsonText}</pre>
+        </div>
+      )}
     </div>
   )
 }
@@ -203,8 +196,8 @@ function ContentArea({ tab, jsonText, toolCalls: calls, sourceText }: ContentAre
 /**
  * 角标点开后显示的原文切片。
  *
- * 位置放在工具列表与 JSON 之间：它回答的是「这条引用到底引了什么」，
- * 比 JSON 溯源更靠前——用户点角标的第一反应是看原文，不是看字段。
+ * 位置放在 JSON 之上：它回答的是「这条引用到底引了什么」，比 JSON 溯源更靠前
+ * ——用户点角标的第一反应是看原文，不是看字段。
  */
 function SourceTextBlock({ state }: { state: SourceTextState }) {
   return (
@@ -217,9 +210,7 @@ function SourceTextBlock({ state }: { state: SourceTextState }) {
         {state.kind === 'ready' && <span className={styles.sourceMeta}>{state.title}</span>}
       </div>
 
-      {state.kind === 'loading' && (
-        <p className={styles.sourceHint}>正在拉取原文…</p>
-      )}
+      {state.kind === 'loading' && <p className={styles.sourceHint}>正在拉取原文…</p>}
       {state.kind === 'error' && (
         <p className={styles.sourceError} role="alert">
           原文拉取失败：{state.message}
@@ -231,15 +222,18 @@ function SourceTextBlock({ state }: { state: SourceTextState }) {
 }
 
 /* ───────── Builders exposed to page ───────── */
-const DEFAULT_PAYLOAD: InspectorPayload = {
-  toolCalls: [],
-  title: '分析节点检查器 (Analyst Node Inspector)',
-  latency: '运行耗时 4.4秒',
-  jsonText: JSON.stringify(ANALYST_RAW_STATE, null, 2),
-  dotState: 'active',
+
+/** 尚未点开任何东西时的空载荷。没有默认节点快照——那只能编。 */
+export function emptyInspectorPayload(): InspectorPayload {
+  return {
+    title: '检查器',
+    meta: '',
+    jsonText: JSON.stringify({ hint: '点击左侧 DAG 节点或正文角标查看详情' }, null, 2),
+    dotState: 'default',
+  }
 }
 
-/** Build a payload from a clicked DAG node. */
+/** 从点开的 DAG 节点构造载荷。 */
 export function buildNodePayload(node: AgentNode): InspectorPayload {
   const dotState: InspectorPayload['dotState'] =
     node.lifecycle === 'active'
@@ -248,19 +242,14 @@ export function buildNodePayload(node: AgentNode): InspectorPayload {
         ? 'completed'
         : 'default'
   return {
-    toolCalls: [],
     title: `${node.name} 检查器`,
-    latency: node.latency,
+    meta: node.latency ? `运行耗时 ${node.latency}` : '',
     jsonText: JSON.stringify(
       {
-        node_name: node.name,
+        node_id: node.id,
         lifecycle_state: node.lifecycle,
-        role_description: node.role,
-        runtime_stats: {
-          latency: node.latency,
-          tokens: node.tokens,
-          cached: node.lifecycle === 'completed',
-        },
+        role_description: node.detail || node.role,
+        latency: node.latency,
       },
       null,
       2,
@@ -269,12 +258,11 @@ export function buildNodePayload(node: AgentNode): InspectorPayload {
   }
 }
 
-/** Build a payload from a clicked citation. */
+/** 从点开的引用角标构造载荷。 */
 export function buildCitationPayload(citation: Citation): InspectorPayload {
   return {
-    toolCalls: [],
     title: `数据源引用 [${citation.n}] 溯源核验`,
-    latency: citation.recall,
+    meta: `召回方式 ${citation.recall}`,
     dotState: 'active',
     jsonText: JSON.stringify(
       {
@@ -294,9 +282,4 @@ export function buildCitationPayload(citation: Citation): InspectorPayload {
       2,
     ),
   }
-}
-
-/** Default payload (used on first mount before any user click). */
-export function getDefaultInspectorPayload(): InspectorPayload {
-  return DEFAULT_PAYLOAD
 }

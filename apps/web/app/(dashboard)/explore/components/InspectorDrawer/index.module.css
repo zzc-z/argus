@@ -51,6 +51,16 @@
     height: 100%;
     flex: 0 0 380px;
   }
+
+  /* 关闭态必须**回收占位**：抽屉是 .main 的 flex 子项，`flex: 0 0 380px`
+     写死宽度，只做 translateX 只是把它移出视野，380px 的坑还在——
+     正文被 .center 的 margin-inline:auto 推得偏离居中。
+     宽度收到 0 + overflow 隐藏，正文才真正回到设计稿的 920px 居中。 */
+  .drawerClosed {
+    flex: 0 0 0;
+    overflow: hidden;
+    border: none;
+  }
 }
 
 /* ──────── Header ──────── */

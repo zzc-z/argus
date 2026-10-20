@@ -2,17 +2,15 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { DAG_STATS, type AgentNode } from '../../mock'
+import { DAG_TITLE, type AgentNode } from '../../constants'
 import styles from './index.module.css'
 
 export interface AgentDAGProps {
   onSelectNode: (node: AgentNode) => void
   nodes: AgentNode[]
-  /** 第几步（1-based）。缺省时用 mock 的静态值，保持组件可独立预览。 */
-  currentStep?: number
-  /** 已耗时（格式化好的文案）。缺省时用 mock 的静态值。 */
+  /** 已耗时（格式化好的文案）。未收到 done 前不显示——不编数字。 */
   elapsed?: string
-  /** token 用量（格式化好的文案）。缺省时用 mock 的静态值。 */
+  /** token 用量（格式化好的文案）。未收到 done 前不显示。 */
   tokens?: string
 }
 
@@ -21,12 +19,7 @@ export interface AgentDAGProps {
  * active 高亮 rail 停在当前 active 节点。active 节点带 `cobaltPulse` 脉冲。
  * pending 节点显示空心圆。
  */
-export function AgentDAG({
-  onSelectNode,
-  nodes,
-  elapsed,
-  tokens,
-}: AgentDAGProps) {
+export function AgentDAG({ onSelectNode, nodes, elapsed, tokens }: AgentDAGProps) {
   // 高亮轨道停在 active 节点上。高度实测得出而不是写死：行高由 CSS
   // padding + 字体决定，改样式时这个数字会跟着失配（之前写死 44，
   // 实际行高是 30，轨道伸到列表外面）。
@@ -44,26 +37,34 @@ export function AgentDAG({
   const highlightHeight =
     activeIndex >= 0 && rowHeight > 0 ? `${activeIndex * rowHeight + 19}px` : '0px'
 
+  // 已推进步数 = 生命周期离开 pending 的节点数。后端 Stage 是固定 5 个
+  // 串行节点，节点表长即总步数。
+  const done = nodes.filter((n) => n.lifecycle !== 'pending').length
+  // 进度统计在**流式过程中**就要显示——那时最有信息量。收尾统计（耗时/token）
+  // 要等 done 事件才有真值，没到就不显示，不填占位数字。
+  const stats: string[] = []
+  if (done > 0) stats.push(`${nodes.length} 步中的第 ${done} 步`)
+  if (elapsed) stats.push(elapsed)
+  if (tokens) stats.push(tokens)
+
   return (
     <section className={styles.section}>
       {/* Header */}
       <div className={styles.head}>
         <div className={styles.headLeft}>
           <span className={styles.headDot} />
-          <h2 className={styles.headTitle}>{DAG_STATS.title}</h2>
-          <span className={styles.headSep}>|</span>
-          <span className={styles.headPipeline}>{DAG_STATS.pipeline}</span>
+          <h2 className={styles.headTitle}>{DAG_TITLE}</h2>
         </div>
-        <div className={styles.headStats}>
-          <span className={styles.headStatEmphasis}>
-            {DAG_STATS.totalSteps} 步中的第{' '}
-            {nodes.filter((n) => n.lifecycle !== 'pending').length || DAG_STATS.currentStep} 步
-          </span>
-          <span className={styles.headStatSep}>·</span>
-          <span>{elapsed ?? DAG_STATS.elapsed}</span>
-          <span className={styles.headStatSep}>·</span>
-          <span>{tokens ?? DAG_STATS.tokens}</span>
-        </div>
+        {stats.length > 0 && (
+          <div className={styles.headStats}>
+            {stats.map((s, i) => (
+              <React.Fragment key={s}>
+                {i > 0 && <span className={styles.headStatSep}>·</span>}
+                <span className={i === 0 ? styles.headStatEmphasis : undefined}>{s}</span>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Timeline */}
@@ -118,7 +119,7 @@ function NodeRow({ node, onClick }: NodeRowProps) {
             {node.name}
           </span>
           <span className={`${styles.rowRole} ${isActive ? styles.rowRoleActive : ''}`}>
-            {node.role}
+            {node.detail || node.role}
           </span>
         </div>
       </div>
