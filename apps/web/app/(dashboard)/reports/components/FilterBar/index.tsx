@@ -9,7 +9,7 @@ import {
   SORT_OPTIONS,
   VIEW_GRID_LABEL,
   VIEW_TABLE_LABEL,
-} from '../../mock'
+} from '../../view'
 import styles from './index.module.css'
 
 export type ViewMode = 'table' | 'grid'

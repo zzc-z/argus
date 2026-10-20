@@ -2,11 +2,11 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { METRIC_TILES } from '../../mock'
+import { METRIC_TILES } from '../../view'
 import styles from './index.module.css'
 
 /**
- * 4-up KPI tile strip. Pure presentation; data from mock.ts.
+ * 4-up KPI tile strip. Pure presentation; data from view.ts.
  */
 export function MetricStrip() {
   return (

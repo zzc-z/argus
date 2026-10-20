@@ -16,7 +16,7 @@ import {
   PIPELINE_STATUSES,
   TIMEFRAME_OPTIONS,
   TOPIC_FILTERS,
-} from '../../mock'
+} from '../../view'
 import styles from './index.module.css'
 
 export interface FilterDrawerProps {

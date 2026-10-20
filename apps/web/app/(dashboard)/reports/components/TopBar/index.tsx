@@ -7,7 +7,7 @@ import {
   SEARCH_SHORTCUT,
   TOPBAR_STATUS_LABEL,
   TOPBAR_THROUGHPUT,
-} from '../../mock'
+} from '../../view'
 import styles from './index.module.css'
 
 /**

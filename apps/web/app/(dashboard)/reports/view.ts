@@ -1,10 +1,17 @@
 /**
- * Mock data for /reports — 1:1 with argus_reports/code.html.
- * Lives next to the route (per project convention).
+ * 报告列表页的视图常量与类型。
  *
- * All shapes are `as const` so consumer switch/case inference is exhaustive
- * and the design-time `tone` / `status` literals stay narrow.
+ * 原本这里有 6 条假报告（`REPORTS`）与一堆假 KPI。假数据已删——
+ * 报告行现在来自后端 `GET /api/v1/reports`，由 `toReportRow` 映射成
+ * 下面这个 `Report` 形状，**组件一行都不用改**。
+ *
+ * 剩下的常量（KPI 磁贴、筛选选项、表头文案）仍是设计稿里的静态文案，
+ * 它们不表示数据，只是界面上固定的一段话。
+ *
+ * Lives next to the route (per project convention).
  */
+
+import type { ReportSummaryV } from '@/lib/api/reports'
 
 export type TopicTone = 'primary' | 'secondary' | 'neutral' | 'fixed'
 export type ReportStatus = 'verified' | 'running'
@@ -216,93 +223,9 @@ export const TABLE_HEADER = {
   status: '状态 / 操作',
 } as const
 
-/* ── Reports (6 rows, matching design) ────────────────────────────── */
-
-export const REPORTS: ReadonlyArray<Report> = [
-  {
-    id: 'rpt-001',
-    title: 'NVIDIA H100 与 Blackwell 大模型推理架构对比：吞吐量与 TCO 深度分析',
-    summary:
-      '聚焦 FP4 精度缩放定律、NVLink 5 互联开销及万卡集群大规模 Serving 场景下的真实成本测算。',
-    topic: { label: 'AI 硬件与芯片', tone: 'secondary' },
-    generatedAt: '2 小时前',
-    generatedAtSub: '10:24 生成',
-    sourcesCount: 23,
-    viewsCount: 142,
-    status: 'verified',
-    starred: true,
-  },
-  {
-    id: 'rpt-002',
-    title: 'Q3 全球 AI 大模型基础设施投融资与算力利用率研报',
-    summary: '涵盖硅谷头部资本下注流向、GPU 租赁云市占率演进与 Neocloud 算力空置率监测数据。',
-    topic: { label: '风险投资与趋势', tone: 'neutral' },
-    generatedAt: '昨天 14:20',
-    generatedAtSub: '自动化批跑',
-    sourcesCount: 18,
-    viewsCount: 329,
-    status: 'verified',
-    starred: false,
-  },
-  {
-    id: 'rpt-003',
-    title: '欧盟 AI 法案正式生效与高风险系统合规落地图谱',
-    summary: '拆解通用目的模型 (GPAI) 透明度准则、技术红线罚则及全球跨国企业研发自查清单。',
-    topic: { label: '政策与法律监管', tone: 'neutral' },
-    generatedAt: '3 天前',
-    generatedAtSub: '定向合规专项',
-    sourcesCount: 31,
-    viewsCount: 86,
-    status: 'verified',
-    starred: false,
-  },
-  {
-    id: 'rpt-004',
-    title: 'OpenAI 商业化与下一代前沿多模态推理模型策略深度解构',
-    summary: '分析 System 2 强化学习推理阶段演化、API 阶梯定价策略及企业级 Agent 生态护城河。',
-    topic: { label: '前沿模型与多模态', tone: 'fixed' },
-    generatedAt: '1 周前',
-    generatedAtSub: '高优先级调度',
-    sourcesCount: 15,
-    viewsCount: 512,
-    status: 'verified',
-    starred: true,
-  },
-  {
-    id: 'rpt-005',
-    title: '2026 全球气候科技与数据中心清洁能源投资分析',
-    summary:
-      '核裂变小型模块化反应堆 (SMR)、地热及储能方案在下一代千万瓦级超级数据中心的应用可行性。',
-    topic: { label: '绿色能源与智算', tone: 'neutral' },
-    generatedAt: '执行中 (DAG)',
-    generatedAtSub: '阶段: 交叉反思层',
-    sourcesCount: 42,
-    viewsCount: 94,
-    status: 'running',
-    starred: false,
-    runningProgress: 68,
-    runningStage: '交叉反思层',
-  },
-  {
-    id: 'rpt-006',
-    title: '量子退火与超导容错量子计算产业路线图对比',
-    summary: '涵盖逻辑量子比特纠错阈值、相干时间瓶颈突破及制药与组合优化工业化试点。',
-    topic: { label: '前沿硬核科技', tone: 'neutral' },
-    generatedAt: '3 周前',
-    generatedAtSub: '外部专家评审完成',
-    sourcesCount: 29,
-    viewsCount: 204,
-    status: 'verified',
-    starred: true,
-  },
-]
-
 /* ── Pagination ───────────────────────────────────────────────────── */
 
 export const PAGE_SIZE = 6
-export const TOTAL_REPORTS = 47
-export const TOTAL_PAGES = 8
-export const PAGINATION_PAGES: ReadonlyArray<number> = [1, 2, 3, 8]
 export const PAGINATION_RANGE_FROM = 1
 export const PAGINATION_RANGE_TO = 6
 
@@ -323,6 +246,58 @@ export const TOPBAR_THROUGHPUT = '8.2k tokens/s'
 export const SIDEBAR_PRODUCT = 'Argus'
 export const SIDEBAR_SUBTITLE = 'Synthesizer Core'
 export const SIDEBAR_VERSION = 'v2.4'
+
+/* ── 真数据 → 视图模型的映射 ─────────────────────────────────────
+ *
+ * 页面上所有组件都按 `Report` 这个形状消费（表格、卡片、选中态都读
+ * 同一套字段）。后端 `GET /api/v1/reports` 返回的是 `ReportSummaryV`
+ * （见 `@/lib/api/reports`），字段名不一样、且**缺几个**。
+ *
+ * 与其把每个组件改成两套形状（表格一套、卡片一套、选中态一套），
+ * 不如在这里把后端数据映射成既有形状——**组件一行都不用改**。
+ *
+ * 缺的字段怎么填，每个都有理由，不是随手填的：
+ *
+ * - `topic`：后端没有分类字段。填固定的中性标签，保留组件原有的
+ *   徽章样式与位置。编一个分类名是撒谎。
+ * - `summary`：后端列表接口不返回正文（返回了会把列表撑爆）。用
+ *   提问 + 用量拼一行摘要，让卡片/表格有副标题可显示。
+ * - `viewsCount`：后端没有阅读数。填 0——组件会渲染成「0 阅」，
+ *   是个明显待补的占位，但比编一个数字诚实。
+ * - `status`：后端只落盘**已跑完**的报告，没有「生成中」状态。全部
+ *   填 `verified`，组件会显示「已交叉验证」徽章。
+ * - `starred`：后端没有星标。填 false。
+ * - `runningProgress` / `runningStage`：同 status，没有 running 态就不给。
+ */
+
+/** 无分类信息时的中性徽章。 */
+const DEFAULT_TOPIC: ReportTopic = { label: '研究报告', tone: 'neutral' }
+
+/** ISO 时间串 → 「2026-10-20 14:14」。解析失败就原样返回。 */
+function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** 把后端报告摘要映射成列表页消费的 `Report`。 */
+export function toReportRow(r: ReportSummaryV): Report {
+  const tokens = r.input_tokens + r.output_tokens
+  return {
+    id: String(r.id),
+    title: r.question,
+    summary: `${r.citation_count} 条引用 · ${tokens.toLocaleString('zh-CN')} tokens · 耗时 ${(r.elapsed_ms / 1000).toFixed(1)} 秒`,
+    topic: DEFAULT_TOPIC,
+    generatedAt: formatDateTime(r.created_at),
+    generatedAtSub: r.session_id.slice(0, 8),
+    sourcesCount: r.citation_count,
+    viewsCount: 0,
+    status: 'verified',
+    starred: false,
+  }
+}
+
 export const SIDEBAR_WORKSPACE_LABEL = 'Argus Research Workspace'
 export const SIDEBAR_NAV_LABEL = 'Navigation'
 

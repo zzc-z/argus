@@ -8,7 +8,7 @@ import {
   type DataTableProps,
   type DataTableSelection,
 } from '@/components/common/DataTable'
-import { TABLE_HEADER, type Report } from '../../mock'
+import { TABLE_HEADER, type Report } from '../../view'
 import styles from './index.module.css'
 
 /* ── 列定义 ──────────────────────────────────────────────────

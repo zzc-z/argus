@@ -4,7 +4,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { IconSpan } from '@/components/common/IconSpan'
 import type { Route } from 'next'
-import type { Report } from '../../mock'
+import type { Report } from '../../view'
 import styles from './index.module.css'
 
 export interface ReportGridProps {

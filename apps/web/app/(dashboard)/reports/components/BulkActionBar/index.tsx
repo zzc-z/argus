@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import { BULK_ACTIONS } from '../../mock'
+import { BULK_ACTIONS } from '../../view'
 import styles from './index.module.css'
 
 export interface BulkActionBarProps {

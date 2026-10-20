@@ -15,3 +15,16 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+
+/* 加载中 / 空态 / 出错。放在列表上方，与报告详情页同款措辞。 */
+.stateText {
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 14px;
+  padding: 3rem 0;
+}
+
+.stateError {
+  color: var(--token-error, #b3261e);
+  font-size: 14px;
+  padding: 3rem 0;
+}

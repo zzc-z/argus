@@ -14,6 +14,15 @@
  *   selection set, view mode, active tab, search, sort, drawer toggle,
  *   pagination, all topic / status / timeframe / citation filter state —
  *   lives here in page.tsx. Sub-components are fully controlled.
+ *
+ * ## 数据源
+ *
+ * `GET /api/v1/reports` —— 自己的报告列表。原先这里是 `view.ts` 里 6 条
+ * 假数据（假 id `rpt-001`，点进去 404）。
+ *
+ * **页面结构与样式一律没动**：后端数据经 `toReportRow`（view.ts 里）
+ * 映射成组件原本消费的 `Report` 形状，所以表格列、卡片、筛选、分页
+ * 全部照旧——变的只有「数据从哪来」。
  */
 
 import * as React from 'react'
@@ -27,11 +36,58 @@ import { ReportGrid } from './components/ReportGrid'
 import { Pagination } from './components/Pagination'
 import { BulkActionBar } from './components/BulkActionBar'
 
-import { PAGE_SIZE, REPORTS, TOTAL_PAGES, TOTAL_REPORTS, type TopicFilterId } from './mock'
+import { PAGE_SIZE, toReportRow, type Report, type TopicFilterId } from './view'
+import { fetchReports, type ReportListV } from '@/lib/api/reports'
 
 import styles from './page.module.css'
 
+/**
+ * 加载结果 + 它属于哪一页。
+ *
+ * 刻意不用 `loading | error | ready` 三态 + 在 effect 里 setState——
+ * 那个写法触发级联渲染（React 的 `react-hooks/set-state-in-effect` 规则
+ * 会报）。改成「结果 + 页码」：加载中与否从 `loadedFor !== currentPage`
+ * 推导，页码变了旧数据还在，但页码对不上，页面照样显示加载态。
+ */
+type LoadResult =
+  | { kind: 'error'; message: string; loadedFor: number }
+  | { kind: 'ready'; data: ReportListV; loadedFor: number }
+
 export default function ReportsPage() {
+  // ── Data ────────────────────────────────────────────────────────
+  const [result, setResult] = React.useState<LoadResult | null>(null)
+  const [currentPage, setCurrentPage] = React.useState<number>(1)
+
+  React.useEffect(() => {
+    const controller = new AbortController()
+    void (async () => {
+      try {
+        const data = await fetchReports(
+          { limit: PAGE_SIZE, offset: (currentPage - 1) * PAGE_SIZE },
+          controller.signal,
+        )
+        setResult({ kind: 'ready', data, loadedFor: currentPage })
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') return
+        setResult({
+          kind: 'error',
+          message: err instanceof Error ? err.message : '加载失败',
+          loadedFor: currentPage,
+        })
+      }
+    })()
+    return () => controller.abort()
+  }, [currentPage])
+
+  // 后端数据 → 组件消费的形状。空数组也让组件照常渲染（空表头 + 空态）。
+  const REPORTS: ReadonlyArray<Report> = React.useMemo(() => {
+    if (result?.kind !== 'ready') return []
+    return result.data.items.map(toReportRow)
+  }, [result])
+
+  const TOTAL_REPORTS = result?.kind === 'ready' ? result.data.total : 0
+  const TOTAL_PAGES = Math.max(1, Math.ceil(TOTAL_REPORTS / PAGE_SIZE))
+
   // ── Selection ───────────────────────────────────────────────────
   const [selectedIds, setSelectedIds] = React.useState<ReadonlySet<string>>(() => new Set<string>())
 
@@ -50,7 +106,7 @@ export default function ReportsPage() {
       if (allSelectedNow) return new Set()
       return new Set(REPORTS.map((r) => r.id))
     })
-  }, [])
+  }, [REPORTS])
 
   const cancelSelection = React.useCallback(() => {
     setSelectedIds(new Set())
@@ -64,7 +120,6 @@ export default function ReportsPage() {
   const [activeTabId, setActiveTabId] = React.useState<string>('all')
   const [search, setSearch] = React.useState<string>('')
   const [sortId, setSortId] = React.useState<SortId>('newest')
-  const [currentPage, setCurrentPage] = React.useState<number>(1)
   const [showFilters, setShowFilters] = React.useState<boolean>(true)
 
   // ── Drawer filter state ─────────────────────────────────────────
@@ -175,6 +230,18 @@ export default function ReportsPage() {
         )}
 
         <div className={styles.viewStage}>
+          {result && result.loadedFor !== currentPage && (
+            <p className={styles.stateText}>正在加载报告…</p>
+          )}
+          {result?.kind === 'error' && result.loadedFor === currentPage && (
+            <p role="alert" className={styles.stateError}>
+              报告加载失败：{result.message}
+            </p>
+          )}
+          {result?.kind === 'ready' && result.loadedFor === currentPage && REPORTS.length === 0 && (
+            <p className={styles.stateText}>还没有生成过报告</p>
+          )}
+
           {view === 'table' ? (
             <ReportTable
               reports={REPORTS}
@@ -192,7 +259,7 @@ export default function ReportsPage() {
             currentPage={currentPage}
             totalPages={TOTAL_PAGES}
             totalItems={TOTAL_REPORTS}
-            rangeFrom={(currentPage - 1) * PAGE_SIZE + 1}
+            rangeFrom={TOTAL_REPORTS === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}
             rangeTo={Math.min(currentPage * PAGE_SIZE, TOTAL_REPORTS)}
             pageSize={PAGE_SIZE}
             onPageChange={setCurrentPage}

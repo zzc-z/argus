@@ -13,7 +13,7 @@ import {
   SIDEBAR_SESSION_LABEL,
   SIDEBAR_VERSION,
   SIDEBAR_WORKSPACE_LABEL,
-} from '../../mock'
+} from '../../view'
 import styles from './index.module.css'
 
 /**
