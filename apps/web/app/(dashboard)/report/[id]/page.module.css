@@ -1,15 +1,40 @@
-.body {
-  width: 100%;
-  padding-top: 3.5rem;
-  padding-left: 17.5rem;
-  padding-right: 2rem;
-  padding-bottom: 7rem; /* leave room for fixed ResearchDock */
+/* 报告详情页。
+ *
+ * ## 为什么这里没有 .body
+ *
+ * 原来这一页自带一套 padding：
+ *
+ *     padding-top: 3.5rem;
+ *     padding-left: 17.5rem;
+ *     padding-right: 2rem;
+ *
+ * 但 (dashboard)/layout.tsx 的 .main 已经给了 padding-top: 3.5rem，
+ * .mainInner 已经给了 padding-inline: 1.5rem。这套 padding 是**叠上去
+ * 的第二层**——左侧多出 17.5rem，内容被顶到右边，离侧边栏远得离谱。
+ *
+ * 现在这一页跟其它 dashboard 页一样走 <PageLayout>，padding 由 layout
+ * 统一给，本文件不再管外边距。
+ */
+
+/* 报告 id 徽章。挂在面包屑当前项后面。 */
+.idChip {
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  background-color: var(--token-primary-fixed, #e8deff);
+  color: var(--token-on-primary-fixed, #20005f);
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+  font-weight: 500;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1.5rem;
+  /* 给 fixed 的 ResearchDock 让位——它是 position: fixed，不占文档流，
+     没有这行留白，正文最后一段会被压在它下面。 */
+  padding-bottom: 6rem;
 }
 
 @media (min-width: 1280px) {
@@ -31,8 +56,6 @@
   gap: 1.5rem;
   min-width: 0;
 }
-
-
 
 /* ── 加载 / 错误态 ──────────────────────────────────────────
    报告正文是异步取的，首帧没有内容。给出明确的一行字，

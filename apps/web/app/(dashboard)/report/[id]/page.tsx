@@ -20,8 +20,7 @@
 import * as React from 'react'
 import { use, useCallback, useEffect, useState } from 'react'
 
-import { TitleHero } from './components/TitleHero'
-import { ReportHeader } from './components/ReportHeader'
+import { PageLayout } from '@/components/common/PageLayout'
 import { ChapterSection } from './components/ChapterSection'
 import { SourcesPanel } from './components/SourcesPanel'
 import { RelatedReports } from './components/RelatedReports'
@@ -106,51 +105,68 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
   if (!idValid) {
     return (
-      <div className={styles.body}>
+      <PageLayout>
         <p role="alert" className={styles.stateError}>
           报告编号无效
         </p>
-      </div>
+      </PageLayout>
     )
   }
 
   // 加载中：还没结果，或结果是另一个 id 的。
   if (!result || result.loadedFor !== reportId) {
     return (
-      <div className={styles.body}>
+      <PageLayout>
         <p className={styles.stateText}>正在加载报告…</p>
-      </div>
+      </PageLayout>
     )
   }
 
   if (result.kind === 'error') {
     return (
-      <div className={styles.body}>
+      <PageLayout>
         <p role="alert" className={styles.stateError}>
           报告加载失败：{result.message}
         </p>
-      </div>
+      </PageLayout>
     )
   }
 
   const { report } = result
 
   return (
-    <div className={styles.body}>
-      <ReportHeader
-        reportId={report.id}
-        question={report.question}
-        onCopyMarkdown={handleCopyMarkdown}
-      />
-      <TitleHero
-        question={report.question}
-        createdAt={report.created_at}
-        inputTokens={report.input_tokens}
-        outputTokens={report.output_tokens}
-        elapsedMs={report.elapsed_ms}
-        citationCount={report.citations.length}
-      />
-
+    <PageLayout
+      header={{
+        // 面包屑：报告列表 → 当前报告。标题用原始提问——后端不另存标题。
+        breadcrumb: [
+          { label: '报告列表', href: '/reports' },
+          {
+            label: report.question,
+            current: true,
+            trailing: <span className={styles.idChip}>#{report.id}</span>,
+          },
+        ],
+        title: report.question,
+        meta: [
+          {
+            text: [
+              `生成于 ${formatDateTime(report.created_at)}`,
+              `${report.citations.length} 条引用`,
+              formatTokens(report.input_tokens, report.output_tokens),
+              `耗时 ${formatDuration(report.elapsed_ms)}`,
+            ].join(' · '),
+          },
+        ],
+        actions: [
+          {
+            label: '复制 Markdown',
+            icon: 'markdown',
+            variant: 'secondary',
+            onClick: handleCopyMarkdown,
+          },
+        ],
+      }}
+    >
       <div className={styles.grid}>
         <div className={styles.mainCol}>
           <ChapterSection
@@ -171,6 +187,34 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
       </div>
 
       <ResearchDock question={report.question} />
-    </div>
+    </PageLayout>
   )
+}
+
+/**
+ * ISO → `2026-10-20 14:32`（本地时区）。
+ *
+ * 非法时间戳原样返回：坏数据不该让整页白屏。
+ */
+function formatDateTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  return `${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+/** token 用量。输入输出都留着——只给总数看不出是检索还是成稿烧的。 */
+function formatTokens(inputTokens: number, outputTokens: number): string {
+  return `${inputTokens.toLocaleString('zh-CN')} 输入 / ${outputTokens.toLocaleString('zh-CN')} 输出 Token`
+}
+
+/** 耗时。毫秒级保留整数，秒级一位小数，再长就用分秒。 */
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '未知'
+  if (ms < 1000) return `${Math.round(ms)}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const minutes = Math.floor(ms / 60_000)
+  const seconds = Math.round((ms % 60_000) / 1000)
+  return `${minutes} 分 ${seconds} 秒`
 }
