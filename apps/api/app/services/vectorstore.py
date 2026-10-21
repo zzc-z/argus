@@ -25,7 +25,7 @@ import aiosqlite
 import sqlite_vec
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 
 from app.config import get_settings
@@ -43,6 +43,13 @@ VECTOR_POOL_SIZE = 4
 
 VEC_TABLE = "chunk_embeddings"
 CHUNK_TABLE = "document_chunks"
+
+# vec0 虚拟表的**影子表**：主键索引表，一行一个向量。
+#
+# 用途只有一个——在没有 sqlite-vec 扩展的连接上数向量个数。直接查
+# ``chunk_embeddings`` 要扩展，查这张影子表不用（它是真实表）。
+# 行数与向量数一致：vec0 的主键就是 chunk_id。
+VEC_ROWIDS_TABLE = "chunk_embeddings_rowids"
 
 
 # ── 引擎构造 ────────────────────────────────────────────────
@@ -147,6 +154,39 @@ async def ensure_vector_table(engine: AsyncEngine) -> None:
                 f")"
             )
         )
+
+
+# ── 统计 ────────────────────────────────────────────────────
+async def count_embeddings(db: AsyncSession) -> int:
+    """数向量表里有几行。
+
+    ## 为什么查影子表而不是 ``chunk_embeddings`` 本身
+
+    ``chunk_embeddings`` 是 vec0 虚拟表，直接查它要加载 sqlite-vec 扩展
+    ——普通 SQLAlchemy session 查会报 ``no such module: vec0``，而向量
+    engine 与业务 engine 是两个不同的连接池（见 ``create_vector_engine``）。
+
+    vec0 会为每张虚表建一组**影子表**（``chunk_embeddings_rowids`` 等），
+    它们是真实表，普通 SQL 就能查。``chunk_embeddings_rowids`` 是主键
+    索引表，一行一个向量，行数就是向量数（实测与虚表 count 一致）。
+
+    走影子表的好处不只是省一个连接池：它让这个统计能在**业务 session**
+    里做，于是测试覆盖 ``get_session`` 就够了，不必再覆盖向量 engine
+    ——后者在 conftest 里返回的是同步 engine，类型与生产代码的
+    ``AsyncEngine`` 不符（那次不一致潜伏了很久，因为路由测试都用了
+    假 agent，向量 engine 从没被真的用过）。
+
+    表不存在时返回 0：还没建过向量库是正常状态（一份资料都没摄取过），
+    不该让整个状态接口 500。
+    """
+    exists = await db.scalar(
+        text("SELECT count(*) FROM sqlite_master WHERE type='table' AND name=:name"),
+        {"name": VEC_ROWIDS_TABLE},
+    )
+    if not exists:
+        return 0
+    count = await db.scalar(text(f"SELECT count(*) FROM {VEC_ROWIDS_TABLE}"))
+    return int(count or 0)
 
 
 # ── 写入 ────────────────────────────────────────────────────
