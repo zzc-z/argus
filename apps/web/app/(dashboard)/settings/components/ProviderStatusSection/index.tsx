@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
 import { StatusDot } from '@/components/common/StatusDot'
-import type { ProviderStatus } from '../../mock'
+import type { ProviderStatus } from '../../view'
 import styles from './index.module.css'
 
 export interface ProviderStatusSectionProps {
@@ -13,7 +13,10 @@ export interface ProviderStatusSectionProps {
 
 /**
  * Quick Provider Status (design §425-495).
- * Compact grid of 4 active provider badges with ping/connection indicators.
+ * Compact grid of provider badges with configuration indicators.
+ *
+ * 数据来自 `GET /api/v1/settings/status`（映射见 `view.ts`）：
+ * `configured=false` 的供应商显示成「未配置」并用琥珀色状态点。
  */
 export function ProviderStatusSection({ providers, onConfigure }: ProviderStatusSectionProps) {
   return (
@@ -41,7 +44,7 @@ export function ProviderStatusSection({ providers, onConfigure }: ProviderStatus
           <div key={p.id} className={styles.card}>
             <div className={styles.cardHead}>
               <span className={`${styles.name} font-body-sm text-on-surface`}>{p.name}</span>
-              <StatusDot color="emerald" ping={p.ping ?? false} />
+              <StatusDot color={p.configured ? 'emerald' : 'amber'} ping={p.ping} />
             </div>
             <div className={styles.cardFoot}>
               <span className={`${styles.statusLabel} font-code text-secondary`}>
@@ -49,7 +52,7 @@ export function ProviderStatusSection({ providers, onConfigure }: ProviderStatus
               </span>
               <span
                 className={`${styles.metricLabel} font-code ${
-                  p.metricTone === 'primary' ? 'text-primary' : 'text-secondary'
+                  p.configured ? 'text-primary' : 'text-secondary'
                 }`}
               >
                 {p.metricLabel}

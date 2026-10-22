@@ -1,18 +1,29 @@
+'use client'
+
 /**
- * ExploreGrid — 1:1 with argus_dashboard/code.html "继续您的研究探索" row.
+ * ExploreGrid — 「继续您的研究探索」卡片行。
  *
- * Each card:
- *   - cover with background-image (URL) + dark gradient overlay
- *   - 2 dark tags bottom-left + dark timestamp top-right
- *   - title (truncate 2 lines) + citation stats row
- *   - footer: progress label + primary/secondary CTA
+ * 卡片数据来自后端 `GET /api/v1/reports`（最近生成的报告），由
+ * `view.ts` 的 `toExploreReports` 映射成这里的 `ExploreReport` 形状。
+ *
+ * ## 原来的假字段去哪了
+ *
+ * 这一版卡片原先带 6 个后端没有的字段，全部删掉而不是编一个值：
+ *
+ * - `coverImage`（封面图 URL）—— 设计稿用的是一个占位图 URL，库里没有
+ *   封面概念。封面改成纯色底 + 装饰图标（`coverIcon`）。
+ * - `tags`（两个深色标签）—— 后端没有报告分类。删。
+ * - `agents`（「N 位智能体协同」）—— 后端不存每份报告的智能体数。删。
+ * - `footer` + `ctaLabel` + `ctaPrimary`（进度文案与 CTA）—— 那个按钮
+ *   **点了没反应**，是个假 affordance。现在 CTA 换成跳 `/report/{id}`
+ *   的真实链接，footer 换成真实的 token 用量与耗时。
  */
 
 import * as React from 'react'
 import Link from 'next/link'
 import { IconSpan } from '@/components/common/IconSpan'
 import { cn } from '@/lib/utils'
-import type { ExploreReport } from '../../mock'
+import type { ExploreReport } from '../../view'
 import styles from './index.module.css'
 
 export interface ExploreGridProps {
@@ -46,24 +57,12 @@ export function ExploreGrid({ reports }: ExploreGridProps) {
           <article key={r.id} className={styles.card}>
             <div>
               <div className={styles.cover}>
-                <div
-                  className={styles.coverImage}
-                  style={{ backgroundImage: `url('${r.coverImage}')` }}
-                  aria-hidden="true"
-                />
+                {/* 封面图 URL 已删（后端没有封面概念），留一个装饰图标。 */}
                 <div className={styles.coverOverlay} aria-hidden="true" />
                 <div className={styles.coverTags}>
-                  {r.tags.map((t, i) => (
-                    <span
-                      key={t}
-                      className={cn(
-                        styles.coverTag,
-                        i === 0 && r.tags[1] && styles.coverTagPrimary,
-                      )}
-                    >
-                      {t}
-                    </span>
-                  ))}
+                  <span className={cn(styles.coverTag, styles.coverTagPrimary)}>
+                    <IconSpan name={r.coverIcon} size={14} />
+                  </span>
                 </div>
                 <span className={styles.coverTimestamp}>{r.activity}</span>
               </div>
@@ -72,30 +71,29 @@ export function ExploreGrid({ reports }: ExploreGridProps) {
 
               <div className={`${styles.statsRow} font-code`}>
                 <span className={styles.stat}>
-                  <IconSpan name="groups" size={15} className={styles.statIconPrimary} />
-                  {r.agents} 位智能体协同
+                  <IconSpan name="menu_book" size={15} className={styles.statIconSecondary} />
+                  {r.citations} 篇引用
                 </span>
                 <span aria-hidden="true">·</span>
                 <span className={styles.stat}>
-                  <IconSpan name="menu_book" size={15} className={styles.statIconSecondary} />
-                  {r.citations} 篇引用
+                  <IconSpan name="timer" size={15} className={styles.statIconPrimary} />
+                  {r.elapsed}
                 </span>
               </div>
             </div>
 
             <div className={styles.footer}>
-              <span className={`${styles.footerLabel} font-code`}>{r.footer}</span>
-              <button
-                type="button"
-                className={cn(
-                  styles.cta,
-                  r.ctaPrimary ? styles.ctaPrimary : styles.ctaSecondary,
-                  'font-body-sm font-medium',
-                )}
+              <span className={`${styles.footerLabel} font-code`}>
+                {r.inputTokens.toLocaleString('zh-CN')} 输入 / {r.outputTokens.toLocaleString('zh-CN')}{' '}
+                输出 Token
+              </span>
+              <Link
+                href={`/report/${r.id}`}
+                className={cn(styles.cta, styles.ctaPrimary, 'font-body-sm font-medium')}
               >
-                <IconSpan name={r.ctaPrimary ? 'play_arrow' : 'visibility'} size={16} />
-                <span>{r.ctaLabel}</span>
-              </button>
+                <IconSpan name="visibility" size={16} />
+                <span>查看报告</span>
+              </Link>
             </div>
           </article>
         ))}

@@ -1,22 +1,21 @@
 'use client'
 
 import * as React from 'react'
-import {
-  memoryItemsSeed,
-  memoryRulesSeed,
-  providerStatusesSeed,
-  type MemoryFilter,
-  type MemoryItem,
-  type MemoryRule,
-  type ProviderStatus,
-  type SettingsNavId,
-} from './mock'
+
 import { PageLayout } from '@/components/common/PageLayout'
 import { SettingsSidebar } from './components/SettingsSidebar'
 import { ProfileBanner } from './components/ProfileBanner'
-import { LongTermMemorySection } from './components/LongTermMemorySection'
-import { MemoryItemsSection } from './components/MemoryItemsSection'
 import { ProviderStatusSection } from './components/ProviderStatusSection'
+
+import {
+  toProfileBanner,
+  toProviderStatus,
+  toVectorIndexDiagnostic,
+  type SettingsNavId,
+} from './view'
+import { useSettingsStatus } from './useSettingsStatus'
+import { useUser } from '@/lib/auth'
+
 import styles from './page.module.css'
 
 /**
@@ -24,106 +23,52 @@ import styles from './page.module.css'
  * Composes:
  *   - SettingsSidebar (left nav + vector index diagnostic)
  *   - ProfileBanner (top profile snippet)
- *   - LongTermMemorySection (master toggle + cross-topic sub-toggle + 3 rules)
- *   - MemoryItemsSection (filter tabs + search + 4 memory items + bulk actions)
- *   - ProviderStatusSection (4 provider badges)
+ *   - ProviderStatusSection (provider configuration badges)
  *
- * State is local to this page; no API calls. All destructive actions gated
- * by `window.confirm` inside each component.
+ * ## 数据源
+ *
+ * - `GET /api/v1/settings/status` → 供应商配置状态 + 向量索引规模。
+ * - `GET /api/v1/me` → 个人资料。**不重复请求**：全局 `UserProvider`
+ *   （`lib/auth/UserContext.tsx`）已经拉过同一个端点并缓存了结果，
+ *   这里直接读 context。
+ *
+ * 长期记忆规则区与记忆条目区已整块删除：后端没有对应的数据源
+ * （无 memory_rules 表），页面不该画读不到的数据。
  */
 export default function SettingsPage() {
-  const [activeNav, setActiveNav] = React.useState<SettingsNavId>('memory')
-  const [masterEnabled, setMasterEnabled] = React.useState(true)
-  const [crossTopicReasoning, setCrossTopicReasoning] = React.useState(true)
-  const [rules, setRules] = React.useState<MemoryRule[]>(() => [...memoryRulesSeed])
-  const [items, setItems] = React.useState<MemoryItem[]>(() => [...memoryItemsSeed])
-  const [providers] = React.useState<ProviderStatus[]>(() => [...providerStatusesSeed])
-  const [activeFilter, setActiveFilter] = React.useState<MemoryFilter['id']>('all')
-  const [searchQuery, setSearchQuery] = React.useState('')
+  const [activeNav, setActiveNav] = React.useState<SettingsNavId>('profile')
+  const { requestId, result, reload } = useSettingsStatus()
 
-  /* ── Counts for filter tab labels (design §270-285) ── */
-  const countsByFilter = React.useMemo(() => {
-    const counts: Record<MemoryFilter['id'], number> = {
-      all: items.length,
-      preference: 0,
-      reflection: 0,
-      definition: 0,
-      correction: 0,
-    }
-    for (const it of items) counts[it.kind] += 1
-    return counts
-  }, [items])
+  /* ── 后端数据 → 组件消费的形状。旧请求的结果一律不认 ── */
+  const isCurrent = result.requestId === requestId
+  const providers = React.useMemo(
+    () => (isCurrent && result.kind === 'ready' ? result.data.providers.map(toProviderStatus) : []),
+    [isCurrent, result],
+  )
+  const diagnostic = React.useMemo(
+    () =>
+      isCurrent && result.kind === 'ready' ? toVectorIndexDiagnostic(result.data.vector_index) : null,
+    [isCurrent, result],
+  )
 
-  /* ── Filtered + searched view of items ── */
-  const visibleItems = React.useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    return items.filter((it) => {
-      const matchesKind = activeFilter === 'all' || it.kind === activeFilter
-      const matchesQuery =
-        q.length === 0 || it.body.toLowerCase().includes(q) || it.memId.toLowerCase().includes(q)
-      return matchesKind && matchesQuery
-    })
-  }, [items, activeFilter, searchQuery])
+  /* ── 个人资料：读全局登录态，不重复请求 /me ── */
+  const { user } = useUser()
+  const profile = React.useMemo(() => toProfileBanner(user), [user])
 
-  /* ── Rule handlers ── */
-  const handleRuleToggle = React.useCallback((id: string, next: boolean) => {
-    setRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled: next } : r)))
-  }, [])
-
-  const handleRuleEdit = React.useCallback((id: string) => {
-    if (typeof window === 'undefined') return
-    window.alert(`（Mock）打开准则编辑器: ${id}`)
-  }, [])
-
-  const handleRuleDelete = React.useCallback((id: string) => {
-    setRules((prev) => prev.filter((r) => r.id !== id))
-  }, [])
-
-  const handleAddRule = React.useCallback(() => {
-    if (typeof window === 'undefined') return
-    window.alert('（Mock）新建准则弹窗将在此打开')
-  }, [])
-
-  /* ── Memory item handlers ── */
-  const handleAddItem = React.useCallback(() => {
-    if (typeof window === 'undefined') return
-    window.alert('（Mock）手动添加记忆项表单将在此打开')
-  }, [])
-
-  const handleEditItem = React.useCallback((id: string) => {
-    if (typeof window === 'undefined') return
-    window.alert(`（Mock）编辑记忆项: ${id}`)
-  }, [])
-
-  const handleDeleteItem = React.useCallback((id: string) => {
-    setItems((prev) => prev.filter((it) => it.id !== id))
-  }, [])
-
-  const handleExportJson = React.useCallback(() => {
-    if (typeof window === 'undefined') return
-    window.alert('（Mock）导出记忆图谱 JSON')
-  }, [])
-
-  const handleClearAll = React.useCallback(() => {
-    setItems([])
-  }, [])
-
-  /* ── Profile banner handlers ── */
+  /* ── 操作按钮：后端还没有对应接口，如实说明而不是假装能改 ── */
   const handleManageProfile = React.useCallback(() => {
     if (typeof window === 'undefined') return
-    window.alert('（Mock）打开资料管理弹窗')
+    window.alert('资料管理尚未接入后端接口')
   }, [])
 
   const handleSyncSso = React.useCallback(() => {
     if (typeof window === 'undefined') return
-    const ok = window.confirm('确认触发 SSO 凭据同步？')
-    if (ok) window.alert('（Mock）已触发 SSO 同步')
+    window.alert('SSO 凭据同步尚未接入后端接口')
   }, [])
 
-  /* ── Provider handlers ── */
   const handleConfigureProviders = React.useCallback(() => {
     if (typeof window === 'undefined') return
-    window.alert('（Mock）跳转到「模型与 API 密钥」')
+    window.alert('模型密钥由后端环境变量配置（.env），暂不支持在页面上修改')
     setActiveNav('api-keys')
   }, [])
 
@@ -132,42 +77,34 @@ export default function SettingsPage() {
       header={{
         title: '系统设置',
         enLabel: '/ Settings',
-        subtitle: '管理研究员个人偏好、长短期记忆图谱、多模型协同 API 及系统集成',
+        subtitle: '管理研究员个人资料、多模型协同 API 及系统集成',
       }}
     >
       {/* Main grid: left nav + right panels (design §17) */}
       <div className={styles.grid}>
         <aside className={styles.left}>
-          <SettingsSidebar activeId={activeNav} onSelect={setActiveNav} />
+          <SettingsSidebar activeId={activeNav} onSelect={setActiveNav} diagnostic={diagnostic} />
         </aside>
 
         <div className={styles.right}>
-          <ProfileBanner onManageProfile={handleManageProfile} onSyncSso={handleSyncSso} />
-          <LongTermMemorySection
-            masterEnabled={masterEnabled}
-            crossTopicReasoning={crossTopicReasoning}
-            rules={rules}
-            onMasterChange={setMasterEnabled}
-            onCrossTopicChange={setCrossTopicReasoning}
-            onRuleToggle={handleRuleToggle}
-            onRuleEdit={handleRuleEdit}
-            onRuleDelete={handleRuleDelete}
-            onAddRule={handleAddRule}
+          <ProfileBanner
+            profile={profile}
+            onManageProfile={handleManageProfile}
+            onSyncSso={handleSyncSso}
           />
-          <MemoryItemsSection
-            total={items.length}
-            countsByFilter={countsByFilter}
-            activeFilter={activeFilter}
-            onFilterChange={setActiveFilter}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            items={visibleItems}
-            onAddItem={handleAddItem}
-            onEditItem={handleEditItem}
-            onDeleteItem={handleDeleteItem}
-            onExportJson={handleExportJson}
-            onClearAll={handleClearAll}
-          />
+
+          {isCurrent && result.kind === 'loading' && (
+            <p className={styles.stateText}>正在加载系统状态…</p>
+          )}
+          {isCurrent && result.kind === 'error' && (
+            <p role="alert" className={styles.stateError}>
+              系统状态加载失败：{result.message}
+              <button type="button" className={styles.retry} onClick={reload}>
+                重试
+              </button>
+            </p>
+          )}
+
           <ProviderStatusSection providers={providers} onConfigure={handleConfigureProviders} />
         </div>
       </div>

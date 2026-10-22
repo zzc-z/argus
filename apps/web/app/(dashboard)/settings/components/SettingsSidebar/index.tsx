@@ -3,22 +3,29 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import { IconSpan } from '@/components/common/IconSpan'
-import { settingsNavItems, vectorIndexDiagnostic, type SettingsNavId } from '../../mock'
+import { settingsNavItems, type SettingsNavId, type VectorIndexDiagnostic } from '../../view'
 import styles from './index.module.css'
 
 export interface SettingsSidebarProps {
   activeId: SettingsNavId
   onSelect: (id: SettingsNavId) => void
+  /** 向量索引诊断。null = 还没加载出来。 */
+  diagnostic: VectorIndexDiagnostic | null
 }
 
 /**
  * Left settings navigation (design §19-80).
  * Each item is a button (not an <a>) — selection is client-side state.
  * Mini diagnostics card below the nav lists vector index health.
+ *
+ * 诊断数据来自 `GET /api/v1/settings/status`（映射见 `view.ts`）。
  */
-export function SettingsSidebar({ activeId, onSelect }: SettingsSidebarProps) {
-  const { used, total, ratio } = vectorIndexDiagnostic
-  const pct = Math.round(ratio * 100)
+export function SettingsSidebar({ activeId, onSelect, diagnostic }: SettingsSidebarProps) {
+  const used = diagnostic?.used ?? 0
+  const total = diagnostic?.total ?? 0
+  // 比例可能大于 1（后端统计的是全库向量数，切片数是当前用户的），
+  // 进度条宽度封顶在 100%，免得溢出轨道。
+  const pct = Math.min(100, Math.round((diagnostic?.ratio ?? 0) * 100))
 
   return (
     <nav className={styles.nav} aria-label="设置导航">
@@ -54,7 +61,7 @@ export function SettingsSidebar({ activeId, onSelect }: SettingsSidebarProps) {
                   item.danger && !isActive && styles.hintDanger,
                 )}
               >
-                {isActive && item.id === 'memory' ? 'Active' : item.hint}
+                {item.hint}
               </span>
             </button>
           )
@@ -66,10 +73,10 @@ export function SettingsSidebar({ activeId, onSelect }: SettingsSidebarProps) {
       <div className={styles.diag}>
         <div className={styles.diagHead}>
           <span className={cn(styles.diagLabel, 'font-label-sm')}>
-            {vectorIndexDiagnostic.label}
+            {diagnostic?.label ?? '向量索引状态'}
           </span>
           <span className={cn(styles.diagStatus, 'font-code text-primary')}>
-            {vectorIndexDiagnostic.statusLabel}
+            {diagnostic?.statusLabel ?? '加载中'}
           </span>
         </div>
         <div className={styles.barTrack}>
@@ -77,7 +84,7 @@ export function SettingsSidebar({ activeId, onSelect }: SettingsSidebarProps) {
         </div>
         <div className={cn(styles.diagFoot, 'font-code text-secondary')}>
           <span>
-            {used} / {total} 记忆项
+            {used} / {total} 切片
           </span>
           <span>{pct}%</span>
         </div>

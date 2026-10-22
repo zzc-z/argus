@@ -2,22 +2,28 @@
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import type { NotificationWithMeta, NotificationCategory } from '../../mock'
+import type { NotificationWithMeta } from '../../mock'
 import styles from './index.module.css'
 
 export interface NotificationItemProps {
   item: NotificationWithMeta
-  selected: boolean
-  onToggle: () => void
   onMarkRead: () => void
+  onDismiss: () => void
 }
 
 /**
- * Single notification card — 4 visual variants (unread / read / warning / compact)
- * and per-category bottom action rows. 1:1 extracted from
- * argus_notifications/code.html lines 121-365.
+ * 单条通知卡片。
+ *
+ * 卡片本体（左侧徽标 / 标签 / 标题 / 时间 / 正文 / chips / 置信度行）保持原样；
+ * 底部的操作行改为只保留**真实可执行**的两个动作：
+ *
+ * - 标为已读 → `NotificationsContext.markRead`（内存态）
+ * - 移除 → `NotificationsContext.dismissNotification`（同时从 localStorage 移除）
+ *
+ * 原先按 category 展开的"查看详情 / 阅读报告 / 导出 PDF / 管理记忆项 /
+ * 修复数据源 / 查看归档"都是指向不存在功能的死链接，已删除。
  */
-export function NotificationItem({ item, selected, onToggle, onMarkRead }: NotificationItemProps) {
+export function NotificationItem({ item, onMarkRead, onDismiss }: NotificationItemProps) {
   const compact = isCompact(item)
   const containerClass = compact
     ? styles.compactContainer
@@ -27,10 +33,6 @@ export function NotificationItem({ item, selected, onToggle, onMarkRead }: Notif
 
   return (
     <article className={containerClass}>
-      <div className={styles.checkboxWrap}>
-        <input type="checkbox" className={styles.checkbox} checked={selected} onChange={onToggle} />
-      </div>
-
       {!compact && (
         <NotificationBadge icon={item.icon} severity={item.severity} unread={item.unread} />
       )}
@@ -73,13 +75,7 @@ export function NotificationItem({ item, selected, onToggle, onMarkRead }: Notif
         )}
 
         {!compact && (
-          <BottomActions
-            category={item.category}
-            errorCode={item.errorCode}
-            memoryWeight={item.memoryWeight}
-            tailTag={item.tailTag}
-            onMarkRead={onMarkRead}
-          />
+          <BottomActions onMarkRead={onMarkRead} onDismiss={onDismiss} />
         )}
       </div>
     </article>
@@ -202,91 +198,19 @@ function ConfidenceRow({
 }
 
 function BottomActions({
-  category,
-  errorCode,
-  memoryWeight,
-  tailTag,
   onMarkRead,
+  onDismiss,
 }: {
-  category: NotificationCategory
-  errorCode?: string
-  memoryWeight?: string
-  tailTag?: string
   onMarkRead: () => void
+  onDismiss: () => void
 }) {
-  let left: React.ReactNode = null
-  let right: React.ReactNode = (
-    <IconAction icon="check_circle" title="标为已读" onClick={onMarkRead} hoverTone="primary" />
-  )
-
-  if (category === 'subscriptions') {
-    left = (
-      <>
-        <button type="button" className={`${styles.actionPrimary} font-headline-sm`}>
-          <span>查看详情</span>
-          <IconSpan name="arrow_forward" size={14} />
-        </button>
-        <button type="button" className={`${styles.actionGhost} font-body-sm`}>
-          定位至知识拓扑
-        </button>
-      </>
-    )
-  } else if (category === 'reports') {
-    left = (
-      <>
-        <button type="button" className={`${styles.actionPillPrimary} font-headline-sm`}>
-          <IconSpan name="auto_stories" size={14} />
-          <span>阅读报告</span>
-        </button>
-        <button type="button" className={`${styles.actionGhost} font-body-sm`}>
-          <IconSpan name="download" size={14} />
-          <span>导出 PDF/Markdown</span>
-        </button>
-      </>
-    )
-    right = (
-      <>
-        {right}
-        <IconAction icon="share" title="分享报告" hoverTone="default" onClick={onMarkRead} />
-      </>
-    )
-  } else if (category === 'memory') {
-    left = (
-      <>
-        <a className={`${styles.linkPrimary} font-headline-sm`} href="#">
-          <span>管理记忆项</span>
-          <IconSpan name="arrow_outward" size={13} />
-        </a>
-        <span className={`${styles.dotSep} font-code`}>·</span>
-        <span className={`${styles.memoryWeight} font-label-sm`}>{memoryWeight}</span>
-      </>
-    )
-  } else if (category === 'weekly') {
-    left = (
-      <>
-        <a className={`${styles.linkPlain} font-body-sm`} href="#">
-          <span>查看归档</span>
-          <IconSpan name="arrow_forward" size={13} />
-        </a>
-        <span className={`${styles.tailTag} font-code`}>{tailTag}</span>
-      </>
-    )
-  } else if (category === 'system') {
-    left = (
-      <>
-        <button type="button" className={`${styles.actionWarn} font-body-sm`}>
-          <IconSpan name="settings_backup_restore" size={13} className={styles.actionWarnIcon} />
-          <span>修复数据源</span>
-        </button>
-        <span className={`${styles.errorCode} font-code`}>{errorCode}</span>
-      </>
-    )
-  }
-
   return (
     <div className={styles.actions}>
-      <div className={styles.actionsLeft}>{left}</div>
-      <div className={styles.actionsRight}>{right}</div>
+      <div className={styles.actionsLeft} />
+      <div className={styles.actionsRight}>
+        <IconAction icon="check_circle" title="标为已读" onClick={onMarkRead} hoverTone="primary" />
+        <IconAction icon="close" title="移除该事件" onClick={onDismiss} hoverTone="default" />
+      </div>
     </div>
   )
 }

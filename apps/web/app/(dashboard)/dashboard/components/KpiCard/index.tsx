@@ -9,11 +9,16 @@
  *
  * Card root is position: relative + overflow: hidden so the progress strip
  * pins to the bottom edge of the card.
+ *
+ * ## 进度条
+ *
+ * 只有后端能算出真实比例的磁贴才有进度条（`kpi.progress` 缺省时不渲染）。
+ * 没有配额的维度不画空条——那等于编一个「0%」。
  */
 
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
-import type { Kpi } from '../../mock'
+import type { Kpi } from '../../view'
 import styles from './index.module.css'
 
 export interface KpiCardProps {
@@ -67,9 +72,11 @@ export function KpiCard({ kpi }: KpiCardProps) {
         </span>
       </div>
 
-      <div className={styles.progressTrack} aria-hidden="true">
-        <div className={styles.progressFill} style={{ width: `${kpi.progress}%` }} />
-      </div>
+      {kpi.progress !== undefined && (
+        <div className={styles.progressTrack} aria-hidden="true">
+          <div className={styles.progressFill} style={{ width: `${kpi.progress}%` }} />
+        </div>
+      )}
     </div>
   )
 }

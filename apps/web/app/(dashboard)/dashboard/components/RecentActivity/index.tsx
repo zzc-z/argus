@@ -9,7 +9,7 @@
 import * as React from 'react'
 import { IconSpan } from '@/components/common/IconSpan'
 import { cn } from '@/lib/utils'
-import type { ActivityItem } from '../../mock'
+import type { ActivityItem } from '../../view'
 import styles from './index.module.css'
 
 export interface RecentActivityProps {

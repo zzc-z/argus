@@ -18,6 +18,34 @@
   grid-column: 1 / -1;
 }
 
+/* 加载中 / 出错。措辞与报告列表页一致。 */
+.stateText {
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 14px;
+  padding: 1.5rem 0;
+}
+
+.stateError {
+  color: var(--token-error, #b3261e);
+  font-size: 14px;
+  padding: 1.5rem 0;
+}
+
+.retry {
+  margin-left: 0.75rem;
+  border: 1px solid var(--token-outline, #cac4d0);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0.125rem 0.5rem;
+}
+
+.retry:hover {
+  background: var(--token-surface-container-low, #f3f4f5);
+}
+
 @media (min-width: 1024px) {
   .left {
     grid-column: span 3 / span 3;
