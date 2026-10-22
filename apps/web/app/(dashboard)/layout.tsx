@@ -8,6 +8,9 @@ import { ThemeToggle } from '@/components/common/ThemeToggle'
 import { AuthGuard } from './components/AuthGuard'
 import { UserMenu } from './components/UserMenu'
 import { QuickKeys } from './components/QuickKeys'
+import { ServiceStatusCard } from './components/ServiceStatusCard'
+import { ServiceStatusPill } from './components/ServiceStatusPill'
+import { SessionBadge } from './components/SessionBadge'
 
 import { NavLink } from './NavLink'
 import styles from './layout.module.css'
@@ -78,25 +81,8 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className={styles.sidebarFoot}>
-          <div className={styles.clusterCard}>
-            <div className={styles.clusterTop}>
-              <span className="font-label-sm text-secondary">Agent Run Cluster</span>
-              <span className={`${styles.clusterActive} font-code`}>Active</span>
-            </div>
-            <div className={styles.progressTrack}>
-              <div className={styles.progressFill} style={{ width: '66.66%' }} />
-            </div>
-            <div className={`${styles.clusterMeta} font-code`}>
-              <span>DAG: 14 Nodes</span>
-              <span>99.4% Latency</span>
-            </div>
-          </div>
-          <div className={`${styles.sessionRow} font-code`}>
-            <span>Session #AR-882</span>
-            <button type="button" className={styles.sessionIcon} aria-label="打开终端">
-              <IconSpan name="terminal" size={16} />
-            </button>
-          </div>
+          <ServiceStatusCard />
+          <SessionBadge />
         </div>
       </aside>
 
@@ -110,12 +96,7 @@ function Shell({ children }: { children: React.ReactNode }) {
               </span>
               <kbd className={`${styles.searchKbd} font-code`}>⌘K</kbd>
             </Link>
-            <div className={styles.statusPill}>
-              <span className={styles.statusDot} aria-hidden="true" />
-              <span className={`${styles.statusText} font-label-sm`}>就绪</span>
-              <span className={styles.statusSep}>·</span>
-              <span className={`${styles.statusRate} font-code`}>8.2k tokens/s</span>
-            </div>
+            <ServiceStatusPill />
           </div>
           <div className={styles.topbarRight}>
             <button type="button" className={styles.iconBtn} aria-label="通知">

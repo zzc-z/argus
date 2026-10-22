@@ -1,0 +1,58 @@
+/* 顶栏右侧的服务状态胶囊。样式沿用 layout 里原来的 statusPill。 */
+
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  background-color: var(--token-surface-container-low, #f3f4f5);
+  color: var(--token-on-surface-variant, #494456);
+}
+
+.dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background-color: rgb(16 185 129);
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.dotDown {
+  background-color: var(--token-error, #b3261e);
+}
+
+.dotLoading {
+  background-color: var(--token-outline, #79747e);
+  animation: none;
+}
+
+.text {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-label-sm-size);
+  line-height: var(--text-label-sm-line-height);
+  letter-spacing: var(--text-label-sm-letter-spacing);
+  font-weight: var(--text-label-sm-weight);
+  color: var(--token-on-surface, #191c1d);
+}
+
+.sep {
+  color: var(--token-outline-variant, #cac3d9);
+}
+
+.rate {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line-height);
+  letter-spacing: var(--text-code-letter-spacing);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}

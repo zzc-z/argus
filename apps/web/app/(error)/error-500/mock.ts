@@ -1,35 +1,27 @@
 /**
- * Mock telemetry payload for the /error-500 page.
- * Mirrors the structure exported from (dashboard)/error-404/mock.ts but
- * specialized for a 5xx server-fault narrative.
+ * /error-500 的文案。
+ *
+ * ## 原来这里是什么
+ *
+ * 一份纯编造的集群故障快照：活跃智能体列表（`Synthesizer_v3` terminated /
+ * SIGABRT）、DAG 检查点、向量上下文长度 142117、孤儿 token 4102、集群健康
+ * 96.42%、「本地草稿已冻结」……**后端一个字段都没有**，而且「已暂停写入
+ * 并准备回滚」这种话会让人以为数据丢了。
+ *
+ * 500 页面真正能说的是：这次请求失败了、服务现在活着不活着、以及可以
+ * 往哪儿去。这些都在页面里现取，mock 只留**静态文案**。
  */
-import type { TelemetrySnapshot } from '../../(dashboard)/error-404/mock'
 
-export const telemetrySnapshot: TelemetrySnapshot = {
-  status: 500,
-  errorCode: 'DAG_RUNTIME_INVARIANT_BROKEN',
-  clusterRegion: 'us-west-03.core.argus.internal',
-  targetUri: '/reports/sess_quantum_arch_2026/run_882/phase_synthesize',
-  activeAgents: [
-    { name: 'Supervisor_Lead', state: 'running' },
-    { name: 'Synthesizer_v3', state: 'terminated', note: 'SIGABRT: invariant_violation' },
-    { name: 'Critic_Evaluator', state: 'terminated', note: 'SIGSEGV: upstream_5xx_propagated' },
-  ],
-  dagCheckpoint: 'node_synth_invoke:cold_cache_miss_after_30s',
-  memoryBuffer: {
-    vectorContextLength: 142117,
-    cachedNodes: 9,
-    orphanTokens: 4102,
-  },
-  suggestion:
-    'Trigger failover, replay last committed DAG checkpoint, or escalate to on-call SRE.',
-  epoch: 1740307245511,
-  summary: {
-    latencyMs: 1284,
-    clusterHealthPct: 96.42,
-    dataStateNote: '本地草稿已冻结，等待巡检确认',
-  },
-}
+/** 抽屉摘要。 */
+export const ERROR_500_SUMMARY = '服务端在处理这次请求时出错'
 
-export const traceId = 'argus_err_500_9c1f4a72'
-export const clusterNode = 'cluster-us-west-03'
+/** 给用户的一句话建议。 */
+export const ERROR_500_SUGGESTION =
+  '稍后重试；若反复出现，把下方的 trace id 与路径反馈给维护者。'
+
+/** 错误标题。 */
+export const ERROR_500_TITLE = '服务端出错了'
+
+/** 错误副标题——说明发生了什么、影响什么。 */
+export const ERROR_500_SUBTITLE =
+  '这次请求在服务端处理时失败了。如果你在 /explore 发起了一次研究，那次研究没有完成——重新提问即可，不需要清理任何东西。'

@@ -1,42 +1,45 @@
 'use client'
 
 import * as React from 'react'
+import { useRouter } from 'next/navigation'
 import { IconSpan } from '@/components/common/IconSpan'
 import { KbdHint } from '@/components/common/KbdHint'
 import styles from './index.module.css'
 
-type RetryPhase = 'idle' | 'scheduling' | 'done'
-
 export interface ActionGroupProps {
   /** Optional click handler invoked when the user clicks "返回研究看板". */
   onBackToDashboard?: () => void
-  /** Optional click handler invoked when the user opens the global search modal. */
-  onSearchTopics?: () => void
 }
 
 /**
- * Three action buttons: primary (Back to Dashboard, ⌘H), secondary (Search ⌘K),
- * tertiary (Retry pipeline). The retry button has its own animation phase.
+ * 两个真实可用的出口。
+ *
+ * ## 原来这里有三颗按钮，其中两颗是假的
+ *
+ * - 「全局检索研究课题 ⌘K」—— 404 页上没有任何课题可检索，后端也没有
+ *   检索接口；按下去只是弹一个 `window.alert`。
+ * - 「重新调度执行智能体」—— 假装在重调度：转 1.8 秒圈后提示「重调度
+ *   完成」再刷新页面。404 是路由没匹配上，**没有智能体可调度**；这个
+ *   动画在骗人。
+ *
+ * 只留「返回研究看板」（真实跳转）与「回到首页」。
  */
-export function ActionGroup({ onBackToDashboard, onSearchTopics }: ActionGroupProps) {
-  const [phase, setPhase] = React.useState<RetryPhase>('idle')
+export function ActionGroup({ onBackToDashboard }: ActionGroupProps) {
+  const router = useRouter()
 
-  const handleRetry = React.useCallback(() => {
-    if (phase !== 'idle') return
-    setPhase('scheduling')
-    window.setTimeout(() => {
-      setPhase('done')
-      window.setTimeout(() => {
-        if (typeof window !== 'undefined') window.location.reload()
-      }, 800)
-    }, 1800)
-  }, [phase])
+  const goDashboard = React.useCallback(() => {
+    if (onBackToDashboard) {
+      onBackToDashboard()
+      return
+    }
+    router.push('/dashboard')
+  }, [onBackToDashboard, router])
 
   return (
     <div className={styles.group}>
       <button
         type="button"
-        onClick={onBackToDashboard}
+        onClick={goDashboard}
         className={`${styles.btn} ${styles.primary}`}
       >
         <IconSpan name="space_dashboard" size={18} />
@@ -48,37 +51,11 @@ export function ActionGroup({ onBackToDashboard, onSearchTopics }: ActionGroupPr
 
       <button
         type="button"
-        onClick={onSearchTopics}
+        onClick={() => router.push('/explore')}
         className={`${styles.btn} ${styles.secondary}`}
       >
-        <IconSpan name="search" size={18} />
-        <span className="font-headline-sm">全局检索研究课题</span>
-        <KbdHint tone="light" className={styles.kbdOnLight}>
-          ⌘K
-        </KbdHint>
-      </button>
-
-      <button
-        type="button"
-        id="retryButton"
-        onClick={handleRetry}
-        disabled={phase !== 'idle'}
-        className={`${styles.btn} ${styles.tertiary} ${
-          phase === 'done' ? styles.tertiaryDone : ''
-        }`}
-      >
-        <IconSpan
-          name="refresh"
-          size={18}
-          className={phase === 'scheduling' ? styles.spin : undefined}
-        />
-        <span className="font-headline-sm" id="retryLabel">
-          {phase === 'scheduling'
-            ? '正在重新编排智能体...'
-            : phase === 'done'
-              ? '重调度完成，重定向中...'
-              : '重新调度执行智能体'}
-        </span>
+        <IconSpan name="travel_explore" size={18} />
+        <span className="font-headline-sm">开始一次新的研究</span>
       </button>
     </div>
   )

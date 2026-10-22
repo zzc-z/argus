@@ -1,0 +1,14 @@
+/* 侧栏底部的用户标识行。样式沿用 layout 里原来的 sessionRow。 */
+
+.row {
+  font-family: var(--font-family-mono);
+  font-size: var(--text-code-size);
+  line-height: var(--text-code-line-height);
+  letter-spacing: var(--text-code-letter-spacing);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.25rem;
+  padding-inline: 0.25rem;
+  color: var(--token-secondary, #575e70);
+}

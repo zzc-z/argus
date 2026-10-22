@@ -241,7 +241,7 @@ export const BULK_ACTIONS = [
 /* ── Top header copy ──────────────────────────────────────────────── */
 
 export const TOPBAR_STATUS_LABEL = '就绪'
-export const TOPBAR_THROUGHPUT = '8.2k tokens/s'
+export const TOPBAR_THROUGHPUT = 'argus-api 0.1.0'
 
 export const SIDEBAR_PRODUCT = 'Argus'
 export const SIDEBAR_SUBTITLE = 'Synthesizer Core'
@@ -308,22 +308,22 @@ export const SIDEBAR_NAV: ReadonlyArray<{
   active?: boolean
   href: string
 }> = [
-  { id: 'dashboard', label: 'Dashboard 首页', icon: 'dashboard', href: '#' },
+  { id: 'dashboard', label: 'Dashboard 首页', icon: 'dashboard', href: '/dashboard' },
   {
     id: 'reports',
     label: '报告列表',
     icon: 'article',
-    href: '#',
+    href: '/reports',
     active: true,
   },
-  { id: 'topics', label: '主题订阅', icon: 'rss_feed', href: '#' },
-  { id: 'sources', label: '资料库', icon: 'database', href: '#' },
-  { id: 'settings', label: '设置', icon: 'tune', href: '#' },
+  { id: 'topics', label: '主题订阅', icon: 'rss_feed', href: '/topics' },
+  { id: 'sources', label: '资料库', icon: 'database', href: '/sources' },
+  { id: 'settings', label: '设置', icon: 'tune', href: '/settings' },
 ]
 
-export const SIDEBAR_CLUSTER_TITLE = 'Agent Run Cluster'
-export const SIDEBAR_CLUSTER_STATUS = 'Active'
-export const SIDEBAR_CLUSTER_DAG = 'DAG: 14 Nodes'
-export const SIDEBAR_CLUSTER_LATENCY = '99.4% Latency'
-export const SIDEBAR_CLUSTER_BAR_WIDTH = '66.6667%'
-export const SIDEBAR_SESSION_LABEL = 'Session #AR-882'
+export const SIDEBAR_CLUSTER_TITLE = '后端服务'
+export const SIDEBAR_CLUSTER_STATUS = '存活'
+export const SIDEBAR_CLUSTER_DAG = '进程存活探测'
+export const SIDEBAR_CLUSTER_LATENCY = 'GET /api/v1/healthz'
+export const SIDEBAR_CLUSTER_BAR_WIDTH = '100%'
+export const SIDEBAR_SESSION_LABEL = '当前用户'

@@ -10,8 +10,17 @@ export interface TelemetryDrawerProps {
 }
 
 /**
- * Collapsible diagnostics drawer. Open by default (design says "for engineering transparency").
- * Renders the JSON snapshot with token-colored syntax highlighting.
+ * 可折叠的诊断抽屉。默认展开。
+ *
+ * ## 这里面装的是真东西
+ *
+ * 原设计稿里这个抽屉装的是一份**编造的集群故障快照**：活跃智能体列表、
+ * 向量上下文长度、孤儿 token 数、DAG 检查点，还写着「已自动捕获客户端内存
+ * 快照与网络流回执」——**这个页面根本没有捕获任何东西**，那句话是假的。
+ * 「向工程团队提交诊断日志」也是死链（`ops@argus.ai` 这个邮箱不存在）。
+ *
+ * 现在装的是这一次访问真正知道的事：HTTP 状态码、路径、浏览器 UA、访问
+ * 时间、后端 liveness 探测结果、trace id。没有��的字段就��写。
  */
 export function TelemetryDrawer({ snapshot }: TelemetryDrawerProps) {
   const [open, setOpen] = React.useState(true)
@@ -22,7 +31,7 @@ export function TelemetryDrawer({ snapshot }: TelemetryDrawerProps) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `argus_trace_${snapshot.status}_${snapshot.epoch}.json`
+    a.download = `argus_diagnostics_${snapshot.status}_${snapshot.traceId}.json`
     a.click()
     URL.revokeObjectURL(url)
   }, [snapshot])
@@ -46,14 +55,16 @@ export function TelemetryDrawer({ snapshot }: TelemetryDrawerProps) {
             <IconSpan name="terminal" size={20} className="text-primary-container" />
             <div className={styles.headerTitleRow}>
               <span className={`${styles.headerTitle} font-headline-sm text-on-surface`}>
-                工程师遥测与调用栈明细 (Telemetry &amp; Stack Trace)
+                访问诊断信息 (Diagnostics)
               </span>
-              <span className={`${styles.severityChip} font-code`}>CRITICAL_FAILOVER</span>
+              <span className={`${styles.severityChip} font-code`}>
+                HTTP {snapshot.status}
+              </span>
             </div>
           </div>
           <div className={styles.headerRight}>
             <span className={`${styles.headerMeta} font-label-sm text-secondary hidden sm:inline`}>
-              JSON Payload · Runtime Snapshot
+              JSON · 本次访问
             </span>
             <IconSpan
               name="expand_more"
@@ -66,49 +77,33 @@ export function TelemetryDrawer({ snapshot }: TelemetryDrawerProps) {
         {open && (
           <div className={styles.body}>
             <pre className={`${styles.code} font-code text-on-surface`}>
-              {`// Argus Runtime Context Snapshot (Epoch: ${snapshot.epoch})`}
               {`{`}
               {`  "status": `}
               <span className="text-error">{snapshot.status}</span>
               {`,`}
-              {`  "error_code": "`}
-              <span className="text-primary">{snapshot.errorCode}</span>
+              {`  "path": "`}
+              <span className="text-on-surface">{snapshot.path}</span>
               {`",`}
-              {`  "cluster_region": "`}
-              <span className="text-on-surface">{snapshot.clusterRegion}</span>
+              {`  "occurred_at": "`}
+              <span className="text-on-surface">{snapshot.occurredAt}</span>
               {`",`}
-              {`  "target_uri": "`}
-              <span className="text-on-surface">{snapshot.targetUri}</span>
+              {`  "user_agent": "`}
+              <span className="text-on-surface">{snapshot.userAgent}</span>
               {`",`}
-              {`  "active_agents": [`}
-              {`    "`}
-              <span className="text-secondary">{snapshot.activeAgents[0]?.name}</span>
-              {`",`}
-              {`    "`}
-              <span className="text-secondary">{snapshot.activeAgents[1]?.name}</span>
-              {`",`}
-              {`    "`}
-              <span className="text-error font-medium">
-                {snapshot.activeAgents[2]?.name}
-                {snapshot.activeAgents[2]?.state === 'terminated' && snapshot.activeAgents[2]?.note
-                  ? ` (Terminated: ${snapshot.activeAgents[2]?.note})`
-                  : ''}
-              </span>
-              {`"`}
-              {`  ],`}
-              {`  "dag_checkpoint": "`}
-              <span className="text-error">{snapshot.dagCheckpoint}</span>
-              {`",`}
-              {`  "memory_buffer_state": {`}
-              {`    "vector_context_length": `}
-              <span className="text-on-surface">{snapshot.memoryBuffer.vectorContextLength}</span>
+              {`  "backend_probe": `}
+              {snapshot.backendProbe === null ? (
+                <span className="text-error">null</span>
+              ) : (
+                <>
+                  {`"`}
+                  <span className="text-on-surface">{snapshot.backendProbe}</span>
+                  {`"`}
+                </>
+              )}
               {`,`}
-              {`    "cached_nodes": `}
-              <span className="text-on-surface">{snapshot.memoryBuffer.cachedNodes}</span>
-              {`,`}
-              {`    "orphan_tokens": `}
-              <span className="text-on-surface">{snapshot.memoryBuffer.orphanTokens}</span>
-              {`  },`}
+              {`  "trace_id": "`}
+              <span className="text-primary">{snapshot.traceId}</span>
+              {`",`}
               {`  "suggestion": "`}
               <span className="text-primary">{snapshot.suggestion}</span>
               {`"`}
@@ -117,23 +112,16 @@ export function TelemetryDrawer({ snapshot }: TelemetryDrawerProps) {
 
             <div className={styles.footer}>
               <div className={styles.footerLeft}>
-                <IconSpan name="verified" size={16} className="text-primary-container" />
+                <IconSpan name="info" size={16} className="text-primary-container" />
                 <span className={`${styles.footerNote} font-label-sm text-secondary`}>
-                  已自动捕获客户端内存快照与网络流回执
+                  以上信息由浏览器本地采集，未上报任何服务器
                 </span>
               </div>
               <div className={styles.footerRight}>
                 <button type="button" onClick={handleDownload} className={styles.downloadBtn}>
                   <IconSpan name="download" size={16} />
-                  <span className="font-body-sm">导出 JSON 日志</span>
+                  <span className="font-body-sm">导出 JSON</span>
                 </button>
-                <a
-                  className={styles.flagLink}
-                  href={`mailto:ops@argus.ai?subject=Telemetry_Fault_Report_${snapshot.errorCode}`}
-                >
-                  <IconSpan name="flag" size={16} />
-                  <span className="font-body-sm">向工程团队提交诊断日志 (附带遥测快照)</span>
-                </a>
               </div>
             </div>
           </div>

@@ -1,75 +1,80 @@
 'use client'
 
+/**
+ * /error-500 — server-fault diagnostics page.
+ *
+ * 与 /error-404 共用同一套组件（不另起一套布局），但换成 500 的文案与
+ * 真实诊断信息。
+ *
+ * ## 原来这里是什么
+ *
+ * 一整套编造的集群故障叙事：「DAG 集群：14 节点活跃 · 探针降级巡检中」、
+ * 「Argus 已暂停写入并准备回滚」、拓扑图，以及 ⌘K 时弹一个
+ * `window.alert('正在呼出全局命令面板')` ——那个命令面板**根本不存在**，
+ * 弹出来只有一句话。
+ *
+ * 现在只保留两件真事：
+ * 1. 后端 liveness 探针的结果（`/api/v1/healthz`）
+ * 2. 这次访问的真实运行时信息（路径、UA、时间、trace id）
+ */
+
 import * as React from 'react'
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 
 import { ErrorHeader } from '../../(dashboard)/error-404/components/ErrorHeader'
-import { TopologyDiagram } from '../../(dashboard)/error-404/components/TopologyDiagram'
 import { ErrorDisplay } from '../../(dashboard)/error-404/components/ErrorDisplay'
 import { TraceIdBar } from '../../(dashboard)/error-404/components/TraceIdBar'
 import { ActionGroup } from '../../(dashboard)/error-404/components/ActionGroup'
 import { TelemetryDrawer } from '../../(dashboard)/error-404/components/TelemetryDrawer'
 import { StatusFooter } from '../../(dashboard)/error-404/components/StatusFooter'
+import type { TelemetrySnapshot } from '../../(dashboard)/error-404/mock'
 
-import { telemetrySnapshot, traceId, clusterNode } from './mock'
-
+import { useHealthProbe, healthStatusText } from '@/lib/api/health'
+import { ERROR_500_SUBTITLE, ERROR_500_TITLE } from './mock'
 import styles from './page.module.css'
 
-const clusterStatus = 'DAG 集群：14 节点活跃 · 探针降级巡检中'
+/** trace id：页面加载时生成一次，之后保持不变。 */
+function makeTraceId(): string {
+  const rand = Math.random().toString(16).slice(2, 10)
+  return `argus_err_500_${rand}`
+}
 
-/**
- * 500-focused copy — derived from argus_error_404_500/code.html. The design
- * intentionally merges 404 + 500 into one layout; this page specializes the
- * 500 path with a server-fault narrative. /error-500 keeps the same component
- * set as /error-404 so we don't fork the layout.
- */
-const reportTitle = '研报调度链路发生严重故障，Argus 已暂停写入并准备回滚'
-const reportSubtitle =
-  '多智能体执行过程中触发了上游推理网关的 5xx 上游异常或本地向量缓存一致性错误。本次会话草稿已冻结，下游订阅不会再读到不一致快照。请联系工程团队或触发巡检以恢复写入。'
-
-/**
- * /error-500 — server-fault diagnostics page.
- * Reuses the /error-404 component set with 500-focused copy.
- * Top-level keyboard shortcuts: ⌘K → search, ⌘H → back to dashboard.
- */
 export default function Error500Page() {
-  const router = useRouter()
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const isMod = e.metaKey || e.ctrlKey
-      if (!isMod) return
-      const key = e.key.toLowerCase()
-      if (key === 'k') {
-        e.preventDefault()
-        window.alert('正在呼出全局命令面板 (⌘K)...')
-      } else if (key === 'h') {
-        e.preventDefault()
-        router.push('/dashboard')
-      }
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [router])
+  const pathname = usePathname()
+  const [traceId] = React.useState(makeTraceId)
+  // 时间戳同样固定在首次渲染——render 期间读时钟会拿到不同的值。
+  const [epoch] = React.useState(() => Date.now())
+  const health = useHealthProbe()
+
+  const snapshot = React.useMemo<TelemetrySnapshot>(
+    () => ({
+      status: 500,
+      targetUri: pathname,
+      epoch,
+      occurredAt: new Date(epoch).toISOString(),
+      path: pathname,
+      userAgent: typeof navigator === 'undefined' ? '未知' : navigator.userAgent,
+      backendProbe: health.kind === 'ready' ? healthStatusText(health) : null,
+      traceId,
+      suggestion: '稍后重试；若持续出现，请把上面的 trace id 提供给工程团队。',
+      summary: '服务端处理请求时发生错误',
+    }),
+    [epoch, health, pathname, traceId],
+  )
 
   return (
     <div className={styles.shell}>
-      <ErrorHeader clusterStatus={clusterStatus} />
+      <ErrorHeader serviceStatus={healthStatusText(health)} />
 
       <div className={styles.center}>
-        <TopologyDiagram />
-        <ErrorDisplay title={reportTitle} subtitle={reportSubtitle} />
-        <TraceIdBar traceId={traceId} clusterNode={clusterNode} />
+        <ErrorDisplay title={ERROR_500_TITLE} subtitle={ERROR_500_SUBTITLE} />
+        <TraceIdBar traceId={traceId} path={pathname} />
         <ActionGroup />
       </div>
 
-      <TelemetryDrawer snapshot={telemetrySnapshot} />
+      <TelemetryDrawer snapshot={snapshot} />
 
-      <StatusFooter
-        latencyMs={telemetrySnapshot.summary.latencyMs}
-        clusterHealthPct={telemetrySnapshot.summary.clusterHealthPct}
-        dataStateNote={telemetrySnapshot.summary.dataStateNote}
-      />
+      <StatusFooter serviceStatus={healthStatusText(health)} />
     </div>
   )
 }

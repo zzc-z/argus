@@ -8,14 +8,14 @@ import styles from './index.module.css'
 
 export interface ErrorHeaderProps {
   /** Cluster status text shown next to the live dot. */
-  clusterStatus: string
+  serviceStatus: string
 }
 
 /**
  * Top bar of the error page.
  * Left: Argus brand + version chip + tagline. Right: live cluster pill + back-to-workbench link.
  */
-export function ErrorHeader({ clusterStatus }: ErrorHeaderProps) {
+export function ErrorHeader({ serviceStatus }: ErrorHeaderProps) {
   return (
     <header className={styles.header}>
       <div className={styles.brand}>
@@ -29,7 +29,7 @@ export function ErrorHeader({ clusterStatus }: ErrorHeaderProps) {
             >
               Argus
             </span>
-            <span className={`${styles.versionChip} font-label-sm text-label-sm`}>v2.4.1-rc3</span>
+            <span className={`${styles.versionChip} font-label-sm text-label-sm`}>Argus</span>
           </div>
           <span className={`${styles.brandTagline} font-label-sm text-label-sm text-secondary`}>
             Precision Intelligence Workspace
@@ -41,10 +41,10 @@ export function ErrorHeader({ clusterStatus }: ErrorHeaderProps) {
         <div className={styles.statusPill}>
           <StatusDot color="purple" ping />
           <span className={`${styles.statusText} font-label-sm text-label-sm text-on-surface-variant`}>
-            {clusterStatus}
+            {serviceStatus}
           </span>
         </div>
-        <a className={styles.backLink} href="#workbench">
+        <a className={styles.backLink} href="/dashboard">
           <IconSpan name="arrow_back" size={18} className="text-primary" />
           <span>返回工作台</span>
         </a>

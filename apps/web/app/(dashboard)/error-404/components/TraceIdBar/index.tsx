@@ -6,14 +6,15 @@ import styles from './index.module.css'
 
 export interface TraceIdBarProps {
   traceId: string
-  clusterNode: string
+  /** 发生错误的路由路径。真实的，不是编的集群节点名。 */
+  path: string
 }
 
 /**
  * Copyable trace-id pill. Click → write trace id to clipboard,
  * swap the "点击复制" notice to "已复制" for 2 seconds.
  */
-export function TraceIdBar({ traceId, clusterNode }: TraceIdBarProps) {
+export function TraceIdBar({ traceId, path }: TraceIdBarProps) {
   const [copied, setCopied] = React.useState(false)
 
   const handleCopy = React.useCallback(async () => {
@@ -64,7 +65,7 @@ export function TraceIdBar({ traceId, clusterNode }: TraceIdBarProps) {
           <span>{copied ? '已复制' : '点击复制'}</span>
         </span>
         <span className={`${styles.sep} font-label-sm text-outline-variant`}>·</span>
-        <span className={`${styles.node} font-code text-tertiary`}>节点: {clusterNode}</span>
+        <span className={`${styles.node} font-code text-tertiary`}>路径: {path}</span>
       </div>
     </div>
   )
