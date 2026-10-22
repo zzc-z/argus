@@ -238,15 +238,6 @@ export const BULK_ACTIONS = [
   { id: 'archive', label: '批量归档', icon: 'delete', tone: 'danger' as const },
 ] as const
 
-/* ── Top header copy ──────────────────────────────────────────────── */
-
-export const TOPBAR_STATUS_LABEL = '就绪'
-export const TOPBAR_THROUGHPUT = 'argus-api 0.1.0'
-
-export const SIDEBAR_PRODUCT = 'Argus'
-export const SIDEBAR_SUBTITLE = 'Synthesizer Core'
-export const SIDEBAR_VERSION = 'v2.4'
-
 /* ── 真数据 → 视图模型的映射 ─────────────────────────────────────
  *
  * 页面上所有组件都按 `Report` 这个形状消费（表格、卡片、选中态都读
@@ -297,33 +288,3 @@ export function toReportRow(r: ReportSummaryV): Report {
     starred: false,
   }
 }
-
-export const SIDEBAR_WORKSPACE_LABEL = 'Argus Research Workspace'
-export const SIDEBAR_NAV_LABEL = 'Navigation'
-
-export const SIDEBAR_NAV: ReadonlyArray<{
-  id: string
-  label: string
-  icon: string
-  active?: boolean
-  href: string
-}> = [
-  { id: 'dashboard', label: 'Dashboard 首页', icon: 'dashboard', href: '/dashboard' },
-  {
-    id: 'reports',
-    label: '报告列表',
-    icon: 'article',
-    href: '/reports',
-    active: true,
-  },
-  { id: 'topics', label: '主题订阅', icon: 'rss_feed', href: '/topics' },
-  { id: 'sources', label: '资料库', icon: 'database', href: '/sources' },
-  { id: 'settings', label: '设置', icon: 'tune', href: '/settings' },
-]
-
-export const SIDEBAR_CLUSTER_TITLE = '后端服务'
-export const SIDEBAR_CLUSTER_STATUS = '存活'
-export const SIDEBAR_CLUSTER_DAG = '进程存活探测'
-export const SIDEBAR_CLUSTER_LATENCY = 'GET /api/v1/healthz'
-export const SIDEBAR_CLUSTER_BAR_WIDTH = '100%'
-export const SIDEBAR_SESSION_LABEL = '当前用户'
