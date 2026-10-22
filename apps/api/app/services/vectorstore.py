@@ -157,8 +157,12 @@ async def ensure_vector_table(engine: AsyncEngine) -> None:
 
 
 # ── 统计 ────────────────────────────────────────────────────
-async def count_embeddings(db: AsyncSession) -> int:
+async def count_embeddings(db: AsyncSession, user_id: int | None = None) -> int:
     """数向量表里有几行。
+
+    ``user_id`` 给了就只数**该用户**的向量（join sources 过滤），不给就
+    数全库。页面上「检索切片」与「已向量化」两个数字要同口径，所以那里
+    传的是 user_id。
 
     ## 为什么查影子表而不是 ``chunk_embeddings`` 本身
 
@@ -185,7 +189,21 @@ async def count_embeddings(db: AsyncSession) -> int:
     )
     if not exists:
         return 0
-    count = await db.scalar(text(f"SELECT count(*) FROM {VEC_ROWIDS_TABLE}"))
+    if user_id is None:
+        count = await db.scalar(text(f"SELECT count(*) FROM {VEC_ROWIDS_TABLE}"))
+        return int(count or 0)
+    # 按 user 过滤：影子表只有 chunk_id，没有 user_id 列，要 join 一条到
+    # sources。不这么做的话「已向量化」数的是全库的，而旁边的「检索切片」
+    # 数的是当前用户的——两个不同口径的数字并排显示，用户没法解读。
+    count = await db.scalar(
+        text(
+            f"SELECT count(*) FROM {VEC_ROWIDS_TABLE} AS v "
+            f"JOIN document_chunks AS c ON c.id = v.chunk_id "
+            f"JOIN sources AS s ON s.id = c.source_id "
+            f"WHERE s.user_id = :user_id"
+        ),
+        {"user_id": user_id},
+    )
     return int(count or 0)
 
 

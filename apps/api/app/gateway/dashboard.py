@@ -126,15 +126,16 @@ async def read_settings_status(user: CurrentUser, db: DbSession) -> SettingsStat
         )
     ) or 0
 
-    # 向量表是全局的（vec0 的主键是 chunk_id，没有 user_id 列），
-    # 所以这里数的是**整个库**的向量数，而不是当前用户的。
-    # 两者在单用户部署下相同；多用户下这个数字偏大——但比按 chunk_id
-    # 反查用户归属（要 join 一大张表）便宜得多，且不影响判断
-    # 「有没有在跑」。
+    # 已向量化的切片数——**按 user_id 过滤**，与上面的 chunk_count 同口径。
+    #
+    # vec0 虚表没有 user_id 列（主键就是 chunk_id），所以要 join 一条：
+    # 影子表 → document_chunks → sources。早先的版本直接数全库，页面上
+    # 就出现「已向量化 7398 > 检索切片 7388」这种自相矛盾的数字——两个数
+    # 不同口径，用户没法解读。宁可多一次 join 也要口径一致。
     try:
-        embedded = await count_embeddings(db)
+        embedded = await count_embeddings(db, user.id)
     except Exception:
-        # 向量库不可用（扩展没加载、表不存在）不该让整个状态接口 500。
+        # 向量库不可用（表不存在）不该让整个状态接口 500。
         # 保守地报 0——「0 个已嵌入」是安全的下界。
         embedded = 0
 

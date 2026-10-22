@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
@@ -45,17 +46,46 @@ async def _source(db: AsyncSession, user_id: int, title: str = "资料") -> Sour
     return source
 
 
-async def _chunk(db: AsyncSession, source_id: int, count: int = 1) -> None:
+async def _chunk(db: AsyncSession, source_id: int, count: int = 1) -> list[int]:
+    """造 count 个切片，返回它们的 id。
+
+    返回 id 是为了能造向量影子表的行——``chunk_embeddings_rowids`` 的一行
+    对应一个 chunk_id。
+    """
+    ids: list[int] = []
     for i in range(count):
-        db.add(
-            DocumentChunk(
-                source_id=source_id,
-                chunk_index=i,
-                content="正文",
-                page=None,
-                start_offset=0,
-                end_offset=2,
-            )
+        chunk = DocumentChunk(
+            source_id=source_id,
+            chunk_index=i,
+            content="正文",
+            page=None,
+            start_offset=0,
+            end_offset=2,
+        )
+        db.add(chunk)
+        await db.flush()
+        ids.append(chunk.id)
+    await db.commit()
+    return ids
+
+
+async def _embed(db: AsyncSession, chunk_ids: list[int]) -> None:
+    """造向量影子表的行。
+
+    ``chunk_embeddings`` 是 vec0 虚表，测试库不建它；vec0 为虚表建的
+    影子表 ``chunk_embeddings_rowids`` 是**真实表**，普通 SQL 就能插——
+    而统计用的正是它。
+    """
+    await db.execute(
+        text(
+            "CREATE TABLE IF NOT EXISTS chunk_embeddings_rowids "
+            "(chunk_id INTEGER PRIMARY KEY)"
+        )
+    )
+    for cid in chunk_ids:
+        await db.execute(
+            text("INSERT INTO chunk_embeddings_rowids (chunk_id) VALUES (:cid)"),
+            {"cid": cid},
         )
     await db.commit()
 
@@ -195,6 +225,38 @@ async def test_settings_status_reports_vector_index(
     assert body["vector_index"]["chunk_count"] == 2
     # 嵌入数走 vec0 虚拟表，测试库里没建 → 0，且不能因此让整个接口 500。
     assert body["vector_index"]["embedded_chunk_count"] == 0
+
+
+async def test_settings_status_counts_only_own_embeddings(
+    db_session: AsyncSession, client: TestClient
+) -> None:
+    """已向量化的数量按当前用户过滤，与「检索切片」同口径。
+
+    vec0 虚表没有 user_id 列，所以数向量要 join 一条到 sources。**不
+    join 的话页面上会出现「已向量化 7398 > 检索切片 7388」**——两个数
+    不同口径并排显示，用户没法解读（多用户下更离谱：别人的向量算进
+    我的索引里）。
+
+    影子表 ``chunk_embeddings_rowids`` 在测试库里不存在（它是 vec0 运行时
+    建的），所以这里手工造一张——它就是一张普通表，普通 SQL 能查。
+    """
+    me = await _user(db_session, "me@example.com")
+    other = await _user(db_session, "other@example.com")
+
+    my_source = await _source(db_session, me.id, "我的资料")
+    other_source = await _source(db_session, other.id, "别人的资料")
+    my_chunks = await _chunk(db_session, my_source.id, count=2)
+    other_chunks = await _chunk(db_session, other_source.id, count=1)
+
+    # 两个用户的切片都已向量化——共 3 个向量。
+    await _embed(db_session, [*my_chunks, *other_chunks])
+
+    _auth(client, me)
+    body = client.get("/api/v1/settings/status").json()
+
+    assert body["vector_index"]["chunk_count"] == 2
+    # 只有我自己的 2 个——别人的那个不能算进来。
+    assert body["vector_index"]["embedded_chunk_count"] == 2
 
 
 async def test_settings_status_never_leaks_secrets(
