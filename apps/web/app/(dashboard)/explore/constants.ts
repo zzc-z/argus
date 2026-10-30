@@ -43,6 +43,27 @@ export interface ToolCall {
   /** 截断过的入参预览。 */
   args: string
   duration: string
+  /**
+   * 这次调用是否成功。null = 还在执行（只有 start 帧）。
+   *
+   * 失败必须显出来：一次失败的 local_search 与一次成功的，
+   * 在轨迹表里长得一模一样（只有耗时不同）——用户会以为资料真的
+   * 查过了，而其实那一路整个断掉了。
+   */
+  ok: boolean | null
+  /**
+   * 结果概要 / 失败原因。失败时是具体原因（如「嵌入服务欠费」），
+   * 成功时是命中条数一类的短摘要。
+   */
+  preview: string
+  /**
+   * 特殊情况的错误码（空串 = 没有）。
+   *
+   * `ok=true` 但这里非空，说明工具正常跑完了，只是结果落在某一档特殊情况
+   * 里——最典型的是 `retrieval_no_match`：私有资料与问题不相关，用户的
+   * 资料**被跳过了**。这是用户有权知道的事，不能只埋在 preview 里。
+   */
+  errorCode?: string
 }
 
 /**
@@ -103,3 +124,35 @@ export const SLASH_COMMANDS: SlashCommand[] = [
     template: '请把以下主题压缩成核心结论摘要，不超过 5 条：',
   },
 ]
+
+/**
+ * 开流**之前**的 HTTP 失败 → 错误码与是否值得重试。
+ *
+ * ## 为什么要一张显式表
+ *
+ * 开流之前后端还没发过 error 帧，前端拿不到后端的 code。但错误码不能
+ * 凭空造——`http_503` 这种码在后端监控里永远查不到。
+ *
+ * 所以按 HTTP 状态码映射到**后端用的同一套 code**：后端
+ * `app/gateway/research.py` 里「并发已满」是 503、「模型未配置」是 400
+ * （配置问题重试无用，不能跟「稍后重试」的 503 混同）。
+ *
+ * 落在后端 code 命名空间之外的两个（`network_error`、`http_error`）
+ * 是真的没有后端对应物——连接在到达服务端前就断了。
+ */
+export const HTTP_ERROR_CODES: Readonly<Record<number, { code: string; retryable: boolean }>> = {
+  400: { code: 'llm_not_configured', retryable: false },
+  401: { code: 'unauthorized', retryable: false },
+  403: { code: 'forbidden', retryable: false },
+  413: { code: 'payload_too_large', retryable: false },
+  415: { code: 'unsupported_media_type', retryable: false },
+  422: { code: 'validation_error', retryable: false },
+  429: { code: 'rate_limited', retryable: true },
+  500: { code: 'server_error', retryable: true },
+  502: { code: 'bad_gateway', retryable: true },
+  503: { code: 'llm_unavailable', retryable: true },
+  504: { code: 'gateway_timeout', retryable: true },
+}
+
+/** 状态码不在表里时的兜底。 */
+export const HTTP_ERROR_FALLBACK = { code: 'http_error', retryable: true } as const

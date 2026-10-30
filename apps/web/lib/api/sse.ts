@@ -10,7 +10,7 @@
  */
 
 /** 智能体节点生命周期。后端只发 active / completed，pending 是前端初始态。 */
-export type NodeLifecycle = 'pending' | 'active' | 'completed'
+export type NodeLifecycle = 'pending' | 'active' | 'completed' | 'failed'
 
 /** `type: "node"` —— 节点生命周期变化。任一时刻只允许一个 active。 */
 export interface NodeEventV {
@@ -41,6 +41,14 @@ export interface ToolCallEventV {
   elapsed_ms: number
   /** 结果概要，仅 end 帧有值。 */
   preview: string
+  /**
+   * 这一档的错误码，仅 end 帧有值（空串 = 没有）。
+   *
+   * 与 `ok` 互补：`ok=false` 是「工具坏了」；`error_code` 非空而 `ok=true`
+   * 是「工具正常跑完，但结果落在特殊情况里」——比如 `retrieval_no_match`
+   * （私有资料与问题不相关，资料被跳过了）。用户需要看见它。
+   */
+  error_code?: string
 }
 
 /**

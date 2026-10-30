@@ -58,17 +58,20 @@ import {
 } from './components/FaithfulnessPanel'
 import { PromptInput } from './components/PromptInput'
 import { ResumeRunCard } from './components/ResumeRunCard'
-import { apiStream, type SseEvent } from '@/lib/api/client'
+import { ApiError, apiStream, type SseEvent } from '@/lib/api/client'
 import { clearChunkCache, fetchChunks } from '@/lib/api/sources'
 import { parseEvent } from '@/lib/api/sse'
 import type {
   DoneEventV,
+  ErrorEventV,
   FaithfulnessEventV,
   NodeEventV,
   ReferenceEventV,
   ToolCallEventV,
 } from '@/lib/api/sse'
 import {
+  HTTP_ERROR_CODES,
+  HTTP_ERROR_FALLBACK,
   initialNodes,
   SLASH_COMMANDS,
   type AgentNode,
@@ -92,14 +95,27 @@ const inter = Inter({
 })
 
 /**
- * 运行态。刻意不含 'error'——错误由 `errorText` 单独承担。
+ * 运行态。刻意不含 'error'——错误由 `errorInfo` 单独承担。
  * 塞进 runState 会让「跑完了但出错了」和「跑完了正常」变成同一个值，
  * 报告区就分不清该不该显示结果。
  */
 type RunState = 'idle' | 'running' | 'completed'
 
 /**
- * 把一次工具调用的 start 帧转成 InspectorDrawer 要的展示态。
+ * 一次错误的完整信息。
+ *
+ * 形状与后端的 `ErrorEventV` 完全一致——流内错误直接用它，开流前的
+ * 失败（HTTP 层 / 网络层）由本地造一个同形状的。用类型别名而不是
+ * 另立一个 interface：字段一旦漂移，两处就得分头改。
+ *
+ * `code` 是后端的机器可读错误码（如 `llm_stream_interrupted`），
+ * 显示出来让用户能精确反馈问题，也让「连接中断」和「key 失效」在
+ * 界面上可区分——两者的处置完全不同（等 vs 改配置）。
+ */
+type ErrorInfo = ErrorEventV
+
+/**
+ * 把一次工具调用的首帧转成 InspectorDrawer 要的展示态。
  *
  * 只有 start 帧带 `tool_input`——后端在开始时把参数带上，end 帧的空对象
  * 是「结束帧不带参数」而非「参数为空」。
@@ -110,6 +126,14 @@ function toToolCall(v: ToolCallEventV): ToolCall {
     name: v.name,
     args: JSON.stringify(v.tool_input).slice(0, 120),
     duration: '执行中…',
+    // start 帧还没有结果——ok 留 null 表示「还在跑」，不是「成功」。
+    // 后端保证 start 先发，所以这里正常只会看到 start 帧；仍按帧里的
+    // 值取，是为了让 end 帧先到时（理论情况）也不丢失败标记。
+    ok: v.phase === 'end' ? v.ok : null,
+    preview: v.phase === 'end' ? v.preview : '',
+    // 特殊情况（资料被跳过）不是失败，但用户有权知道——只埋在 preview 里
+    // 等于没说。
+    errorCode: v.phase === 'end' ? (v.error_code ?? '') : '',
   }
 }
 
@@ -150,7 +174,7 @@ type FaithfulnessState =
 type RunHandlers = {
   setNodes: Dispatch<SetStateAction<AgentNode[]>>
   setStreamedText: Dispatch<SetStateAction<string>>
-  setErrorText: Dispatch<SetStateAction<string | null>>
+  setErrorInfo: Dispatch<SetStateAction<ErrorInfo | null>>
   setSummary: Dispatch<SetStateAction<DoneEventV | null>>
   setRunState: Dispatch<SetStateAction<RunState>>
   setFaithfulness: Dispatch<SetStateAction<FaithfulnessState>>
@@ -192,6 +216,11 @@ function mergeToolCall(prev: ToolCall[], tv: ToolCallEventV): ToolCall[] {
     name: tv.name,
     duration:
       tv.phase === 'end' ? `${(tv.elapsed_ms / 1000).toFixed(1)}s` : existing.duration,
+    // ok / preview 只在 end 帧有值。失败必须显出来——一次失败的
+    // local_search 与一次成功的，在轨迹表里长得一模一样（只有耗时不同），
+    // 用户会以为资料真的查过了，而其实那一路整个断掉了。
+    ok: tv.phase === 'end' ? tv.ok : existing.ok,
+    preview: tv.phase === 'end' ? tv.preview : existing.preview,
   }
   return next
 }
@@ -204,18 +233,52 @@ function mergeToolCall(prev: ToolCall[], tv: ToolCallEventV): ToolCall[] {
  * CONVENTIONS §3 的 50 行上限。
  */
 function applyEvent(event: SseEvent, h: RunHandlers): void {
+  try {
+    applyEventInner(event, h)
+  } catch (err) {
+    // 畸形帧（缺字段、类型不对）不能让整页崩掉。抛出去会白屏，
+    // 用户既看不到已生成的正文，也看不到任何错误信息——比丢一帧
+    // 严重得多。降级成一条错误信息，已有的内容照样能看。
+    h.setErrorInfo({
+      code: 'malformed_event',
+      message: `收到格式异常的事件帧（${event.type}），已忽略：${err instanceof Error ? err.message : String(err)}`,
+      retryable: true,
+    })
+  }
+}
+
+/**
+ * 真正落帧的逻辑。单独一层是为了让 `applyEvent` 能统一兜住畸形帧。
+ */
+function applyEventInner(event: SseEvent, h: RunHandlers): void {
   switch (event.type) {
     case 'node': {
       const nv = parseEvent<NodeEventV>(event)
-      h.setNodes((prev) => prev.map((n) => (n.id === nv.node_id ? applyNode(n, nv) : n)))
+      // 运行时校验（``parseEvent`` 只是编译期断言，见 sse.ts 的注释）。
+      // 畸形帧要在这里变成一条错误提示，而不是让 React 在渲染阶段
+      // 读 undefined 的字段——那会让整个页面白屏。
+      if (!nv || typeof nv !== 'object' || typeof nv.node_id !== 'string') {
+        throw new Error('node 帧缺少 node_id 字段')
+      }
+      // 先把字段取出来再进 state updater。updater 是 React 在**渲染
+      // 阶段**执行的，跑在 applyEvent 的 try 之外——在里面读
+      // ``nv.node_id`` 遇到畸形帧就是白屏，而不是一条错误提示。
+      const nodeId = nv.node_id
+      h.setNodes((prev) => prev.map((n) => (n.id === nodeId ? applyNode(n, nv) : n)))
       break
     }
     case 'delta':
       h.setStreamedText((prev) => prev + parseEvent<{ text: string }>(event).text)
       break
-    case 'error':
-      h.setErrorText(parseEvent<{ message: string }>(event).message)
+    case 'error': {
+      const err = parseEvent<ErrorEventV>(event)
+      h.setErrorInfo({
+        code: err.code,
+        message: err.message,
+        retryable: err.retryable,
+      })
       break
+    }
     case 'done': {
       const done = parseEvent<DoneEventV>(event)
       h.setSummary(done)
@@ -285,7 +348,7 @@ function settleFaithfulness(h: RunHandlers): void {
 function resetForRun(h: RunHandlers, question: string): void {
   h.setNodes(initialNodes())
   h.setStreamedText('')
-  h.setErrorText(null)
+  h.setErrorInfo(null)
   h.setSummary(null)
   h.setFaithfulness({ kind: 'idle' })
   h.setQuestion(question)
@@ -317,7 +380,12 @@ export default function ExplorePage() {
   const [runState, setRunState] = useState<RunState>('idle')
   const [nodes, setNodes] = useState<AgentNode[]>(initialNodes)
   const [streamedText, setStreamedText] = useState('')
-  const [errorText, setErrorText] = useState<string | null>(null)
+  // 错误的完整信息：code + 文案 + 是否值得重试。
+  //
+  // 刻意不塞进一个字符串：banner 要同时显示「哪一类错误」（code）
+  // 和「说了什么」（message），还要按 retryable 决定要不要标
+  // 「不可重试」。合成一个字符串就丢了这些信息。
+  const [errorInfo, setErrorInfo] = useState<ErrorInfo | null>(null)
   // 收尾统计：done 事件带的 session_id / 耗时 / token 数。
   const [summary, setSummary] = useState<DoneEventV | null>(null)
   // Critic 的引用校验。四态见 `FaithfulnessState`。判别联合而非多个 boolean：
@@ -431,7 +499,7 @@ export default function ExplorePage() {
     const handlers: RunHandlers = {
       setNodes,
       setStreamedText,
-      setErrorText,
+      setErrorInfo,
       setSummary,
       setRunState,
       setFaithfulness,
@@ -460,7 +528,25 @@ export default function ExplorePage() {
       setRunState((prev) => (prev === 'running' ? 'completed' : prev))
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return
-      setErrorText(err instanceof Error ? err.message : '连接失败')
+      // 流中断的失败。**已有 errorInfo 时不覆盖**——后端可能已经下发了
+      // error 帧（带具体 code 与 retryable），而流是在那之后才断的。
+      // 覆盖掉会把「模型连接中断」换成笼统的「network_error」，正好丢掉
+      // 我们要保留的信息。
+      //
+      // 用函数式更新读 prev：handlers 里捕获的是稳定 setter，读不到
+      // 闭包外的最新 state。
+      setErrorInfo((prev) => {
+        if (prev) return prev
+        // HTTP 层的错（后端 detail 已在 ApiError.message 里）或网络层的错。
+        // 两者都没有后端的 error 帧——开流之前后端还没发过。
+        const status = err instanceof ApiError ? err.status : null
+        const mapped = status != null ? HTTP_ERROR_CODES[status] : undefined
+        return {
+          code: mapped?.code ?? HTTP_ERROR_FALLBACK.code,
+          message: err instanceof Error ? err.message : '连接失败',
+          retryable: mapped?.retryable ?? HTTP_ERROR_FALLBACK.retryable,
+        }
+      })
       // 守卫与 resolve 分支对称：结论已经收到时不能因为连接随后出错就清空。
       settleFaithfulness(handlers)
       setRunState('completed')
@@ -529,10 +615,14 @@ export default function ExplorePage() {
             elapsed={summary ? `${(summary.elapsed_ms / 1000).toFixed(1)}秒` : undefined}
             tokens={summary ? `${summary.output_tokens} 标记` : undefined}
           />
-          {errorText && (
-            <p role="alert" className={styles.errorBanner}>
-              {errorText}
-            </p>
+          {errorInfo && (
+            <div role="alert" className={styles.errorBanner}>
+              <div className={styles.errorHead}>
+                <span className={styles.errorCode}>{errorInfo.code}</span>
+                {!errorInfo.retryable && <span className={styles.errorNoRetry}>不可重试</span>}
+              </div>
+              <p className={styles.errorMessage}>{errorInfo.message}</p>
+            </div>
           )}
           {/* 恢复条只在**本轮还没跑**时出现。跑完的当次，summary 行里
               已经有「查看完整报告 ↗」了，两处入口重复。 */}
@@ -557,7 +647,7 @@ export default function ExplorePage() {
           {faithfulness.kind === 'pending' && <FaithfulnessPending />}
           {/* 本轮压根失败时不显示「校验未完成」——那一轮没有报告、没有引用，
               「重试可得到结论」指向一个不存在的问题，而红色横幅已经说清了原因。 */}
-          {faithfulness.kind === 'abort' && !errorText && <FaithfulnessAbort />}
+          {faithfulness.kind === 'abort' && !errorInfo && <FaithfulnessAbort />}
           {faithfulness.kind === 'done' && <FaithfulnessPanel report={faithfulness.report} />}
           <StreamingReport
             onSelectCitation={handleSelectCitation}

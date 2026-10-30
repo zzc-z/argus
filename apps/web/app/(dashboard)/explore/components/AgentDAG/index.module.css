@@ -343,3 +343,32 @@
   border: 1px solid var(--token-outline-variant, #cac3d9);
   z-index: 1;
 }
+
+/* 失败节点。红底 + 叉号——「通过」和「失败」必须一眼能分开，
+   否则整张 DAG 全是打勾，看不出这次研究到底成没成。 */
+.circleFailed {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: var(--token-error, #ba1a1a);
+  border: 1px solid var(--token-error, #ba1a1a);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+/* 失败行：淡红底，让失败节点在列表里跳出来。 */
+.rowFailed {
+  background-color: color-mix(in srgb, var(--token-error, #ba1a1a) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-error, #ba1a1a) 25%, transparent);
+}
+
+.rowFailed:hover {
+  background-color: color-mix(in srgb, var(--token-error, #ba1a1a) 9%, transparent);
+}
+
+.rowNameFailed {
+  color: var(--token-error, #ba1a1a);
+}

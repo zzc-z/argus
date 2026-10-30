@@ -96,6 +96,11 @@
   background-color: var(--token-on-surface-variant, #494456);
 }
 
+/* 失败节点——红色。跟「已完成」的深灰区分开。 */
+.headDotFailed {
+  background-color: var(--token-error, #ba1a1a);
+}
+
 .headDotDefault {
   background-color: color-mix(in srgb, var(--token-on-surface, #191c1d) 10%, transparent);
 }
@@ -322,6 +327,47 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 「失败」标记。放在工具名旁边而不是另起一行——轨迹表要一眼能扫出
+   哪几次调用没成，而不是让人逐条展开看。 */
+.toolRowFailed {
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: var(--token-error, #ba1a1a);
+  background: color-mix(in srgb, var(--token-error, #ba1a1a) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--token-error, #ba1a1a) 30%, transparent);
+}
+
+/* 失败原因。不用 nowrap——原因通常一句话，截断了反而看不出是什么错。 */
+.toolRowError {
+  font-size: 10px;
+  color: var(--token-error, #ba1a1a);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+/* 「资料被跳过」标记。**不用 error 色**——它不是失败：工具正常跑完了，
+   只是用户的私有资料与问题不相关、没被当作证据。标成红色会让人以为是
+   出错了。用中性灰，跟「失败」区分开。 */
+.toolRowSkipped {
+  font-size: 9px;
+  line-height: 1.4;
+  padding: 0 5px;
+  border-radius: 3px;
+  color: var(--token-on-surface-variant, #494456);
+  background: color-mix(in srgb, var(--token-on-surface, #191c1d) 8%, transparent);
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+}
+
+/* 「资料被跳过」的说明。 */
+.toolRowSkippedNote {
+  font-size: 10px;
+  color: var(--token-on-surface-variant, #494456);
+  margin-top: 4px;
+  line-height: 1.5;
 }
 
 /* ──────── JSON viewer ──────── */

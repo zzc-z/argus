@@ -91,8 +91,15 @@ function NodeRow({ node, onClick }: NodeRowProps) {
   const isCompleted = node.lifecycle === 'completed'
   const isActive = node.lifecycle === 'active'
   const isPending = node.lifecycle === 'pending'
+  const isFailed = node.lifecycle === 'failed'
 
-  const rowClass = [styles.row, isActive ? styles.rowActive : ''].filter(Boolean).join(' ')
+  const rowClass = [
+    styles.row,
+    isActive ? styles.rowActive : '',
+    isFailed ? styles.rowFailed : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <div className={rowClass} onClick={onClick} role="button" tabIndex={0}>
@@ -101,6 +108,11 @@ function NodeRow({ node, onClick }: NodeRowProps) {
         {isCompleted && (
           <div className={styles.circleCompleted}>
             <IconSpan name="check" size={13} className={styles.circleIcon} />
+          </div>
+        )}
+        {isFailed && (
+          <div className={styles.circleFailed}>
+            <IconSpan name="close" size={13} className={styles.circleIcon} />
           </div>
         )}
         {isActive && (
@@ -114,7 +126,7 @@ function NodeRow({ node, onClick }: NodeRowProps) {
           <span
             className={`${styles.rowName} ${
               isActive ? styles.rowNameActive : isPending ? styles.rowNamePending : ''
-            }`}
+            } ${isFailed ? styles.rowNameFailed : ''}`}
           >
             {node.name}
           </span>

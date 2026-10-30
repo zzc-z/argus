@@ -80,6 +80,39 @@
   line-height: 1.5;
 }
 
+/* 错误头：机器可读的错误码 + 「不可重试」标记。
+   放在文案**上方**——用户先看「哪一类错」，再看「说了什么」，
+   顺序反过来会让人先读一段解释再去猜类别。 */
+.errorHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.errorCode {
+  font-family: var(--font-family-mono, ui-monospace, monospace);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--token-error, #ba1a1a) 40%, transparent);
+  background: color-mix(in srgb, var(--token-error, #ba1a1a) 12%, transparent);
+}
+
+/* 「不可重试」——告诉用户反复点重试没有意义，该去改配置。 */
+.errorNoRetry {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--token-error, #ba1a1a) 25%, transparent);
+  opacity: 0.85;
+}
+
+.errorMessage {
+  margin: 0;
+}
+
 /* 收尾统计：done 事件带的轮次 / 耗时 / token。 */
 .summary {
   margin: 8px 0 0;

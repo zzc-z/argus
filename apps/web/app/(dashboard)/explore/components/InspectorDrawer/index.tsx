@@ -19,7 +19,7 @@ export interface InspectorPayload {
   meta: string
   jsonText: string
   /** Drives status dot color (active / completed / default). */
-  dotState: 'active' | 'completed' | 'default'
+  dotState: 'active' | 'completed' | 'failed' | 'default'
 }
 
 /**
@@ -80,7 +80,9 @@ export function InspectorDrawer({
                 ? styles.headDotActive
                 : payload.dotState === 'completed'
                   ? styles.headDotCompleted
-                  : styles.headDotDefault
+                  : payload.dotState === 'failed'
+                    ? styles.headDotFailed
+                    : styles.headDotDefault
             }`}
           />
           <h3 className={styles.headTitle}>{payload.title}</h3>
@@ -175,10 +177,26 @@ function ContentArea({ tab, payload, toolCalls, sourceText }: ContentAreaProps) 
                 <div className={styles.toolRowName}>
                   <IconSpan name="deployed_code" size={13} className={styles.toolRowIcon} />
                   <span>{tc.name}</span>
+                  {tc.ok === false && <span className={styles.toolRowFailed}>失败</span>}
+                  {tc.ok !== false && tc.errorCode && (
+                    <span className={styles.toolRowSkipped}>资料被跳过</span>
+                  )}
                 </div>
                 <span className={styles.toolRowDuration}>{tc.duration}</span>
               </div>
               <div className={styles.toolRowArgs}>参数: {tc.args}</div>
+              {tc.ok === false && tc.preview && (
+                <div className={styles.toolRowError}>{tc.preview}</div>
+              )}
+              {tc.ok !== false && tc.errorCode && (
+                <div className={styles.toolRowSkippedNote}>
+                  {tc.errorCode === 'retrieval_no_match'
+                    ? '你的私有资料与本次问题不相关，已被跳过，未作为证据使用。'
+                    : tc.errorCode === 'retrieval_not_evaluated'
+                      ? '本次未能评估私有资料的相关性（索引未就绪或语义检索未启用），未使用私有资料。'
+                      : `本次未使用私有资料（${tc.errorCode}）。`}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -240,7 +258,9 @@ export function buildNodePayload(node: AgentNode): InspectorPayload {
       ? 'active'
       : node.lifecycle === 'completed'
         ? 'completed'
-        : 'default'
+        : node.lifecycle === 'failed'
+          ? 'failed'
+          : 'default'
   return {
     title: `${node.name} 检查器`,
     meta: node.latency ? `运行耗时 ${node.latency}` : '',
