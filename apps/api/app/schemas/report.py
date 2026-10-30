@@ -42,6 +42,9 @@ class ReportSummaryV(BaseModel):
     output_tokens: int
     elapsed_ms: int
     created_at: datetime
+    # 这份报告是否被截断。截断的报告正文不完整——通常是流程中途失败
+    # 或撞到了轮次上限。列表页要标出来，否则读者会当成完整报告。
+    truncated: bool = False
     # 这份报告引用了多少个**切片**（不是资料数）。列表页要显示「N 条引用」。
     #
     # 不在 ORM 上：它要从 ``report_sources`` 数出来，而那个表与 reports

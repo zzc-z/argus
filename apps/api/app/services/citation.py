@@ -229,6 +229,27 @@ def render_evidence(pairs: Sequence[tuple[Reference, Retrieved]]) -> str:
     return "\n\n".join(blocks)
 
 
+def render_saturated_notice(dropped: int) -> str:
+    """引用表已满、这批新切片全被丢弃时的说明。
+
+    ## 为什么需要它
+
+    引用表封顶 :data:`MAX_REFERENCES` 后，超出的切片**不进证据块**。
+    如果这次的证据块正好是空的（表在上一轮就满了），模型收到的就是
+    「你有一批证据，编号 [1] 到 [10]」+ **零条证据**——它会以为
+    工具坏了，或者更糟：拿编号编造内容。
+
+    所以证据块为空且确实有切片被丢弃时，给一句明说：这一批因为引用表
+    满了放不下，之前的证据仍在编号 [1]~[N] 里，请用那些编号。
+    """
+    if dropped <= 0:
+        return ""
+    return (
+        f"（本批检索到的 {dropped} 条素材因引用表已满未展示；"
+        "此前已收录的证据仍按原编号可用，请只引用那些编号。）"
+    )
+
+
 def citation_rules(table: ReferenceTable) -> str:
     """写进 tool_result 的引用规则。
 

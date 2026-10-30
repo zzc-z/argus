@@ -34,7 +34,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.models import DocumentChunk, Source, SourceStatus, SourceType
 from app.services import bm25
 from app.services.chunker import Chunk, ChunkingError, TextChunker
-from app.services.embedder import embed_or_none
+from app.services.embedder import EmbeddingError, embed_or_none
+from app.services.errors import classify_embedding_error
 from app.services.parser import (
     DocxParser,
     HtmlParser,
@@ -105,6 +106,18 @@ async def ingest(
         # 漏出去，调用方只能靠字符串猜。
         await mark_failed(db, source, str(exc))
         raise IngestError(str(exc)) from exc
+    except EmbeddingError as exc:
+        # 嵌入服务失败要单独报。掉进下面的宽兜底会得到「处理时发生内部
+        # 错误」——用户会以为是自己传的 PDF 有问题，而真因可能是账户欠费。
+        #
+        # 注意顺序：EmbeddingError 不是 (ParseError, ChunkingError, IngestError)
+        # 的子类，所以必须显式开一个分支，不能指望宽兜底兜住。
+        classified = classify_embedding_error(exc)
+        logger.warning(
+            "摄取 source %s 时嵌入服务失败（%s）", source.id, classified.code, exc_info=exc
+        )
+        await mark_failed(db, source, classified.message)
+        raise IngestError(classified.message) from exc
     except Exception as exc:
         logger.exception("摄取 source %s 时发生未预期错误", source.id)
         await mark_failed(db, source, "处理时发生内部错误")

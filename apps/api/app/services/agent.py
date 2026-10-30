@@ -35,6 +35,7 @@ from app.config import get_settings
 from app.models.report import Report, ReportSource
 from app.models.source import DocumentChunk
 from app.services.citation import Reference, ReferenceTable, count_citation_markers
+from app.services.errors import classify_llm_error, error_event_for
 from app.services.faithfulness import (
     load_source_texts,
     verify_citations,
@@ -44,7 +45,6 @@ from app.services.llm import (
     STREAM_INTERRUPT_RETRIES,
     get_anthropic_client,
     is_stream_interrupt,
-    is_timeout,
 )
 from app.services.stream import (
     AgentEvent,
@@ -68,10 +68,31 @@ from app.services.tools import (
 # ── 常量 ──────────────────────────────────────────────────────
 
 MAX_TURNS = 6  # 循环轮数上限。单轮经中转站实测数秒，6 轮约 30-60 秒
-MAX_OUTPUT_TOKENS = 4096  # 单轮输出预算。thinking 与正文共享，不能太小
+MAX_OUTPUT_TOKENS = 4096  # 单轮输出总预算。thinking 有自己的上限（THINKING_BUDGET_TOKENS）
+
+# 扩展思考的**独立**预算。
+#
+# 不设它，思考会膨胀到把 MAX_OUTPUT_TOKENS 吃光，正文一个字写不出来
+# （实测：output_tokens=4096、正文 0 字、stop_reason="max_tokens"），
+# 而重试没用——连打 5 次全部同样被吃光。详见 _build_turn_request 的说明。
+#
+# 2048 是实测的折中值：1024 思考偏浅、3072 留给正文的余量变少。
+# 改这个值前请重跑那组实测。
+THINKING_BUDGET_TOKENS = 2048
 
 # 最后一轮强制收尾时传进去的空工具列表——模型看到空列表就不会再要工具。
 no_tools: tuple[ToolSpec, ...] = ()
+
+# 落盘的等待上限。比 ``MODEL_TIMEOUT_SECONDS`` 短得多：正文已经流给用户了，
+# 历史报告是附加价值，卡着不放只会占住并发槽位。超时即降级。
+PERSIST_TIMEOUT_SECONDS = 5.0
+
+# 崩溃路径的落盘上限，比正常路径短得多。
+#
+# 正常路径上正文已经完整流给用户了，落盘慢一点用户顶多等一会儿；
+# 崩溃路径上用户正盯着红色横幅等失败通知，多等 5 秒是白等——那 5 秒里
+# 界面上的转圈还在转，什么新信息都没有。1 秒够本地 SQLite 写完。
+PERSIST_TIMEOUT_CRASH_SECONDS = 1.0
 
 # 强制收尾指令。措辞必须说「轮」而不是「检索次数」：一轮里模型可以并行发
 # 多个 tool_use，6 轮完全可能对应 15 次检索。告诉模型「你已达到 6 次检索
@@ -254,6 +275,29 @@ class NodeTracker:
         self._active = None
         return done
 
+    def fail(self, detail: str = "") -> NodeEvent | None:
+        """把当前 active 节点标成**失败**；没有 active 时返回 None。
+
+        ## 为什么要有 failed 而不是一律 completed
+
+        失败路径原先也走 :meth:`complete`，于是前端的 DAG 上**每个节点都是
+        打勾的「通过」**——哪怕整次研究崩了、模型服务挂了、检索全被过滤。
+        用户看到的是「全部通过」，实际上一件事都没成。
+
+        「通过」和「失败」必须能区分开，否则那张图没有信息量。
+        """
+        if self._active is None:
+            return None
+        elapsed = int((time.monotonic() - self._started_at) * 1000)
+        failed = NodeEvent(
+            node_id=self._active.value,
+            lifecycle="failed",
+            detail=detail,
+            elapsed_ms=elapsed,
+        )
+        self._active = None
+        return failed
+
     def switch(self, stage: Stage) -> list[NodeEvent]:
         """从当前节点切到下一个：先关旧的，再开新的。"""
         events: list[NodeEvent] = []
@@ -305,15 +349,26 @@ async def run_agent(
     # 但循环里的 result 还指着它之前那轮，结论段完全没被校验。
     collected_refs: list[Reference] = []
     report_body: list[str] = []
-    for event in _close(tracker):
-        yield event
 
+    # 先确认客户端可用，再关掉 supervisor 节点。反过来的话，客户端不可用时
+    # supervisor 已经被标成「完成」——DAG 上打勾的「通过」配着一句红横幅，
+    # 自相矛盾。
     try:
         client = get_anthropic_client()
     except Exception as exc:
         logger.warning("模型客户端不可用，流程中止", exc_info=exc)
-        yield ErrorEvent(code="llm_not_configured", message="模型服务未配置")
+        for event in _fail(tracker, "模型服务不可用"):
+            yield event
+        classified = classify_llm_error(exc)
+        yield ErrorEvent(
+            code=classified.code,
+            message=classified.message,
+            retryable=classified.retryable,
+        )
         return
+
+    for event in _close(tracker):
+        yield event
 
     yield tracker.activate(Stage.RESEARCHER)
 
@@ -394,13 +449,37 @@ async def run_agent(
     except Exception as exc:
         logger.warning("agent 循环异常中止（已完成 %d 轮）", ledger.turns, exc_info=exc)
         ledger = ledger.mark_truncated()
-        for event in _close(tracker):
+        # 崩溃 → 当前节点标**失败**，不是「完成」。前端 DAG 上打勾的
+        # 「通过」会让人以为整条流水线跑通了，实际上一件事都没成。
+        for event in _fail(tracker, "执行中断"):
             yield event
         # 崩溃也要发 DoneEvent：它是唯一带 session_id 与 token 数的事件。
         # 缺了它，已经烧掉的 token 就成了用量统计的黑洞——而这恰恰是
         # 最需要留痕的场景（重试也才知道上次烧了多少）。
-        yield ledger.done()
-        yield _error_event_for(exc)
+        #
+        # done 帧要带 report_id：已生成的正文必须落盘。崩溃时那几轮正文
+        # 已经烧掉了 token（实测一次崩溃烧掉 29548 输入 token），丢掉它
+        # 等于用户只拿到一句红横幅、正文一个字节都拿不到，而历史报告里
+        # 也没有这份——最贵的一次失败变成最没有产出的失败。
+        #
+        # 但**一个字都没产出时不能落盘**——那会写进一条空报告，前端
+        # 照样渲染「查看完整报告 ↗」，点进去是空白。正常路径有
+        # ``produced_text`` 守卫（见下面的 empty_response 分支），
+        # 崩溃路径必须同样守住。
+        report_id = (
+            await _persist_report(
+                db=db,
+                question=question,
+                content="\n".join(report_body),
+                ledger=ledger,
+                refs=collected_refs,
+                persist_timeout=PERSIST_TIMEOUT_CRASH_SECONDS,
+            )
+            if ledger.produced_text
+            else None
+        )
+        yield ledger.with_report_id(report_id).done()
+        yield error_event_for(exc)
         return
 
     # 一个字的正文都没产出时，必须发 error 让前端显示失败。
@@ -415,7 +494,8 @@ async def run_agent(
     # 一个都上报不出去。前端两条都处理（error 显横幅、done 显示统计），
     # 两条同时到不会让报告被标成正常——error 事件排在最后，前端据此收尾。
     if not ledger.produced_text:
-        for event in _close(tracker):
+        # 一个字都没产出 = 失败，不是「完成」
+        for event in _fail(tracker, "未产出内容"):
             yield event
         yield ledger.done()
         yield ErrorEvent(
@@ -519,6 +599,16 @@ def _close(tracker: NodeTracker) -> list[NodeEvent]:
     return [] if closing is None else [closing]
 
 
+def _fail(tracker: NodeTracker, detail: str = "") -> list[NodeEvent]:
+    """把当前 active 节点标成失败（而不是「完成」）。
+
+    失败路径必须用它，不能用 :func:`_close`——否则前端 DAG 上每个节点
+    都是打勾的「通过」，哪怕整次研究什么都没产出。
+    """
+    failed = tracker.fail(detail)
+    return [] if failed is None else [failed]
+
+
 async def _persist_report(
     *,
     db: AsyncSession | None,
@@ -526,6 +616,7 @@ async def _persist_report(
     content: str,
     ledger: TurnLedger,
     refs: Sequence[Reference],
+    persist_timeout: float = PERSIST_TIMEOUT_SECONDS,
 ) -> int | None:
     """把这一轮的报告写进 ``reports``，返回新记录的 id。
 
@@ -533,6 +624,10 @@ async def _persist_report(
     取原文是同一个理由：正文已经通过 SSE 流出去了，落盘是附加价值，
     让它把收尾带走等于「报告读完突然报错」，连 token 用量都没了。
     而这里的失败概率比 critic 高得多——要写两张表、算引用计数。
+
+    ``persist_timeout`` 让崩溃路径能用更短的上限：那条路径上用户正盯着
+    红色横幅等失败通知，多等几秒是白等（见
+    :data:`PERSIST_TIMEOUT_CRASH_SECONDS`）。
     """
     if db is None:
         # 无检索上下文的单测路径（``run_agent`` 的 db 形参默认 None）。
@@ -546,6 +641,9 @@ async def _persist_report(
         input_tokens=ledger.input_tokens,
         output_tokens=ledger.output_tokens,
         elapsed_ms=int((time.monotonic() - ledger.started_at) * 1000),
+        # 落盘时带上截断标记。崩溃落盘的报告正文不完整——历史列表里
+        # 要能把它和完整报告区分开。
+        truncated=ledger.truncated,
     )
     try:
         # **必须设超时**：这一步卡在「最后一条 delta」与「done 帧」之间，
@@ -556,7 +654,8 @@ async def _persist_report(
         # 一次长事务就能把 4 个槽位全占死。
         #
         # 超时语义与其它失败一致：降级成「没存上」，正文照常交付。
-        await asyncio.wait_for(_write(db, report, refs, content), PERSIST_TIMEOUT_SECONDS)
+        async with asyncio.timeout(persist_timeout):
+            await _write(db, report, refs, content)
     except Exception:
         # 带 session_id：没有它，日志里只有一句「报告落盘失败」，而落盘
         # 失败是**静默**的（流照常结束、用户拿到完整报告），运维无法把它
@@ -566,19 +665,70 @@ async def _persist_report(
             extra={"session_id": ledger.session_id, "user_id": ledger.user_id},
             exc_info=True,
         )
-        # 必须回滚再返回：session 停在 failed 状态，后续任何查询都会报
-        # PendingRollbackError。回滚本身也可能抛（DB 真挂），所以再兜一层。
+        # **失败处理本身也要有上限**。
+        #
+        # 落盘超时的成因往往就是「DB 卡住/被锁」——同一个坏连接上再
+        # await 一次（回滚、查一次确认入库没有）会**再等一次**，而这次
+        # 没有上限。而 ``yield ledger.done()`` / ``yield error_event_for(exc)``
+        # 都在 :func:`_persist_report` **之后**——用户永远等不到失败横幅，
+        # 界面一直转圈，SSE 流挂死。
+        #
+        # 所以整个失败处理路径共用一个更短的上限：宁可放弃「确认是否
+        # 已入库」这个附加价值，也不能让用户等不到失败通知。
         try:
-            await db.rollback()
-        except Exception:
-            logger.warning("报告落盘失败后回滚也失败", exc_info=True)
-        return None
+            async with asyncio.timeout(persist_timeout):
+                # 必须回滚再返回：session 停在 failed 状态，后续任何查询都会报
+                # PendingRollbackError。回滚本身也可能抛（DB 真挂），所以再兜一层。
+                try:
+                    await db.rollback()
+                except Exception:
+                    logger.warning("报告落盘失败后回滚也失败", exc_info=True)
+                return await _recover_persisted_id(db, report, ledger)
+        except TimeoutError:
+            logger.warning(
+                "报告落盘失败后的清理也超时，放弃确认入库状态",
+                extra={"session_id": ledger.session_id, "user_id": ledger.user_id},
+            )
+            return None
     return report.id
 
 
-# 落盘的等待上限。比 ``MODEL_TIMEOUT_SECONDS`` 短得多：正文已经流给用户了，
-# 历史报告是附加价值，卡着不放只会占住并发槽位。超时即降级。
-PERSIST_TIMEOUT_SECONDS = 5.0
+async def _recover_persisted_id(
+    db: AsyncSession, report: Report, ledger: TurnLedger
+) -> int | None:
+    """落盘失败后，确认这行到底进没进库。
+
+    ## 为什么需要这一步
+
+    超时取消的是 ``commit()`` 里的 await。若 COMMIT 已经到达服务端，
+    取消不会撤销它——行真的在库里，但我们已经走进 except 分支。此时
+    返回 None 会让前端拿不到 ``report_id``，界面上不显示「查看完整报告」，
+    而历史报告列表里却多了一条。用户会以为这次没产出。
+
+    反过来，若行没进库（flush 之后 commit 失败，事务已回滚），
+    ``report.id`` 虽然有值（主键在 flush 时就分配了），但那行并不存在——
+    返回它会指向一条不存在的报告。
+
+    所以查一次，让 ``report_id`` 与库里的事实一致。
+    """
+    if report.id is None:
+        return None
+    try:
+        existing = await db.get(Report, report.id)
+    except Exception:
+        logger.warning(
+            "报告落盘失败后无法确认是否已入库",
+            extra={"session_id": ledger.session_id, "user_id": ledger.user_id},
+            exc_info=True,
+        )
+        return None
+    if existing is None:
+        return None
+    logger.info(
+        "报告落盘超时，但行已入库，按已入库处理",
+        extra={"session_id": ledger.session_id, "report_id": existing.id},
+    )
+    return existing.id
 
 
 async def _write(
@@ -587,7 +737,7 @@ async def _write(
     refs: Sequence[Reference],
     content: str,
 ) -> None:
-    """真正执行落盘的三步。单独抽出是为了能给 ``asyncio.wait_for`` 包一层。"""
+    """真正执行落盘的三步。单独抽出是为了能给它套一个超时。"""
     db.add(report)
     await db.flush()
     await _record_citations(db, report.id, refs, content)
@@ -711,37 +861,6 @@ async def _settle(
 # ── 单轮请求 ──────────────────────────────────────────────────
 
 
-def _error_event_for(exc: BaseException) -> ErrorEvent:
-    """把异常翻译成给用户看的错误事件。
-
-    ## 为什么不一律说「模型服务暂时不可用」
-
-    那是**兜底**文案，不是诊断。它把四种完全不同的失败揉成一句话：
-    流被掐断、超时、参数错、key 失效。用户看到它只知道「再试一次」，
-    但「key 失效」重试一万次也没用。
-
-    分开报，用户至少知道该等还是该改配置。
-
-    ``code`` 也跟着变——前端可以按 code 决定要不要给「重试」按钮。
-    """
-    if is_stream_interrupt(exc):
-        return ErrorEvent(
-            code="llm_stream_interrupted",
-            message="模型连接在生成途中被中断，已自动重试仍失败，请稍后重试",
-        )
-    if is_timeout(exc):
-        return ErrorEvent(
-            code="llm_timeout",
-            message="模型响应超时，请缩小问题范围后重试",
-        )
-    # 其余异常（400 参数错、401 key 错、500）统一归为「不可用」——
-    # 具体的 HTTP 状态码不该原样透给用户看。
-    #
-    # 「模型服务未配置」不在这里：那个异常在拿 client 时就抛了（见
-    # run_agent 开头），有自己独立的 ErrorEvent。
-    return ErrorEvent(code="llm_unavailable", message="模型服务暂时不可用，请稍后重试")
-
-
 async def _run_turn(
     client: AsyncAnthropic,
     messages: list[dict[str, Any]],
@@ -792,13 +911,46 @@ def _build_turn_request(
     messages: list[dict[str, Any]],
     tools: tuple[ToolSpec, ...],
 ) -> dict[str, Any]:
-    """拼出一轮请求的载荷。空 tools 时不带 tools 参数。"""
+    """拼出一轮请求的载荷。空 tools 时不带 tools 参数。
+
+    ## 为什么必须单独限制 thinking 预算
+
+    不设 ``thinking`` 时模型的扩展思考**没有上限**，会一直膨胀到把
+    ``max_tokens`` 吃光——正文一个字都写不出来。实测（2026-10-29，中转站
+    llmapi.pro，claude-sonnet-5，max_tokens=4096）：
+
+    | 请求里的 thinking | thinking 消耗 | 正文 |
+    |---|---|---|
+    | **不设（现状）** | 吃满 4096 | **0 字** ❌ |
+    | ``budget_tokens=1024`` | 独立预算 | 6443 字 ✅ |
+    | ``budget_tokens=2048`` | 独立预算 | 1523 字 ✅ |
+    | ``type=disabled`` | 关掉 | 6456 字 ✅ |
+
+    症状是 ``stop_reason="max_tokens"`` 且正文为空 → 循环跑完 → ``empty_response``：
+    「模型未产出内容，请重试」。而重试**没用**——实测连打 5 次全部同样被吃光
+    （每次 output_tokens 都是 4096、正文 0 字），它是确定性的，不是偶发。
+
+    所以修复点是**限制 thinking 预算**，而不是加大 ``max_tokens``（那只是让
+    思考吃更多）。``max_tokens`` 保持不变：它管总输出上限，thinking 有自己的
+    上限，两者不冲突。
+
+    ## 为什么选 2048
+
+    实测三个预算都能出正文，但 1024 时思考空间偏小（模型会更快转向正文、
+    深度不足）；3072 时留给正文的余量变少。2048 是「思考够用、正文够写」
+    的折中。改这个值前请重跑上表那组实测——**不同问题对思考深度的需求不同**。
+
+    注意 ``stop_reason="max_tokens"`` 在设了 thinking 预算之后**仍然常见**
+    （实测每次都是）：它表示「总输出触顶」，在 thinking 有独立预算后**不再
+    等于失败**。判据是「有没有正文」，不是 stop_reason。
+    """
     settings = get_settings()
     request: dict[str, Any] = {
         "model": settings.anthropic_complex_model,
         "max_tokens": MAX_OUTPUT_TOKENS,
         "system": SYSTEM_PROMPT,
         "messages": messages,
+        "thinking": {"type": "enabled", "budget_tokens": THINKING_BUDGET_TOKENS},
     }
     if tools:
         request["tools"] = tool_schemas(tools)
@@ -866,6 +1018,7 @@ async def _run_tools(
             ok=outcome.ok,
             elapsed_ms=elapsed_ms,
             preview=outcome.preview,
+            error_code=outcome.error_code,
         )
 
         if outcome.references:

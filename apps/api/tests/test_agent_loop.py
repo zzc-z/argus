@@ -174,7 +174,7 @@ async def test_tool_use_produces_tool_call_events(monkeypatch: pytest.MonkeyPatc
     assert calls[0].phase == "start"
     assert calls[0].name == "tavily_search"
     assert calls[1].phase == "end"
-    assert calls[1].preview == "搜索工具未配置"
+    assert calls[1].preview == "tavily_search 未配置"
 
 
 async def test_tool_result_packed_into_single_user_message(
@@ -343,12 +343,47 @@ async def test_successful_run_walks_all_five_nodes(monkeypatch: pytest.MonkeyPat
     assert completed == ["supervisor", "researcher", "writer", "analyst", "critic"]
 
 
+def test_request_has_separate_thinking_budget() -> None:
+    """请求里必须单独限制 thinking 预算。
+
+    ## 要防的回归
+
+    不设 ``thinking`` 时扩展思考没有上限，会膨胀到把 ``max_tokens`` 吃光——
+    正文一个字都写不出来（实测：output_tokens=4096、正文 0 字、
+    stop_reason="max_tokens"），循环跑完就是 ``empty_response``。
+
+    **重试没用**：实测连打 5 次全部同样被吃光，是确定性的不是偶发的。
+
+    修复点是限制 thinking 预算，**不是**加大 ``max_tokens``（那只是让思考
+    吃更多）。实测三个预算都能出正文：
+    ``budget=1024`` → 6443 字、``budget=2048`` → 1523 字、
+    ``budget=3072`` → 4506 字。
+
+    反例实现：不带 thinking 参数 —— 这条会红。
+    """
+    request = agent_module._build_turn_request(
+        [{"role": "user", "content": "测试"}], agent_module.no_tools
+    )
+
+    thinking = request.get("thinking")
+    assert thinking is not None, "请求必须带 thinking 参数，否则思考会吃光 max_tokens"
+    assert thinking.get("type") == "enabled"
+    budget = thinking.get("budget_tokens")
+    assert isinstance(budget, int) and budget > 0, "thinking 必须有独立的预算上限"
+    # 预算不能等于总上限——那等于没限制，正文照样没地方写
+    assert budget < request["max_tokens"], "thinking 预算必须小于 max_tokens"
+
+
 async def test_error_paths_stop_at_the_failing_node(monkeypatch: pytest.MonkeyPatch) -> None:
     """失败时只关掉当前节点，**不许**替 analyst / critic 打 completed。
 
     成功路径上那两步是纯占位（让前端进度条走完），流程真失败时把它们
     标成已完成，等于告诉前端「交叉核验和引用校验都做过了」——而实际
     一步都没跑。用户据此判断报告可信度会被误导。
+
+    **失败的那个节点必须标 failed，不能标 completed**（2026-10-27 修订）：
+    之前崩溃路径也走 ``complete()``，前端 DAG 上每个节点都是打勾的
+    「通过」——哪怕整次研究什么都没产出。那张图就完全没有信息量。
     """
     _stub_turns(monkeypatch, [_turn(text="")])
     empty = _node_sequence(await _collect())
@@ -364,7 +399,14 @@ async def test_error_paths_stop_at_the_failing_node(monkeypatch: pytest.MonkeyPa
         assert "analyst" not in completed
         assert "critic" not in completed
         # 收尾事件必须是最后一条，否则前端会一直转圈
-        assert sequence[-1][1] == "completed"
+        assert sequence[-1][1] in ("completed", "failed")
+
+    # 崩溃路径：出错的节点标 failed，不是 completed
+    failed = [n for n, life in crashed if life == "failed"]
+    assert failed, f"崩溃路径必须有节点标 failed，实际序列：{crashed}"
+    assert "researcher" in failed, crashed
+    # 崩溃节点不能同时出现在 completed 里
+    assert "researcher" not in [n for n, life in crashed if life == "completed"], crashed
 
 
 async def test_llm_failure_emits_error_not_crash(monkeypatch: pytest.MonkeyPatch) -> None:

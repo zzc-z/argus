@@ -22,6 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.services import citation
 from app.services.citation import Reference, ReferenceTable
+from app.services.embedder import EmbeddingError
+from app.services.errors import Classified, classify_embedding_error, classify_tool_error
+from app.services.errors_base import RetrievalNoMatchError
 from app.services.llm import LLMNotConfiguredError, get_tavily_client
 
 # ── 常量 ──────────────────────────────────────────────────────
@@ -37,10 +40,11 @@ RESULT_CONTENT_CHARS = 800
 # 搜索只有这几条，编出「没有更多资料」的结论。
 RESULT_TOTAL_CHARS = 4000
 
-# 本地检索取几条切片。citation.MAX_REFERENCES 是 10，这里取 12 是为了给
-# RRF 融合后的一点重排留余量——超出 10 的会被引用表截掉，但模型仍能拿到
-# 排名靠前的那几条。
-LOCAL_SEARCH_TOP_K = 12
+# 本地检索取几条切片。与 citation.MAX_REFERENCES 对齐：引用表 10 条封顶，
+# 检索取更多只会让超出的部分被**静默丢弃**——第一次调用就把表灌满的话，
+# 第二次调用注册的全是新切片、整段被丢，证据块是空字符串（模型只拿到
+# 「编号 [1] 到 [10]」却一条证据都没有）。
+LOCAL_SEARCH_TOP_K = 10
 
 # Tavily SDK 自带的超时（只管 HTTP 连接阶段）。
 TAVILY_TIMEOUT_SECONDS = 10.0
@@ -49,7 +53,9 @@ TAVILY_TIMEOUT_SECONDS = 10.0
 TAVILY_HARD_TIMEOUT_SECONDS = 15.0
 
 # URL 里这些跟踪参数不参与身份判定——同一篇文章带不同 utm 就是同一条。
-TRACKING_PARAMS = frozenset({"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"})
+TRACKING_PARAMS = frozenset(
+    {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"}
+)
 
 logger = logging.getLogger(__name__)
 
@@ -101,12 +107,17 @@ class ToolOutcome:
 
     ``references`` 是本次调用产出的引用表（本地检索才有）。模型看不到这个
     字段，但 agent 循环会把它透传给前端的 ``reference`` 事件。
+
+    ``error_code`` 是这一档的错误码（空串 = 没有）。「本地资料与问题无关」
+    这一档要挂码：用户必须知道自己的私有资料被跳过了，否则他以为报告里
+    没有引用是因为资料库里确实没有。模型看不到这个字段。
     """
 
     ok: bool
     content: str
     preview: str = ""
     references: tuple[Reference, ...] = ()
+    error_code: str = ""
 
 
 # ── 工具 schema ───────────────────────────────────────────────
@@ -252,7 +263,14 @@ async def execute_tool(
         if name == DEDUP_SPEC.name:
             return _run_dedup(tool_input)
     except LLMNotConfiguredError as exc:
-        return ToolOutcome(ok=False, content=str(exc), preview="搜索工具未配置")
+        # 走分类器而不是就地拼文案：code 与其它失败路径统一（前端按
+        # code 归类），文案也带上具体缺哪个配置项。
+        classified = _classify_tool_failure(name, exc)
+        return ToolOutcome(
+            ok=False,
+            content=classified.message,
+            preview=classified.preview,
+        )
     except TimeoutError:
         logger.warning("工具 %s 执行超时，重试可能仍失败但值得一试", name)
         return ToolOutcome(
@@ -268,19 +286,23 @@ async def execute_tool(
         #
         # 分档：网络类异常值得重试，其余一律让模型直接用已有信息作答。
         # 真实原因只进日志。
-        retryable = isinstance(exc, (ConnectionError, TimeoutError, OSError))
-        logger.warning("工具 %s 执行失败（可重试=%s）", name, retryable, exc_info=exc)
-        if retryable:
-            return ToolOutcome(
-                ok=False,
-                content=f"工具 {name} 暂时无法连接到外部服务。请稍后重试，或改用其他方式回答。",
-                preview="外部服务不可用",
-            )
+        #
+        # 但「分档」不能只有「网络类 / 非网络类」两档——嵌入服务欠费
+        # 属于 BadRequestError（不是网络类），报成「工具内部错误」会让
+        # 用户以为是自己传的资料有问题，而真因是账户欠费。分类见
+        # ``errors.classify_tool_error``。
+        classified = _classify_tool_failure(name, exc)
+        logger.warning(
+            "工具 %s 执行失败（%s，可重试=%s）",
+            name,
+            classified.code,
+            classified.retryable,
+            exc_info=exc,
+        )
         return ToolOutcome(
             ok=False,
-            content=f"工具 {name} 内部出错，本次调用没有完成。请不要重复调用它，"
-            f"直接基于已有信息作答。",
-            preview="工具内部错误",
+            content=classified.message,
+            preview=classified.preview,
         )
 
     return ToolOutcome(
@@ -288,6 +310,23 @@ async def execute_tool(
         content=f"不存在名为 {name} 的工具。可用工具：{', '.join(s.name for s in ALL_TOOLS)}。",
         preview="未知工具",
     )
+
+
+def _classify_tool_failure(name: str, exc: BaseException) -> Classified:
+    """把工具异常分类成一条具体的错误。
+
+    ``local_search`` 走嵌入服务，失败原因与 Tavily 完全不同——嵌入服务
+    欠费要报「欠费」，不能报成「外部服务不可用」。所以按工具名分派到
+    对应的分类器。
+
+    参数顺序反了（把异常当工具名传）要当场报错：照着错位的参数继续走，
+    只会得到一个看不懂的 AttributeError。
+    """
+    if not isinstance(exc, BaseException):
+        raise TypeError(f"exc 必须是异常，收到 {type(exc).__name__}")
+    if name == LOCAL_SEARCH_SPEC.name and isinstance(exc, EmbeddingError):
+        return classify_embedding_error(exc)
+    return classify_tool_error(exc, name)
 
 
 # ── tavily_search 实现 ────────────────────────────────────────
@@ -400,30 +439,99 @@ async def _run_local_search(context: ToolContext, tool_input: dict[str, Any]) ->
     if not query:
         return ToolOutcome(ok=False, content="检索关键词不能为空。", preview="参数错误")
 
+    # 查询向量**在这里算一次**，两处复用：
+    # 1. 传给 retrieve（它内部不再重复算）
+    # 2. 判断「语义相关性判断能不能跑」
+    # 之前这两处各算一次 = 两次调嵌入服务——慢，且嵌入服务欠费时
+    # 整次 local_search 直接失败（用户看到「接口报错、没有内容」）。
+    query_vector = await retriever.query_vector_for(query)
     results = await retriever.retrieve(
         context.db,
         context.vec_engine,
         query,
         user_id=context.user_id,
         limit=LOCAL_SEARCH_TOP_K,
+        query_vector=query_vector,
+        query_vector_given=True,
     )
     if not results:
         # 明确说「没有」而不是返回空串：模型看到空 tool_result 会以为
         # 工具坏了，转而去编造或反复重试。
-        return ToolOutcome(
-            ok=True,
-            content="用户的资料库里没有检索到相关内容。请如实说明资料中没有，"
-            "不要凭猜测补充数字。",
-            preview="0 条命中",
-        )
+        return await _empty_retrieval_outcome(context, query, query_vector)
 
     pairs = context.citations.register(results)
     rules = citation.citation_rules(context.citations)
+    # 引用表满了、这批新切片全被丢弃时，证据块是空的——必须明说，
+    # 否则模型收到「编号 [1] 到 [10]」却零条证据，会拿编号编内容。
+    saturated = citation.render_saturated_notice(context.citations.dropped)
+    evidence = citation.render_evidence(pairs)
+    if saturated and not evidence:
+        evidence = saturated
+    # 没配嵌入 key 时相关性下限**根本没跑**，这批命中只是字面匹配——
+    # 要告诉模型「这些是关键词命中，没做语义相关性判断」，否则它会把
+    # 字面沾边的切片当成「检索到的相关证据」。
+    unchecked = ""
+    if not retriever.semantic_filter_active(query_vector):
+        unchecked = (
+            "（注意：本次只做了关键词匹配，没有做语义相关性判断——"
+            "下面这些素材与问题的关联度未经确认，请自行判断是否采信。）"
+        )
+    parts = [part for part in (evidence, unchecked, rules) if part]
     return ToolOutcome(
         ok=True,
-        content=f"{citation.render_evidence(pairs)}\n\n{rules}",
+        content="\n\n".join(parts),
         preview=f"命中 {len(results)} 条本地资料",
         references=tuple(context.citations.all),
+    )
+
+
+async def _empty_retrieval_outcome(
+    context: ToolContext, query: str, query_vector: list[float] | None = None
+) -> ToolOutcome:
+    """0 条命中时的三种结局，文案不一样。
+
+    - **资料库里压根没有相关内容** → 现有文案，模型如实说明即可
+    - **有资料但与问题无关，被相关性下限过滤掉了** → 新文案，要明确告诉
+      模型这些资料与问题无关、不要拿它们当证据；并挂上错误码——用户必须
+      知道自己的私有资料被跳过了，否则他以为报告里没有引用是因为资料库里
+      确实没有
+    - **相关性根本没被评估过**（没配嵌入 key，或资料刚上传、索引还没建好）
+      → **不能**说「资料与问题无关」：用户的资料可能高度相关，只是此刻
+      还无法判断。那是事实性错误陈述，模型会照着对用户说。
+
+    三种都是 ``ok=True``：检索本身没失败，模型应该继续用联网搜索作答。
+    """
+    from app.services import retriever  # 顶层 import 会成环：retriever → citation
+
+    reason = await retriever.explain_no_result(
+        context.db,
+        context.vec_engine,
+        query,
+        context.user_id,
+        query_vector=query_vector,
+        query_vector_given=query_vector is not None,
+    )
+    if reason is retriever.NoResultReason.NO_MATERIAL:
+        return ToolOutcome(
+            ok=True,
+            content="用户的资料库里没有检索到相关内容。请如实说明资料中没有，不要凭猜测补充数字。",
+            preview="0 条命中",
+        )
+    if reason is retriever.NoResultReason.NOT_EVALUATED:
+        # 索引还没建好 / 无法评估相关性——只说「没法评估」，不许说「不相关」。
+        return ToolOutcome(
+            ok=True,
+            content="无法评估用户的私有资料与这个问题是否相关（资料索引尚未就绪，"
+            "或语义检索未启用）。请不要断言资料与问题无关——只说本次回答没有"
+            "使用私有资料，并在有联网结果时正常作答。",
+            preview="0 条命中 · 相关性未评估",
+        )
+    classified = _classify_tool_failure(LOCAL_SEARCH_SPEC.name, RetrievalNoMatchError(query))
+    return ToolOutcome(
+        ok=True,
+        content=classified.message,
+        preview=f"0 条命中 · {classified.preview}（{classified.code}）",
+        error_code=classified.code,
     )
 
 

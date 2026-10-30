@@ -121,7 +121,11 @@ async def test_unknown_tool_returns_error_not_raises() -> None:
 
 
 async def test_tavily_search_without_key_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """没配 key 时返回明确中文错误，agent 循环照常跑完。"""
+    """没配 key 时返回明确中文错误，agent 循环照常跑完。
+
+    **走分类器**：code 与其它失败路径统一（``tool_not_configured``），
+    文案带上具体缺哪个配置项。
+    """
 
     def _raise() -> None:
         raise LLMNotConfiguredError("TAVILY_API_KEY 未配置，无法调用该能力")
@@ -130,7 +134,7 @@ async def test_tavily_search_without_key_returns_error(monkeypatch: pytest.Monke
     outcome = await execute_tool("tavily_search", {"query": "x"})
     assert outcome.ok is False
     assert "TAVILY_API_KEY" in outcome.content
-    assert outcome.preview == "搜索工具未配置"
+    assert outcome.preview == "tavily_search 未配置"
 
 
 async def test_tavily_search_empty_query(

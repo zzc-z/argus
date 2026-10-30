@@ -28,7 +28,7 @@
 from datetime import datetime
 from typing import Self
 
-from sqlalchemy import ForeignKey, Index, Integer, String, Text, func, select
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,6 +55,16 @@ class Report(Base):
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     elapsed_ms: Mapped[int] = mapped_column(Integer, default=0)
+
+    # 这份报告是不是被截断的。
+    #
+    # **为什么要有这一列**：``DoneEvent`` 带 ``truncated``，但它只活在
+    # SSE 帧里。崩溃落盘的报告（正文已生成但流程中途失败）在历史列表里
+    # 和完整报告长得一模一样——读者会以为这份报告是完整的。
+    #
+    # 默认 False：迁移前落盘的旧报告都当完整报告处理（它们确实是正常
+    # 跑完的）。
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(),

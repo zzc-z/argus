@@ -26,7 +26,7 @@ class NodeEvent:
     """
 
     node_id: str
-    lifecycle: str  # "active" | "completed"
+    lifecycle: str  # "active" | "completed" | "failed"
     detail: str = ""
     elapsed_ms: int | None = None
 
@@ -54,6 +54,14 @@ class ToolCallEvent:
     ok: bool = True
     elapsed_ms: int = 0
     preview: str = ""
+    error_code: str = ""
+    """这一档的错误码（空串 = 没有）。
+
+    与 ``ok`` 互补：``ok=False`` 是「工具坏了」；``error_code`` 非空而
+    ``ok=True`` 是「工具正常跑完，但结果落在某一档特殊情况里」——
+    比如 ``retrieval_no_match``（私有资料与问题不相关）。用户需要看见它：
+    资料被跳过了，得让他知道。
+    """
 
 
 @dataclass(frozen=True, slots=True)

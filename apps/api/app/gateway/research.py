@@ -29,6 +29,7 @@ from app.db import get_session
 from app.gateway.deps import CurrentUser
 from app.schemas.research import AskRequest
 from app.services.agent import run_agent
+from app.services.errors import classify_unknown_error
 from app.services.llm import LLMNotConfiguredError, get_anthropic_client
 from app.services.stream import ErrorEvent, encode_frame
 from app.services.vectorstore import get_vector_engine
@@ -123,18 +124,22 @@ async def _try_acquire_slot() -> bool:
 
 
 def _reject_if_llm_unconfigured() -> None:
-    """模型未配置时 503，同样要赶在开流之前。
+    """模型未配置时直接拒，同样要赶在开流之前。
 
     注意它跑在 ``_try_acquire_slot()`` **之后**：抛异常时槽位已经被占了，
     必须释放，否则每次「模型未配置」都会永久扣掉一个槽位。
+
+    **用 400 而不是 503**：503 的语义是「服务暂时不可用，稍后重试」，
+    而「模型未配置」是部署问题——重试一万次也一样，必须去改配置。
+    两者混在同一个状态码里，前端就没法区分「等一会儿」和「去改配置」。
     """
     try:
         get_anthropic_client()
     except LLMNotConfiguredError as exc:
         _slots.release()
         raise HTTPException(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "模型服务未配置",
+            status.HTTP_400_BAD_REQUEST,
+            "模型服务未配置：缺少 ANTHROPIC_API_KEY",
         ) from exc
 
 
@@ -204,11 +209,12 @@ async def _stream(
             # 兜底的兜底：agent 内部已经把能归类的异常转成 ErrorEvent 了，
             # 能走到这里说明是意料之外的 bug。照旧转成事件，绝不让连接裸断。
             logger.warning("研究流发生未预期异常", exc_info=exc)
+            classified = classify_unknown_error(exc, "研究流程")
             yield encode_frame(
                 ErrorEvent(
-                    code="internal_error",
-                    message="服务内部错误",
-                    retryable=False,
+                    code=classified.code,
+                    message=classified.message,
+                    retryable=classified.retryable,
                 )
             )
     finally:

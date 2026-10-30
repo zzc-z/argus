@@ -17,6 +17,11 @@ dependencies = [
     "alembic>=1.13",
     "redis>=5.2",
     "httpx>=0.27",
+    # anthropic 1.9.0 依赖的 httpx 后继版本。**显式声明**：代码里直接
+    # import httpx2 判异常类型（httpx 与 httpx2 的异常类不通用，见
+    # app/services/llm.py），靠传递依赖等于赌 anthropic 不换依赖树——
+    # 一次升级就可能让整个 API import 失败。BSD-3-Clause，pydantic 官方维护。
+    "httpx2>=2.0.0,<3",
     "anthropic>=0.84",
     "langgraph>=1.2.11",
     "langgraph-checkpoint>=4.0",

@@ -37,6 +37,7 @@ from anthropic import APIConnectionError, APITimeoutError
 
 from app.services import agent as agent_module
 from app.services.agent import _run_turn
+from app.services.errors import error_event_for
 from app.services.llm import STREAM_INTERRUPT_RETRIES, is_stream_interrupt, is_timeout
 
 # ── 上游的替身 ────────────────────────────────────────────────
@@ -204,23 +205,37 @@ async def test_retry_sends_identical_request() -> None:
 
 
 def test_error_event_for_stream_interrupt() -> None:
-    event = agent_module._error_event_for(httpx2.RemoteProtocolError("x"))
+    event = error_event_for(httpx2.RemoteProtocolError("x"))
     assert event.code == "llm_stream_interrupted"
     assert "中断" in event.message
 
 
 def test_error_event_for_timeout() -> None:
-    event = agent_module._error_event_for(APITimeoutError(request=httpx.Request("POST", "http://x")))
+    event = error_event_for(APITimeoutError(request=httpx.Request("POST", "http://x")))
     assert event.code == "llm_timeout"
 
 
 def test_error_event_for_unknown() -> None:
-    event = agent_module._error_event_for(ValueError("x"))
+    """归不出类的异常报 internal_error，不是「模型服务不可用」。
+
+    ``ValueError`` 是我们自己的 bug。报成「模型服务暂时不可用」会让
+    排查方向指向中转站，而真因在代码里——这正是「具体问题要有具体
+    报错」要消灭的那类误导。
+    """
+    event = error_event_for(ValueError("x"))
+    assert event.code == "internal_error"
+    assert event.retryable is False
+
+
+def test_error_event_for_connection_failure() -> None:
+    """连不上模型服务 —— 与「我们自己的 bug」分开。"""
+    event = error_event_for(ConnectionError("中转站不可达"))
     assert event.code == "llm_unavailable"
+    assert event.retryable is True
 
 
 def test_stream_interrupt_and_timeout_codes_differ() -> None:
     """两个 code 必须不同——前端按 code 决定要不要给「重试」按钮。"""
-    interrupt = agent_module._error_event_for(httpx2.RemoteProtocolError("x"))
-    timeout = agent_module._error_event_for(APITimeoutError(request=httpx.Request("POST", "http://x")))
+    interrupt = error_event_for(httpx2.RemoteProtocolError("x"))
+    timeout = error_event_for(APITimeoutError(request=httpx.Request("POST", "http://x")))
     assert interrupt.code != timeout.code

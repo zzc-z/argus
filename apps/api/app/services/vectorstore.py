@@ -51,6 +51,81 @@ CHUNK_TABLE = "document_chunks"
 # 行数与向量数一致：vec0 的主键就是 chunk_id。
 VEC_ROWIDS_TABLE = "chunk_embeddings_rowids"
 
+# 相关性下限：距离超过它的切片当「不相关」，不返回。
+#
+# 没有下限的后果实测过：用户问「iPhone 折叠屏 对比 国产折叠屏质量」，
+# 资料库里只有一份医保接口文档，检索照样召回 12 条「参保人手机 | tel」，
+# 模型拿它当证据去回答手机质量对比。
+MAX_RELEVANT_DISTANCE = 0.45
+"""相关性下限（**绝对**）：**余弦距离**大于它就不返回。
+
+## 为什么用余弦距离而不是 L2
+
+L2 对**模长**敏感：方向相同、模长差 20 倍的两个向量，L2 能差出十几个
+单位，直接越过任何阈值。实测 dev 库里就混着 9 个模长 19.596 的脏向量
+（早期测试留下的 ``[0.5] * 1536``），其余 7389 个是 1.0——用 L2 判相关性
+就等于让「这个切片的模长恰好多大」决定它相不相关。
+
+余弦距离只看**方向**，对模长免疫：实测同一向量放大 2 倍，余弦距离仍是
+0.0（完全同向），反向则是 2.0（完全反向）。所以用它判相关性不需要
+「存量向量都是单位向量」这个前提，也不需要在入库时归一化。
+
+## 与 ``knn_search`` 返回值的关系
+
+``knn_search`` 返回的**仍然是 L2**（项目既有契约，见
+``test_distance_is_l2_not_cosine``——换 pgvector 时那个契约会变）。
+余弦距离只在**过滤时**用：两条度量都在同一次 KNN 查询里取出来
+（sqlite-vec 的 KNN 支持同时 select ``v.distance`` 与
+``vec_distance_cosine(v.embedding, :vec)``），所以过滤与排序仍由 L2 主导，
+不改变返回值的语义。
+
+## 标定依据（生产库同一份资料实测，2026-10-26，7 组相关 + 7 组不相关查询）
+
+**相关**查询的 top-20 距离全部 ≤ **0.4006**；
+**不相关**查询的 top-20 距离全部 ≥ **0.6234**。
+
+0.45 取在两者之间，且离两端都有余量：
+
+- 0.40 会被误杀：查询「个人医疗消费费用清单」时，4 条
+  「本接口用于查询医保个人账户的交易明细信息。」距离 0.4006——
+  那是「个人医疗消费」之外的**另一个实体**的证据，丢掉它答案就变单边。
+- 0.65 会放进不相关内容：不相关查询在 0.65 阈值下平均残留 3.6 条。
+
+**换嵌入模型要重新标定这个阈值**：嵌入模型换了之后「相关」与「不相关」
+的相似度分布也会变。
+"""
+
+def is_relevant(cosine_distance: float) -> bool:
+    """这条切片算不算「相关」——余弦距离不超过 :data:`MAX_RELEVANT_DISTANCE`。
+
+    ## 为什么是单一绝对阈值（2026-10-26 实测后定）
+
+    业界常见的做法是双层：``effective = max(绝对下限, top-1 距离 × ratio)``。
+    本项目实测下来**相对层不起作用**，所以没有引入它：
+
+    相对层只在 ``top-1 × ratio > 绝对下限`` 时才比绝对层严，即
+    ``top-1 > 0.60``（ratio 0.75、绝对 0.45）。而实测数据里：
+
+    - 相关查询的 top-1 全部 ≤ 0.2577 → 相对层永远不比绝对层严
+    - 不相关查询的 top-1 全部 ≥ 0.6234 → 相对层收紧时，绝对层**已经**
+      把它们挡住了（top-1 距离 0.6234 > 0.45）
+
+    两层在这 7+7 组实测查询上**完全等价**。多一个没有实测依据的参数
+    只会让下一个人以为它在做什么——按项目规则「注释里的技术断言要么实测过，
+    要么不写」，不加。
+
+    ## 「第二实体」的证据靠放宽绝对阈值保住，不靠相对层
+
+    实测反例：查询「个人医疗消费费用清单」时，top-1 距离 0.1855，
+    而「本接口用于查询医保个人账户的交易明细信息。」距离 0.4006——
+    那是**另一个实体**的证据，切掉它答案就变单边。
+    绝对阈值从 0.40 放宽到 **0.45** 就是为了留住它（0.45 ≤ 0.45）。
+
+    相对层在这个形态下帮不上忙：``0.1855 × 0.75 = 0.139``，
+    比绝对阈值宽裕，两层取更严的那个 = 绝对层。
+    """
+    return cosine_distance <= MAX_RELEVANT_DISTANCE
+
 
 # ── 引擎构造 ────────────────────────────────────────────────
 def _sqlite_path(url: str) -> str:
@@ -61,9 +136,7 @@ def _sqlite_path(url: str) -> str:
     """
     prefix = "sqlite+aiosqlite:///"
     if not url.startswith(prefix):
-        raise ValueError(
-            f"向量库扩展只支持 SQLite，当前 database_url 是 {url.split('://')[0]}"
-        )
+        raise ValueError(f"向量库扩展只支持 SQLite，当前 database_url 是 {url.split('://')[0]}")
     return url[len(prefix) :]
 
 
@@ -223,6 +296,7 @@ async def upsert_embeddings(
     async with engine.begin() as conn:
         ids = ",".join(str(cid) for cid, _ in pairs)
         await conn.execute(text(f"DELETE FROM {VEC_TABLE} WHERE chunk_id IN ({ids})"))
+
         # AsyncConnection 没有 executemany——批量插入要 run_sync 到同步连接上做。
         def _insert(sync_conn: Connection) -> None:
             sync_conn.execute(
@@ -253,8 +327,30 @@ async def knn_search(
     排序不受影响：所有向量都是单位向量时
     ``L2 = sqrt(2 - 2cos)``，是 cos 的单调递减变换，所以两种度量给出**同一个排序**。
 
-    但阈值不能跨度量套用——「distance < 0.5」在 L2 下的含义
-    与在余弦距离下完全不同。换 pgvector 时记得同步改这里的注释与调用方阈值。
+    但阈值不能跨度量套用——这里的返回值是 L2，而相关性判定用的是
+    余弦距离（见 :data:`MAX_RELEVANT_DISTANCE`）。换 pgvector 时记得
+    同步改这里的注释与调用方阈值。
+
+    ## 相关性下限在这里生效
+
+    超过 :data:`MAX_RELEVANT_DISTANCE` 的行**不返回**。放在这一层而不是
+    调用方，是因为本模块是「向量库接入层」——语义上它就该只给出「够近的」。
+    阈值从模块常量读（不是函数默认参数），改动常量即刻生效。
+
+    ## 两个度量各司其职
+
+    - **返回值**是 sqlite-vec 原样返回的 **L2**，没做任何缩放——
+      这是对外的既有契约（换 pgvector 时要保持），不是相关性判定的依据。
+    - **相关性判定**用 ``vec_distance_cosine``（余弦距离），与
+      :data:`MAX_RELEVANT_DISTANCE` 标定时用的是同一个量。
+
+    之所以不拿 L2 判相关性：L2 对**模长**敏感，方向相同、模长差 20 倍的
+    两个向量，L2 能差出十几个单位，直接越过任何阈值。余弦只看方向，
+    对模长免疫。
+
+    :func:`chunk_distances` 用的是同一个余弦度量（同一个查询向量、
+    同一个 ``vec_distance_cosine``）、同一个阈值，所以两条路对同一个
+    切片的判断不会打架。
 
     ## 另一个坑：嵌入不是确定性的
 
@@ -281,19 +377,117 @@ async def knn_search(
         "k": limit,
     }
     # vec0 的 KNN 只认 MATCH + k/LIMIT。join 到普通表做 source 过滤。
+    #
+    # 同时取两个度量：``v.distance`` 是 KNN 的原生 L2（对外返回值），
+    # ``vec_distance_cosine`` 是余弦距离（相关性判定用）。sqlite-vec 的
+    # KNN 支持在同一次查询里 select 两者，不额外扫一遍向量表。
     sql = (
-        f"SELECT v.chunk_id AS chunk_id, v.distance AS distance "
+        f"SELECT v.chunk_id AS chunk_id, v.distance AS distance, "
+        f"vec_distance_cosine(v.embedding, :vec) AS cosine_distance "
         f"FROM {VEC_TABLE} v "
         f"WHERE v.embedding MATCH :vec AND k = :k "
     )
     if not source_ids:
         return []
-    sql += f"AND v.chunk_id IN (SELECT id FROM {CHUNK_TABLE} WHERE source_id IN ({_ids(source_ids)})) "
+    sql += (
+        f"AND v.chunk_id IN (SELECT id FROM {CHUNK_TABLE} WHERE source_id IN ({_ids(source_ids)})) "
+    )
     sql += "ORDER BY v.distance"
 
     async with engine.connect() as conn:
         result = await conn.execute(text(sql), params)
-        return [(row[0], float(row[1])) for row in result]
+        rows = [(row[0], float(row[1]), row[2]) for row in result]
+    # 相关性下限按**余弦距离**判定（见 MAX_RELEVANT_DISTANCE）。
+    # 返回的仍是 L2——那是对外的既有契约，不因过滤而改变。
+    #
+    # 余弦距离是 NULL 表示有一侧是零范数向量（方向不存在）——
+    # sqlite-vec 对这种输入返回 NULL 而不是数。零范数向量没有方向，
+    # 谈不上相关不相关，**当不相关处理**（挡掉），而不是让 float(None)
+    # 抛 TypeError 把整条检索路挂掉。
+    return [
+        (cid, l2)
+        for cid, l2, cos in rows
+        if cos is not None and is_relevant(cos)
+    ]
+
+
+async def chunk_distances(
+    engine: AsyncEngine,
+    query: Sequence[float],
+    chunk_ids: Sequence[int],
+    source_ids: Sequence[int],
+) -> dict[int, float]:
+    """查指定 chunk_id 到查询向量的距离，返回 {chunk_id: distance}。
+
+    用途：BM25 那一路只拿得到「哪些切片字面命中了」，拿不到距离。
+    要让 BM25 路也过相关性下限，就得回头查这些 id 的向量距离。
+
+    ## 为什么不用「带 id 约束的 KNN」
+
+    试过：``WHERE embedding MATCH :vec AND k = :k AND chunk_id IN (...)``。
+    sqlite-vec 的 ``k`` 是**全局**最近 k 行的条数，id 约束在其**之后**生效——
+    请求的 id 不在全局最近 k 行里就查不到（实测：请求最远的那行，k=5 返回空、
+    k=10 才返回）。而相关性下限要挡掉的恰恰是「离得远」的那些行 ⇒ 用 KNN
+    查它们必然落空。
+
+    改成直接算：``vec_distance_cosine`` 是 sqlite-vec 的标量函数（不依赖 KNN
+    路径），配 ``chunk_id IN (...)`` 走主键索引，命中即精确距离。
+
+    ## 距离的度量与向量路一致
+
+    返回的是**余弦距离**（``1 - cos``），与 :func:`knn_search` 内部做相关性
+    判定用的是同一个度量、同一套阈值（:func:`is_relevant`），所以两条路
+    对同一个切片的判断不会打架。
+
+    用余弦而不是 L2 的理由见 :data:`MAX_RELEVANT_DISTANCE` 的说明——
+    简言之：L2 对模长敏感，余弦只看方向。
+
+    ## 租户隔离：**在数据库里收窄**，不靠调用方自觉
+
+    ``source_ids`` 是**必填**，且收窄发生在 SQL 里（子查询），不是
+    「调用方先过滤一遍再传 id」。业界多租户向量检索的标准做法是
+    **pre-filter in the database, never post-filter in application code**——
+    应用层过滤一旦漏掉，跨租户泄漏**不会报错**，只会静默地把别人的资料
+    送进研报。
+
+    所以本函数**同时**要求 ``chunk_ids`` 与 ``source_ids``：前者说「查哪些
+    切片」，后者说「这些切片属于谁」。两者都对上才查得到。
+
+    没有向量的 id 不在返回的 dict 里（调用方按「查不到距离」处理）。
+    空列表返回空 dict。
+    """
+    if len(query) != EMBEDDING_DIM:
+        raise ValueError(f"查询向量维度应为 {EMBEDDING_DIM}，收到 {len(query)}")
+    if not chunk_ids or not source_ids:
+        return {}
+    await ensure_vector_table(engine)
+
+    params: dict[str, object] = {"vec": json.dumps(list(query))}
+    # 租户收窄在 SQL 里做（JOIN），不靠调用方自觉——见 docstring 的「租户隔离」。
+    #
+    # 为什么用 JOIN 而不是第二个 ``IN (SELECT ...)``：sqlite-vec 限制一张 vec0
+    # 表里只能有**一个** ``rowid in (..)`` 运算符（实测报
+    # ``only 1 'rowid in (..)' operator is allowed in a single vec0 query``）。
+    # JOIN 到普通表不算那个运算符。
+    sql = (
+        f"SELECT v.chunk_id AS chunk_id, "
+        f"vec_distance_cosine(v.embedding, :vec) AS cosine_distance "
+        f"FROM {VEC_TABLE} v "
+        f"JOIN {CHUNK_TABLE} c ON c.id = v.chunk_id "
+        f"WHERE v.chunk_id IN ({_ids(chunk_ids)}) "
+        f"AND c.source_id IN ({_ids(source_ids)}) "
+    )
+
+    async with engine.connect() as conn:
+        result = await conn.execute(text(sql), params)
+        # 零范数向量会让 ``vec_distance_cosine`` 返回 NULL（实测）——
+        # 那种行**不返回**：调用方拿不到距离就不会拿它当证据，
+        # 也省得 float(None) 把整条路炸掉。
+        return {
+            int(row[0]): float(row[1])
+            for row in result
+            if row[1] is not None
+        }
 
 
 def _ids(values: Sequence[int]) -> str:

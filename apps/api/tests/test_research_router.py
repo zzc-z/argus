@@ -445,8 +445,13 @@ async def test_agent_error_event_passes_through(client: TestClient, monkeypatch:
 # ── 开流前的服务端配置错误 ────────────────────────────────────
 
 
-async def test_ask_returns_503_when_llm_unconfigured(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
-    """模型没配置要在开流前拒——开流后就只能发事件了。"""
+async def test_ask_returns_400_when_llm_unconfigured(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+    """模型没配置要在开流前拒——开流后就只能发事件了。
+
+    **用 400 而不是 503**：503 的语义是「服务暂时不可用，稍后重试」，
+    而「模型未配置」是部署问题，重试一万次也一样。两者混在同一个状态码
+    里，前端没法区分「该等」还是「该改配置」。
+    """
 
     def _raise() -> None:
         raise LLMNotConfiguredError("ANTHROPIC_API_KEY 未配置")
@@ -455,7 +460,7 @@ async def test_ask_returns_503_when_llm_unconfigured(client: TestClient, monkeyp
     monkeypatch.setattr(research_module, "get_anthropic_client", _raise)
 
     resp = client.post("/api/v1/research/ask", json={"question": "问题"})
-    assert resp.status_code == 503
+    assert resp.status_code == 400
     assert "模型服务未配置" in resp.json()["detail"]
 
 

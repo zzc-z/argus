@@ -7,6 +7,8 @@
 报告里没有它。症状极隐蔽，没有断言盯着就会一直漏。
 """
 
+import asyncio
+import time
 from typing import Any
 from uuid import UUID
 
@@ -17,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
 from app.models.report import Report, ReportSource
+from app.services import agent as agent_mod
 from app.services.citation import Reference
 from app.services.stream import DoneEvent
 
@@ -849,3 +852,310 @@ async def test_citation_count_zero_for_uncited(
     body = client.get("/api/v1/sources").json()
     row = next(r for r in body["items"] if r["id"] == source.id)
     assert row["citation_count"] == 0
+
+
+# ── 崩溃路径也要落盘 ───────────────────────────────────────
+
+
+async def test_crash_still_persists_partial_report(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """第 2 轮崩掉时，第 1 轮已生成的正文必须落盘。
+
+    ## 要防的回归
+
+    崩溃路径原来在 ``_persist_report`` **之前**就 ``return`` 了。于是：
+    用户拿到一句红横幅，正文一个字节都没有，历史报告里也没有这份——
+    而那几轮已经烧掉了真实 token（实测一次崩溃烧掉 29548 输入 token）。
+    最贵的一次失败变成最没有产出的失败。
+
+    ## 注入回归
+
+    把异常路径的落盘删掉（恢复旧的 ``yield ledger.done()`` + ``return``），
+    这条会红：``report_id`` 变 None，且库里查不到报告。
+    """
+    from app.services import agent as agent_mod
+
+    user = await _user(db_session, "crash@report.test")
+    script = [
+        agent_mod.TurnResult(
+            content=[{"type": "text", "text": "第一轮的结论"}],
+            text="第一轮的结论",
+            tool_calls=[{"type": "tool_use", "id": "toolu_1", "name": "tavily_search", "input": {}}],
+            stop_reason="tool_use",
+            input_tokens=100,
+            output_tokens=50,
+        ),
+    ]
+
+    async def _boom(client: Any, messages: list[Any], tools: Any) -> agent_mod.TurnResult:
+        if script:
+            return script.pop(0)
+        raise ConnectionError("第 2 轮挂掉")
+
+    async def _no_tools(calls: list[Any], sink: list[Any], context: Any, refs: list[Any]) -> Any:
+        if False:
+            yield
+
+    monkeypatch.setattr(agent_mod, "_run_turn", _boom)
+    monkeypatch.setattr(agent_mod, "_run_tools", _no_tools)
+
+    events = [e async for e in agent_mod.run_agent("问题", user_id=user.id, db=db_session)]
+
+    done = next(e for e in events if isinstance(e, DoneEvent))
+    assert done.report_id is not None, (
+        "崩溃时已生成的正文必须落盘——report_id 是 None 说明走了旧的丢正文路径"
+    )
+    saved = await db_session.get(Report, done.report_id)
+    assert saved is not None, "report_id 指向的记录必须真的在库里"
+    assert "第一轮的结论" in saved.content, "落盘的内容必须包含崩溃前已生成的正文"
+    assert saved.user_id == user.id
+
+
+async def test_crash_with_no_text_does_not_persist_empty_report(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """崩溃时一个字都没产出，不该落盘出一条空报告。
+
+    ## 要防的回归
+
+    崩溃路径无条件落盘时，``content=""`` 也会插进 ``reports``。
+    前端 ``done.report_id != null`` 就渲染「查看完整报告 ↗」，点进去
+    是空白；历史报告列表也多一条空记录，用户分不清「跑崩了」与
+    「模型什么都没产出」。
+
+    正常路径有 ``produced_text`` 守卫，崩溃路径必须同样守住。
+
+    ## 注入回归
+
+    把崩溃路径的 ``if ledger.produced_text`` 去掉，这条会红：
+    report_id 变成非 None。
+    """
+    from app.services import agent as agent_mod
+
+    user = await _user(db_session, "crash-empty@report.test")
+
+    async def _boom(client: Any, messages: list[Any], tools: Any) -> agent_mod.TurnResult:
+        raise ConnectionError("第 1 轮就挂掉")
+
+    monkeypatch.setattr(agent_mod, "_run_turn", _boom)
+
+    events = [e async for e in agent_mod.run_agent("问题", user_id=user.id, db=db_session)]
+
+    done = next(e for e in events if isinstance(e, DoneEvent))
+    assert done.report_id is None, "没有正文时不该落盘——否则会写出一条空报告"
+    rows = (await db_session.execute(select(Report).where(Report.user_id == user.id))).all()
+    assert len(rows) == 0, f"库里不该有这条用户的报告，实际有 {len(rows)} 条"
+
+
+async def test_crash_path_persist_timeout_is_shorter(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """崩溃路径的落盘超时必须比正常路径短。
+
+    ## 要防的回归
+
+    崩溃时用户正盯着红色横幅等失败通知。落盘如果按正常路径的 5 秒上限
+    等下去，那 5 秒里界面还在转圈，什么新信息都没有——白等。
+
+    ## 注入回归
+
+    把 ``timeout=PERSIST_TIMEOUT_CRASH_SECONDS`` 去掉（回到默认 5 秒），
+    这条会红。
+    """
+    from app.services import agent as agent_mod
+
+    user = await _user(db_session, "crash-timeout@report.test")
+    seen: list[float] = []
+    script = [
+        agent_mod.TurnResult(
+            content=[{"type": "text", "text": "第一轮正文"}],
+            text="第一轮正文",
+            tool_calls=[{"type": "tool_use", "id": "t1", "name": "tavily_search", "input": {}}],
+            stop_reason="tool_use",
+            input_tokens=100,
+            output_tokens=50,
+        ),
+    ]
+
+    async def _boom(client: Any, messages: list[Any], tools: Any) -> agent_mod.TurnResult:
+        # 第 1 轮要有正文——没有正文时崩溃路径压根不落盘（守卫），
+        # 那条路径上根本不会调 _persist_report，测不到超时参数。
+        if script:
+            return script.pop(0)
+        raise ConnectionError("第 2 轮挂掉")
+
+    async def _no_tools(calls: list[Any], sink: list[Any], context: Any, refs: list[Any]) -> Any:
+        if False:
+            yield
+
+    original = agent_mod._persist_report
+
+    async def _spy(**kwargs: Any) -> int | None:
+        seen.append(kwargs.get("persist_timeout", -1.0))
+        return await original(**kwargs)
+
+    monkeypatch.setattr(agent_mod, "_run_turn", _boom)
+    monkeypatch.setattr(agent_mod, "_run_tools", _no_tools)
+    monkeypatch.setattr(agent_mod, "_persist_report", _spy)
+
+    _ = [e async for e in agent_mod.run_agent("问题", user_id=user.id, db=db_session)]
+
+    assert seen, "崩溃路径应该调过 _persist_report"
+    assert seen[0] == agent_mod.PERSIST_TIMEOUT_CRASH_SECONDS
+    assert seen[0] < agent_mod.PERSIST_TIMEOUT_SECONDS, (
+        "崩溃路径的落盘超时必须短于正常路径——用户正在等错误提示"
+    )
+
+
+async def test_persist_timeout_after_commit_still_returns_report_id(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """落盘中途超时、但行已入库时，仍要返回 report_id。
+
+    ## 要防的回归
+
+    超时取消的是 ``commit()`` 里的 await。若 COMMIT 已到达服务端，取消不
+    会撤销它——行真在库里，但代码已走进 except 分支。若那时返回 None，
+    前端拿不到 report_id（不显示「查看完整报告」），而历史列表里却多
+    了一条——用户以为这次没产出。
+    """
+    user = await _user(db_session, "persist-orphan@report.test")
+
+    original_write = agent_mod._write
+    committed = False
+
+    async def _write_then_hang(db: Any, report: Any, refs: Any, content: Any) -> None:
+        nonlocal committed
+        await original_write(db, report, refs, content)
+        committed = True
+        # 行已入库，之后卡住直到超时。
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(agent_mod, "_write", _write_then_hang)
+
+    ledger = agent_mod.TurnLedger(
+        session_id="s-orphan",
+        user_id=user.id,
+        input_tokens=10,
+        output_tokens=20,
+        started_at=time.monotonic(),
+        turns=1,
+    )
+    report_id = await agent_mod._persist_report(
+        db=db_session,
+        question="问题",
+        content="正文",
+        ledger=ledger,
+        refs=[],
+        persist_timeout=0.5,
+    )
+    assert committed, "前置条件：行应该已经入库"
+    assert report_id is not None, "行已入库时必须返回 report_id，否则前端以为没产出"
+
+
+async def test_persist_failure_cleanup_is_bounded_by_timeout(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """落盘失败后的**清理路径**也必须有上限。
+
+    ## 要防的回归
+
+    落盘超时的成因往往就是「DB 卡住/被锁」。同一个坏连接上再 await 一次
+    （``db.rollback()``、``_recover_persisted_id`` 里的 ``db.get()``）会
+    **再等一次**，而那两次 await 原本**没有上限**。
+
+    而 ``yield ledger.done()`` / ``yield error_event_for(exc)`` 都在
+    ``_persist_report`` **之后**——用户永远等不到失败横幅，界面一直转圈，
+    SSE 流挂死。
+
+    ## 反例实现
+
+    把清理路径的 ``asyncio.timeout`` 去掉 → 这条会红（挂死 10 秒）。
+    """
+    user = await _user(db_session, "persist-hang-cleanup@report.test")
+
+    async def _hang_write(db: Any, report: Any, refs: Any, content: Any) -> None:
+        # 卡住直到外层超时
+        await asyncio.sleep(10)
+
+    async def _hang_rollback() -> None:
+        # 回滚也卡住——模拟「DB 真挂了」的场景
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(agent_mod, "_write", _hang_write)
+    monkeypatch.setattr(db_session, "rollback", _hang_rollback)
+
+    ledger = agent_mod.TurnLedger(
+        session_id="s-hang",
+        user_id=user.id,
+        input_tokens=10,
+        output_tokens=20,
+        started_at=time.monotonic(),
+        turns=1,
+    )
+
+    started = time.monotonic()
+    report_id = await agent_mod._persist_report(
+        db=db_session,
+        question="问题",
+        content="正文",
+        ledger=ledger,
+        refs=[],
+        persist_timeout=0.5,
+    )
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 3.0, f"失败清理路径没有上限，耗时 {elapsed:.1f}s（用户等不到错误横幅）"
+    assert report_id is None
+
+
+async def test_crash_persisted_report_is_marked_truncated(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """崩溃落盘的报告必须标 truncated。
+
+    ## 要防的回归
+
+    ``truncated`` 之前只活在 SSE 帧里，不落库。崩溃落盘的报告正文不完整，
+    可它在历史列表里和完整报告长得一样——读者会当成完整报告读。
+
+    ## 注入回归
+
+    去掉 ``truncated=ledger.truncated`` → 断言 ``saved.truncated is True`` 变红。
+    """
+    user = await _user(db_session, "truncated-flag@report.test")
+    script = [
+        agent_mod.TurnResult(
+            content=[{"type": "text", "text": "第一轮正文"}],
+            text="第一轮正文",
+            tool_calls=[{"type": "tool_use", "id": "t1", "name": "local_search", "input": {}}],
+            stop_reason="end_turn",
+            input_tokens=100,
+            output_tokens=50,
+        ),
+    ]
+
+    async def _run(client: Any, messages: list[Any], tools: Any) -> agent_mod.TurnResult:
+        if script:
+            return script.pop(0)
+        raise ConnectionError("第 2 轮挂掉")
+
+    async def _no_tools(*args: Any, **kwargs: Any) -> Any:
+        if False:
+            yield None
+
+    monkeypatch.setattr(agent_mod, "_run_turn", _run)
+    monkeypatch.setattr(agent_mod, "_run_tools", _no_tools)
+
+    events = [
+        e
+        async for e in agent_mod.run_agent("问题", user_id=user.id, db=db_session)
+    ]
+    done = next(e for e in events if isinstance(e, DoneEvent))
+    assert done.report_id is not None, "崩溃前有正文，应该落盘"
+    assert done.truncated is True
+
+    saved = await db_session.get(Report, done.report_id)
+    assert saved is not None
+    assert saved.truncated is True, "崩溃落盘的报告必须标 truncated——否则读者当成完整报告读"
