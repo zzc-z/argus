@@ -36,7 +36,7 @@ argus/
 
 **禁止 commit 不合规代码**。三层硬拦截：
 
-1. **Pre-commit hook**（`.husky/pre-commit`）—— 跑 `lint-staged`（仅 staged 文件）+ `tsc --noEmit`
+1. **Pre-commit hook**（`.husky/pre-commit`）—— 跑 `pnpm run lint`（eslint）
 2. **Commit-msg hook**（`.husky/commit-msg`）—— 跑 `commitlint` 验 Conventional Commits
 3. **CI**（未来加 GitHub Actions）—— 跑完整 `lint + typecheck + test`
 
@@ -57,7 +57,7 @@ pnpm --filter web lint                    # 跑 lint
 pnpm --filter web lint:fix                # 自动修复
 pnpm --filter web format                  # prettier 格式化
 pnpm --filter web format:check            # 验格式化
-pnpm --filter web tsc --noEmit            # 类型检查
+pnpm --filter web exec tsc --noEmit      # 类型检查（必须带 exec，见下）
 
 # 前端 husky
 pnpm --filter web prepare                 # 安装 git hooks
@@ -75,6 +75,19 @@ uv run mypy --strict .                    # 验类型
 uv run pytest -m smoke                    # 跑烟测
 uv run pre-commit install                 # 装 pre-commit hooks
 ```
+
+### 7.1 本地环境：启动、重启、迁移
+
+**先读 [docs/LOCAL-DEV.md](docs/LOCAL-DEV.md)。** 那里写了几件「做错不报错、只表现为数据是旧的」的事：
+
+- 后端**没开 `--reload`**，改了 Python 文件必须重启，否则跑的是旧代码
+  （schema 变更后最隐蔽：响应字段**静默消失**，前端拿到 `undefined`）
+- 改了 `app/models/*.py` 要写并跑 Alembic 迁移
+- 改了后端 schema 要手动同步前端类型镜像（`apps/web/lib/api/*.ts`）
+
+**`pnpm --filter web tsc --noEmit` 是空命令**——`apps/web/package.json` 里没有
+`tsc` script，它会打印「None of the selected packages has a "tsc" script」然后
+**退出码 0**，什么都没跑。类型检查必须写 `pnpm --filter web exec tsc --noEmit`。
 
 ## 7.5 开发收尾流程（强制，2026-10-13 立，2026-10-13 修订）
 
@@ -114,7 +127,7 @@ uv run ruff check app/ tests/ alembic/
 uv run mypy app/
 
 # 前端
-pnpm --filter web lint && pnpm --filter web tsc --noEmit
+pnpm --filter web lint && pnpm --filter web exec tsc --noEmit
 
 # 2. 测试
 uv run pytest tests/ -q --no-header -p no:cacheprovider
