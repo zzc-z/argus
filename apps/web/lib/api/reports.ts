@@ -43,6 +43,13 @@ export interface ReportSummaryV {
   elapsed_ms: number
   created_at: string
   /**
+   * 这份报告是否被截断——正文不完整。
+   *
+   * 两种情况会置 true：流程中途崩溃（正文已生成但没跑完），或者撞到
+   * 轮次上限被强制收尾。列表页要标出来，否则读者会当成完整报告。
+   */
+  truncated: boolean
+  /**
    * 这份报告引用了多少个**切片**。
    *
    * 是切片数不是资料数——一份报告引同一份资料的 5 个切片算 5。

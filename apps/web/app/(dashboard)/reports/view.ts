@@ -14,7 +14,14 @@
 import type { ReportSummaryV } from '@/lib/api/reports'
 
 export type TopicTone = 'primary' | 'secondary' | 'neutral' | 'fixed'
-export type ReportStatus = 'verified' | 'running'
+/**
+ * 报告的三种状态。
+ *
+ * - `verified`：跑完且正文完整。
+ * - `truncated`：正文不完整——流程中途崩溃，或撞到轮次上限被强制收尾。
+ * - `running`：生成中（后端目前不落盘这种状态，但组件支持）。
+ */
+export type ReportStatus = 'verified' | 'truncated' | 'running'
 
 export interface ReportTopic {
   label: string
@@ -255,8 +262,9 @@ export const BULK_ACTIONS = [
  *   提问 + 用量拼一行摘要，让卡片/表格有副标题可显示。
  * - `viewsCount`：后端没有阅读数。填 0——组件会渲染成「0 阅」，
  *   是个明显待补的占位，但比编一个数字诚实。
- * - `status`：后端只落盘**已跑完**的报告，没有「生成中」状态。全部
- *   填 `verified`，组件会显示「已交叉验证」徽章。
+ * - `status`：后端落盘两种报告——跑完的（`truncated=false`）与中途
+ *   崩溃/被强制收尾的（`truncated=true`）。后者正文不完整，要标成
+ *   `truncated` 让读者知道，别当成完整报告读。
  * - `starred`：后端没有星标。填 false。
  * - `runningProgress` / `runningStage`：同 status，没有 running 态就不给。
  */
@@ -284,7 +292,7 @@ export function toReportRow(r: ReportSummaryV): Report {
     generatedAtSub: r.session_id.slice(0, 8),
     sourcesCount: r.citation_count,
     viewsCount: 0,
-    status: 'verified',
+    status: r.truncated ? 'truncated' : 'verified',
     starred: false,
   }
 }

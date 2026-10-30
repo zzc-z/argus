@@ -303,6 +303,30 @@
   align-self: center;
 }
 
+/* 被截断的报告：正文不完整。
+ *
+ * 用 error-container 那套 token（浅底深字 / 暗色下深底浅字），而不是
+ * tertiary——项目没有 warning token，而 tertiary 是灰的，跟「已验证」的
+ * 绿徽章放一起看不出区别。这里要的是「一眼看到这份报告没写完」。
+ */
+.truncatedBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0 0.5rem;
+  border-radius: 9999px;
+  background-color: var(--token-error-container, #fee2e2);
+  color: var(--token-on-error-container, #93000a);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  font-family: var(--font-family-mono);
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+  height: 1.125rem;
+  align-self: center;
+}
+
 .runningBadge {
   display: inline-flex;
   align-items: center;

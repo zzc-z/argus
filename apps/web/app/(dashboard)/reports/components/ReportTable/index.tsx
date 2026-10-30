@@ -121,6 +121,12 @@ export const reportColumns: ReadonlyArray<DataTableColumnDef<Report>> = [
               <IconSpan name="progress_activity" size={13} className={styles.runningBadgeIcon} />
               <span>正在合成 ({r.runningProgress ?? 0}%)</span>
             </span>
+          ) : r.status === 'truncated' ? (
+            // 被截断的报告正文不完整——标出来，别让读者当成完整报告。
+            <span className={styles.truncatedBadge}>
+              <IconSpan name="warning" size={14} />
+              <span>正文不完整</span>
+            </span>
           ) : (
             <span className={styles.verifiedBadge}>
               <IconSpan name="check_circle" size={14} />
