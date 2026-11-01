@@ -145,13 +145,18 @@ Turbopack 的既存缺陷。
 
 ## 未完成 / 待办
 
-- **改动全部未提交**（21 个文件）。等用户指令。
-- 指数退避的变异测试**没跑成**（分类器 `claude-opus-4-7[1M] is temporarily
-  unavailable` 持续拦截 Bash 与 Monitor）。代码已确认恢复正确
-  （`app/services/agent.py:988` 是 `* (2**attempt)`），测试已写好
-  （`test_retry_backoff_is_exponential`），18/18 通过但**没做变异验证**。
-  接手后要做：把它改成 `STREAM_INTERRUPT_BACKOFF_SECONDS`（去掉指数），
-  确认那条测试变红，再改回来。
+- **改动已提交**（5 个 commit，见 `git log`）。指数退避那一条的变异验证
+  仍未跑成（分类器 `claude-opus-4-7[1M] is temporarily unavailable`
+  持续拦截 Bash / Monitor / ctx_execute）。
+
+  **静态推演已确认能抓到**（2026-11-01）：变异后 `sleeps` 是 `[1.0, 1.0]`，
+  `sleeps[-1] > sleeps[0]` → `1.0 > 1.0` → False → 断言失败。
+
+  接手后要做（改 `app/services/agent.py` 的 `_run_turn`）：
+  把 `STREAM_INTERRUPT_BACKOFF_SECONDS * (2**attempt)` 改成
+  `STREAM_INTERRUPT_BACKOFF_SECONDS`，跑
+  `pytest tests/test_stream_interrupt_retry.py`，
+  确认 `test_retry_backoff_is_exponential` 变红，再改回来。
 - `apps/web/next-env.d.ts` 是 next dev 自动改的（dev 模式的类型路径不同），
   AGENTS.md 说「连同改动一起提交能让工作树干净」。
 

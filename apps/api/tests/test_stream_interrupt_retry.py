@@ -29,6 +29,7 @@
 
 import asyncio
 from collections.abc import AsyncIterator
+from itertools import pairwise
 from typing import Any
 
 import httpx
@@ -411,6 +412,9 @@ async def test_retry_backoff_is_exponential(monkeypatch: pytest.MonkeyPatch) -> 
         await collect_turn(client, [{"role": "user", "content": "q"}], ())
 
     assert len(sleeps) == STREAM_INTERRUPT_RETRIES, f"退避次数不对：{sleeps}"
-    assert sleeps == sorted(sleeps), f"退避没有递增：{sleeps}"
+    # 严格递增——不是「非递减」。``sorted(sleeps) == sleeps`` 只能防递减，
+    # 固定间隔（[1.0, 1.0]）照样能过，是废断言。真正抓住「固定间隔」的
+    # 是这条与下面那条。
+    assert all(a < b for a, b in pairwise(sleeps)), f"退避没有严格递增：{sleeps}"
     assert sleeps[-1] > sleeps[0], f"退避不是指数增长：{sleeps}"
     assert sleeps[0] == STREAM_INTERRUPT_BACKOFF_SECONDS, f"退避基数不对：{sleeps}"
