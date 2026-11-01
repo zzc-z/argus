@@ -54,8 +54,8 @@ from app.services.stream import (
     FaithfulnessEvent,
     NodeEvent,
     ReferenceEvent,
-    TextSlicer,
     ToolCallEvent,
+    Typewriter,
 )
 from app.services.tools import (
     ToolContext,
@@ -174,6 +174,33 @@ class TurnResult:
     stop_reason: str
     input_tokens: int
     output_tokens: int
+
+
+@dataclass(frozen=True, slots=True)
+class TurnChunk:
+    """一轮流式请求里的一个片段。
+
+    ``kind="text"`` 是正文增量（已经过展示切片，可以直接发给前端）；
+    ``kind="result"`` 是这一轮的收尾——usage / stop_reason / tool_calls；
+    ``kind="reset"`` 表示「已发出的正文作废，从头再来」——只在流被掐断
+    后整轮重发时出现。
+    """
+
+    kind: str  # "text" | "result" | "reset"
+    text: str = ""
+    result: TurnResult | None = None
+
+
+@dataclass(slots=True)
+class _FinalizeOut:
+    """强制收尾那一步的回传通道。
+
+    见 ``_finalize`` 的说明：生成器只有一个 yield 通道，而这里要同时交回
+    「正文整段」与「新账本」两样东西。
+    """
+
+    ledger: TurnLedger
+    text: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -380,20 +407,38 @@ async def run_agent(
     try:
         for turn in range(MAX_TURNS):
             ledger = ledger.begin_turn()
-            result = await _run_turn(client, messages, tools)
+            result: TurnResult | None = None
+            # 正文边收边发：上游的 text_delta 一到就切片发给用户。
+            #
+            # 「先切到 writer 节点再发」：节点切换必须在第一个正文片段
+            # **之前**发生，否则前端会先收到一段正文、然后 DAG 才切到
+            # writer，顺序反了。
+            writer_active = False
+            async for chunk in _run_turn(client, messages, tools):
+                if chunk.kind == "text":
+                    if not writer_active:
+                        writer_active = True
+                        for event in tracker.switch(Stage.WRITER):
+                            yield event
+                    yield DeltaEvent(node_id=Stage.WRITER.value, text=chunk.text)
+                elif chunk.kind == "reset":
+                    # 流被掐断后整轮重发：已发的正文作废，前端清零后重收。
+                    yield DeltaEvent(node_id=Stage.WRITER.value, text="", reset=True)
+                else:
+                    result = chunk.result
+
+            # 流中断重发全部失败时 _run_turn 会抛异常，不会走到这里。
+            # result 为 None 说明一轮都没产出任何 chunk——不可能
+            # （_run_turn 至少会 yield 一个 result），但显式报错比
+            # 后面 AttributeError 强。
+            if result is None:
+                raise RuntimeError("模型一轮请求没有返回结果")
             ledger = ledger.record(result)
             if result.text:
                 report_body.append(result.text)
 
             # thinking block 原样回传——带 signature，改动会被上游拒绝。
             messages.append({"role": "assistant", "content": result.content})
-
-            if result.text:
-                # 扩展思考模型常一边调工具一边说话，这段也要给用户看。
-                for event in tracker.switch(Stage.WRITER):
-                    yield event
-                for piece in _slice_for_display(result.text):
-                    yield DeltaEvent(node_id=Stage.WRITER.value, text=piece)
 
             # 截断标记与「要不要继续调工具」是两件事，必须分开判。
             # Anthropic 官方说明响应被 max_tokens 切断时可以同时带着 tool_use
@@ -435,16 +480,15 @@ async def run_agent(
                 # 主循环这个 try 里赋值，_finalize 抛异常时账本已经记上了
                 # 这一轮。和主循环同语义——「崩了也算」。
                 ledger = ledger.begin_turn()
-                finalize_events, finalize_text, ledger = await _finalize(
-                    client, ledger, messages, tracker
-                )
+                out = _FinalizeOut(ledger=ledger)
+                async for finalize_event in _finalize(client, ledger, messages, tracker, out):
+                    yield finalize_event
+                ledger = out.ledger
                 # 追加**整段** final.text，与主循环同粒度。不能用 DeltaEvent
                 # 的切片：那些是展示节奏（每 20-36 字一片），`"\n".join`
                 # 会在每个逗号处插换行，落盘正文与用户读到的完全不一样。
-                if finalize_text:
-                    report_body.append(finalize_text)
-                for finalize_event in finalize_events:
-                    yield finalize_event
+                if out.text:
+                    report_body.append(out.text)
                 break
     except Exception as exc:
         logger.warning("agent 循环异常中止（已完成 %d 轮）", ledger.turns, exc_info=exc)
@@ -555,38 +599,43 @@ async def _finalize(
     ledger: TurnLedger,
     messages: list[dict[str, Any]],
     tracker: NodeTracker,
-) -> tuple[list[AgentEvent], str, TurnLedger]:
+    out: _FinalizeOut,
+) -> AsyncIterator[AgentEvent]:
     """轮数用尽后的强制收尾：关掉工具，再基于已有信息作答。
 
-    返回 ``(事件列表, 本轮整段正文, 新账本)``：
+    产出正文增量（DeltaEvent）。**正文整段与新账本通过 ``out`` 回传**：
+    DeltaEvent 的 text 是展示切片，而 ``report_body`` 最后是
+    ``"\\n".join(...)``——从切片拼回来的话，每个切片边界都会插一个换行，
+    于是落盘的报告在每个逗号处断行，与用户通过 SSE 读到的连续文本对不上
+    （2026-10-17 CR 实测复现）。主循环 append 的是 ``result.text`` 整段，
+    这里同粒度。
 
-    1. **账本必须回传**。账本是 frozen 的，就地改不到；而这轮请求的 token
-       用量必须回到主循环的账本上，否则强制收尾那一次就是白烧的。
-    2. **正文必须以整段回传**，不能靠调用方从 DeltaEvent 里挑回来。
-       DeltaEvent 的 text 是 ``_slice_for_display`` 的**展示切片**，而
-       ``report_body`` 最后是 ``"\\n".join(...)``——从切片拼回来的话，
-       每个切片边界都会插一个换行，于是落盘的报告在每个逗号处断行，
-       与用户通过 SSE 读到的连续文本对不上（2026-10-17 CR 实测复现）。
-       主循环 append 的是 ``result.text`` 整段，这里同粒度。
-    3. **不想用哨兵值传回参**。前一版把 ``TurnLedger`` 塞进事件流的最后
-       一项、靠 isinstance 分流——那条「最后一项必须是账本」的不变式
-       没有任何东西强制，漏写一个 yield 就是静默丢 token（正是它想防的
-       那个 bug）。返回 tuple 是编译期强制的：类型不对 mypy 直接报错。
+    做成异步生成器而不是「返回事件列表」：强制收尾是用户能看到的最后一段
+    正文，攒完再发就又变成「憋一下整段蹦出来」——那正是这个改动要修的问题。
 
-    也不需要是异步生成器：只有一个调用点，且消费完立刻 break，全部事件
-    先攒在列表里不会造成任何延迟——请求本身早已 await 完毕。
+    ``out`` 是一个可变容器而不是返回值：生成器只有一个 yield 通道，
+    而这里要同时交回「正文整段」与「新账本」两样东西。塞进事件流当哨兵
+    值（靠 isinstance 分流）的老做法不行——那条「最后一项必须是账本」的
+    不变式没有任何东西强制，漏写一个 yield 就是静默丢 token。
     """
-    final = await _run_turn(client, messages, no_tools)
-    ledger = ledger.record(final)
+    final: TurnResult | None = None
+    writer_active = False
+    async for chunk in _run_turn(client, messages, no_tools):
+        if chunk.kind == "text":
+            if not writer_active:
+                writer_active = True
+                for event in tracker.switch(Stage.WRITER):
+                    yield event
+            yield DeltaEvent(node_id=Stage.WRITER.value, text=chunk.text)
+        elif chunk.kind == "reset":
+            yield DeltaEvent(node_id=Stage.WRITER.value, text="", reset=True)
+        else:
+            final = chunk.result
 
-    if not final.text:
-        return [], "", ledger
-    events: list[AgentEvent] = list(tracker.switch(Stage.WRITER))
-    events.extend(
-        DeltaEvent(node_id=Stage.WRITER.value, text=piece)
-        for piece in _slice_for_display(final.text)
-    )
-    return events, final.text, ledger
+    if final is None:
+        raise RuntimeError("强制收尾没有返回结果")
+    out.ledger = ledger.record(final)
+    out.text = final.text
 
 
 def _close(tracker: NodeTracker) -> list[NodeEvent]:
@@ -865,28 +914,56 @@ async def _run_turn(
     client: AsyncAnthropic,
     messages: list[dict[str, Any]],
     tools: tuple[ToolSpec, ...],
-) -> TurnResult:
-    """跑一轮流式请求，把 SDK 结果收成 TurnResult。
+) -> AsyncIterator[TurnChunk]:
+    """跑一轮流式请求，**边收边发**。
 
-    这里用流式而不是一次性 create，只为拿到 usage 里的 token 计数——
-    非流式响应不带完整 usage。中转站会把整个 text 块缓冲成一次
-    text_delta（实测 243 字符只给 1 个事件），逐字流式在这里拿不到；
-    展示节奏由 ``_slice_for_display`` 补。
+    ## 为什么必须是生成器而不是「收完再返回」
+
+    原实现是 ``await stream.get_final_message()`` —— 把整轮流攒完再返回，
+    主循环随后一次性把正文切好发出去。用户看到的是「憋十几秒，然后整段
+    蹦出来」，完全没有打字机效果。
+
+    而上游**本来就是真流式**（实测 2026-10-30，中转站 llmapi.pro）：
+
+    | 正文长度 | 上游到达方式 |
+    |---|---|
+    | 156 字 | 49 个 text_delta 全在 4.082s 那一刻挤着到 |
+    | 1662 字 | 526 个 text_delta，5.0s→13.9s 渐进到达 |
+
+    也就是说长文本的上游逐字吐，我们把增量全丢掉、攒成整段才发。
+    改成消费 ``content_block_delta`` 就能拿到真流式。
+
+    ## 正文与工具调用分家
+
+    一轮响应里既有 text 块也有 tool_use 块（实测 thinking → text →
+    tool_use 的顺序）。只有 **text 块**的增量能发给用户：tool_use 的
+    ``partial_json`` 是工具入参，发出去会漏出模型没打算展示的内容，
+    而且前端会把它当正文渲染。
 
     ## 流被掐断时的整轮重发
 
-    中转站会在 SSE 流消费途中随机断开连接（实测同一请求 8 次里能挂 2 次），
-    而 SDK 的 ``max_retries`` 只覆盖建连阶段，够不到这里。见
-    ``llm.is_stream_interrupt`` 的说明。断流后整轮重发，最多
-    ``STREAM_INTERRUPT_RETRIES`` 次；仍失败则把异常抛给调用方。
+    中转站会在 SSE 流消费途中随机断开连接，而 SDK 的 ``max_retries`` 只覆盖
+    建连阶段，够不到这里。见 ``llm.is_stream_interrupt`` 的说明。断流后
+    **整轮重发**——已发出的正文不能撤，只能整轮重来。
+
+    重发会从头再生成一遍，而上游有随机性（实测同一 prompt 连发 4 次，
+    字数 1653/1155/1737/2164 各不相同），没法靠裁剪前缀去重。所以重发前
+    发一个 ``reset`` 标记，让前端把这一轮已收到的正文清零——少了它，
+    用户会看到同一段正文出现两遍。
     """
     request = _build_turn_request(messages, tools)
     last_exc: BaseException | None = None
+    # 这一轮是否已经往用户那里发过正文。断流重发时要靠它决定
+    # 要不要发 reset 标记。
+    sent_any = False
 
     for attempt in range(STREAM_INTERRUPT_RETRIES + 1):
         try:
-            async with client.messages.stream(**cast("Any", request)) as stream:
-                final = await stream.get_final_message()
+            async for chunk in _stream_turn_once(client, request):
+                if chunk.kind == "text":
+                    sent_any = True
+                yield chunk
+            return
         except Exception as exc:
             if not is_stream_interrupt(exc):
                 raise
@@ -896,15 +973,62 @@ async def _run_turn(
                 attempt + 1,
                 type(exc).__name__,
             )
+            # 已经发出去的正文作废——重发会从头再来一遍。
+            # 只在**确实发过东西**时才发 reset：纯工具轮断流，
+            # 前端正文区是空的，清它没有意义。
+            if sent_any:
+                yield TurnChunk(kind="reset")
             if attempt < STREAM_INTERRUPT_RETRIES:
-                await asyncio.sleep(STREAM_INTERRUPT_BACKOFF_SECONDS)
+                # 指数退避：第 n 次重发等 ``基数 * 2**(n-1)`` 秒（1s → 2s）。
+                #
+                # 固定间隔的实测问题（2026-11-01）：本机网络层抖动时
+                # （Tavily 与 Anthropic 同秒断开），3 次重发挤在同一秒里
+                # 全挂在同一个坏窗口内。指数退避把最后一次重发推到
+                # 3 秒之后，抖动窗口大概率已过。
+                await asyncio.sleep(STREAM_INTERRUPT_BACKOFF_SECONDS * (2**attempt))
             continue
-        return _to_turn_result(final)
 
     # 走到这里说明每次尝试都被掐断了。把最后一次的异常原样抛出去——
     # 调用方要靠它判断「流中断」还是别的错误来决定错误文案。
     assert last_exc is not None
     raise last_exc
+
+
+async def _stream_turn_once(
+    client: AsyncAnthropic,
+    request: dict[str, Any],
+) -> AsyncIterator[TurnChunk]:
+    """跑一次流式请求，把上游事件翻译成 ``TurnChunk``。
+
+    产出顺序：正文增量（``kind="text"``，可以有多段）→ 整轮结果
+    （``kind="result"``）。``result`` 一定在最后——它是这一轮的收尾
+    （usage / stop_reason / tool_calls），调用方靠它记账。
+    """
+    typewriter = Typewriter()
+
+    async with client.messages.stream(**cast("Any", request)) as stream:
+        async for event in stream:
+            event_type = getattr(event, "type", "")
+            if event_type != "content_block_delta":
+                continue
+            delta = getattr(event, "delta", None)
+            chunk_text = getattr(delta, "text", None)
+            # text_delta 才有 text；input_json_delta 是 partial_json——
+            # 那是工具入参，不能发给用户（会漏出模型没打算展示的内容）。
+            if not isinstance(chunk_text, str):
+                continue
+            # 切完立刻发。不攒着：攒到最后就退化成「收完再发」，
+            # 那正是这个改动要修的问题。
+            async for piece in typewriter.feed(chunk_text):
+                yield TurnChunk(kind="text", text=piece)
+
+        # 流结束：把尾巴切出来，与前面的片段同一粒度。
+        async for piece in typewriter.flush():
+            yield TurnChunk(kind="text", text=piece)
+
+        final = await stream.get_final_message()
+
+    yield TurnChunk(kind="result", result=_to_turn_result(final))
 
 
 def _build_turn_request(
@@ -1086,15 +1210,3 @@ def _build_user_prompt(
         f"{question}\n\n（注意：当前环境{'、'.join(notes)}，"
         "请基于已有知识回答，并说明信息可能不完整。）"
     )
-
-
-def _slice_for_display(text: str) -> list[str]:
-    """把一轮产出的整段正文切成展示片段。
-
-    放在 service 层而不是 gateway，是因为「按什么节奏展示」是 agent 的
-    输出语义；gateway 只负责把片段编码成 SSE 字节。
-    """
-    slicer = TextSlicer()
-    pieces = slicer.feed(text)
-    pieces.extend(slicer.flush())
-    return pieces

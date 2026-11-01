@@ -9,7 +9,10 @@
 ``split("\\n\\n")`` + ``JSON.parse`` 就能统一解析，少一层协议。
 """
 
+import asyncio
 import json
+import time
+from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -33,10 +36,20 @@ class NodeEvent:
 
 @dataclass(frozen=True, slots=True)
 class DeltaEvent:
-    """正文增量。一小段，不是全文——前端 ``streamedText += delta.text``。"""
+    """正文增量。一小段，不是全文——前端 ``streamedText += delta.text``。
+
+    ``reset=True`` 表示「把已经收到的正文清掉，从这里重新开始」。
+    它只在**流被掐断后整轮重发**时出现：重发会从头再生成一遍，
+    而上游有随机性（实测同一 prompt 连发 4 次，字数 1653/1155/1737/2164
+    各不相同），没法靠裁剪前缀来去重——只能让前端把这一轮先收到的丢掉。
+
+    前端收到它要把本轮的正文清零。少了这个信号，用户会看到同一段
+    正文出现两遍（前半截是断流前的，后半截是重发后的）。
+    """
 
     node_id: str
     text: str
+    reset: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,7 +182,39 @@ BREAK_CHARS = "。！？；\n"
 # 次级切点：句中标点。只在优先切点找不到时用。
 SOFT_BREAK_CHARS = "，、：,;:"
 
-CHUNK_SIZE = 24  # 无标点时的硬切粒度，用户确认的视觉密度
+CHUNK_SIZE = 8  # 每片的字数上限
+
+# 两片之间的最小间隔（秒）。
+#
+# 它只是**兜底**，不是主要节奏——主要节奏由 ``TARGET_CHARS_PER_SECOND``
+# 的令牌桶控制。设成 16ms（约一帧）是防「一个字一个字蹦」：上游逐字
+# 吐时每片 8 字，正常会隔 50ms 以上；真出现 16ms 一片说明上游在
+# 疯狂推送，这时至少留一点间隔让浏览器有机会渲染。
+MIN_PIECE_INTERVAL_SECONDS = 0.016
+
+# 展示速度（字/秒）。
+#
+# ## 怎么定的（2026-10-30 用户反馈后重标定）
+#
+# 用户反馈：「不能算是流式了，一次性蹦出太多字符，两次就生成完全文，
+# 一次生成的字符一定要少」。第一版取 24 字/片 + 35ms 间隔，实测
+# **800 字正文在 0.8 秒内全部送出**——用户等了 25 秒上游，然后全文
+# 在 1 秒内涌出来，视觉上就是「一下蹦出」。
+#
+# 现在按「每秒多少字」定，而不是按「每片多少毫秒」：
+#
+# - 中文阅读速度约 300-500 字/分钟 = **5-8 字/秒**
+# - 打字机要比阅读快，但快到能看出「在动」就够了
+#
+# 取 **80 字/秒**：800 字要 10 秒。配合 8 字/片，是每 100ms 增长一段。
+# 肉眼能看出逐段生长，又不至于让人等得不耐烦。
+#
+# ## 为什么按字数而不是按片数
+#
+# 按「每片固定等 N 毫秒」的话，上游真流式的情况会被拖慢（实测 720 字
+# 上游 5 秒能吐完，加固定 200ms 间隔后变 19.2 秒）。按字数算（令牌桶）
+# 就两全：上游缓冲时慢放，上游真流式时跟随上游。
+TARGET_CHARS_PER_SECOND = 80.0
 
 
 class TextSlicer:
@@ -235,10 +280,20 @@ class TextSlicer:
 
         搜索窗口放宽到 ``_min_cut_at``（而不是一个 chunk_size）再从后往前
         找：技术文本里常有整句没有中文标点（《TCO》这种全角括号不算），
-        窗口太窄就只能在很靠前的位置切，切出「7 字 + 24 字 + 12 字」
-        这种参差不齐的结果。窗口放宽后能等到后面那个真正的句号。
+        窗口太窄就只能在很靠前的位置切，切出参差不齐的结果。窗口放宽后
+        能等到后面那个真正的句号。
 
         切点优先级：强标点（句号等）> 弱标点（逗号等）> 硬切。
+
+        ## 为什么切点不能落在缓冲区末尾
+
+        流式下缓冲区里是「**已经收到的**」文本。逗号正好落在缓冲区
+        末尾时，后面那个 ``000`` 还没到——此时无法判断这是千分位还是
+        真逗号，只能赌。而赌错的后果是 ``100,000`` 被切成
+        ``100,`` + ``000``（2026-10-30 实测复现）。
+
+        所以切点后面必须**至少还有一个字符**，否则这个标点还不能用，
+        等下一次 feed 补齐了再判断。
         """
         if len(text) < self._min_cut_at:
             return 0
@@ -246,31 +301,154 @@ class TextSlicer:
         window = text[: self._min_cut_at]
         for chars in (BREAK_CHARS, SOFT_BREAK_CHARS):
             for cut in range(len(window) - 1, -1, -1):
-                if window[cut] in chars and not _splits_a_token(window, cut):
+                if cut + 1 >= len(text):
+                    # 后面还没有字符，看不出是词内还是词间——不能切。
+                    continue
+                if window[cut] in chars and not _splits_a_token(text, cut):
                     return cut + 1
 
         # 窗口内一个标点都没有：硬切在粒度上，不等更远。
-        return min(self._chunk_size, len(text))
+        #
+        # 硬切也不能落在词中间——``Blackwell`` 被切成 ``Blackwel`` + ``l``
+        # 在界面上就是「英文单词被劈开」。往后找第一个非 ASCII 字母数字
+        # 的位置；找不到（词一直延伸到缓冲区末尾）就说明后面还有字没到，
+        # 此时不切，等下一次 feed。
+        hard_cut = min(self._chunk_size, len(text))
+        while hard_cut < len(text) and text[hard_cut].isascii() and text[hard_cut].isalnum():
+            hard_cut += 1
+        if hard_cut >= len(text):
+            return 0
+        if hard_cut > 0 and _splits_a_token(text, hard_cut - 1):
+            # 找到的边界本身还在词内（前面是 ASCII 字母数字）——继续往后。
+            while hard_cut < len(text) and text[hard_cut].isascii() and text[hard_cut].isalnum():
+                hard_cut += 1
+            if hard_cut >= len(text):
+                return 0
+        return hard_cut
 
 
-def _splits_a_token(window: str, cut: int) -> bool:
+def _splits_a_token(text: str, cut: int) -> bool:
     """在 ``cut`` 处切会不会把一个西文词 / 数字劈成两半。
 
     ``100,000`` 的逗号是千分位、``3.14`` 的点是小数点——切在这些位置
     会让 ``100,000`` 变成 ``100,`` + ``000`` 两条 delta，看着像 bug。
+
+    **看的是完整文本，不是搜索窗口。** 窗口只有 ``chunk_size * 1.5``
+    字（chunk_size=8 时是 12 字），标点常落在窗口末尾——此时窗口里
+    看不到下一个字符，判断不了它是词内还是词间，只能放行，于是
+    ``100,000`` 被劈成 ``100,`` + ``000``（2026-10-30 实测复现）。
 
     **只对 ASCII 判断。** 中文字符的 ``str.isalnum()`` 同样返回 True，
     若不限定 ASCII，「算力。」的句号两侧都是汉字，整句会被误判成
     「劈开了词」而跳过——结果是中文标点切分 100% 失效，全部退化成
     硬切，连词都被劈（``QPS`` → ``Q`` + ``PS``）。
     """
-    if cut == 0 or cut + 1 >= len(window):
+    if cut <= 0 or cut + 1 >= len(text):
         return False
-    before = window[cut - 1]
-    after = window[cut + 1]
+    before = text[cut - 1]
+    after = text[cut + 1]
     return (
         before.isascii()
         and after.isascii()
         and before.isalnum()
         and after.isalnum()
     )
+
+
+class Typewriter:
+    """把上游的增量变成**有节奏**的展示片段。
+
+    它是 ``TextSlicer`` 的上一层：切片决定「在哪断」，控速决定「隔多久送」。
+
+    ## 为什么两件事都要做
+
+    只切片不控速——用户看到的是「一下全出」：上游把整段缓冲成一次
+    送达，切片器切出来的几十片在同一瞬间全部出栈，浏览器一个 TCP 块
+    收齐，React 一次渲染完。切片白做了。
+
+    只控速不切片——用户看到的是「一个字一个字蹦」，每个 delta 帧
+    可能只有 1 个字（实测上游逐字吐时帧长就是 1-2 字），DOM 里全是
+    碎片段，Markdown 的行内格式（``**加粗**``）会被切在中间。
+
+    所以：切片器负责粒度，控速负责节奏。
+
+    ## 为什么必须是异步生成器而不是「返回列表」
+
+    返回列表的话，控速的等待发生在**函数内部**——调用方一次性拿到
+    全部片段再往下游发，等待等于白费：等完之后所有片段仍然在同一
+    瞬间交付出去。
+
+    做成生成器，等待发生在**每次交付之前**：调用方取下一片时才等，
+    等完立刻把这一片发出去。节奏才是真的。
+
+    ## 控速是「令牌桶」，不是「每片固定等 N 毫秒」
+
+    固定间隔会把上游真流式的情况也拖慢（实测：720 字上游 12 秒能吐完，
+    加固定间隔后变成 19.2 秒）。而上游缓冲的情况又需要被拖慢。
+
+    令牌桶能同时满足两者：**按累计字数算**，而不是按片数算。
+
+    - 上游缓冲（一次来 500 字）→ 累积字数远超配额 → 必须等 → 慢放
+    - 上游真流式（一个字一个字来）→ 累积字数一直贴着配额 → 不用等 →
+      跟随上游速度
+
+    配额是 ``chars_per_second``。每送出一片就消耗那片字数对应的「时间
+    配额」；不够就得等到配额够。
+    """
+
+    def __init__(
+        self,
+        chunk_size: int = CHUNK_SIZE,
+        min_interval: float = MIN_PIECE_INTERVAL_SECONDS,
+        chars_per_second: float = TARGET_CHARS_PER_SECOND,
+    ) -> None:
+        self._slicer = TextSlicer(chunk_size)
+        self._min_interval = min_interval
+        self._chars_per_second = chars_per_second
+        # 「还能立刻送出的字数」。正数表示有余量，负数表示欠着（要等）。
+        self._credit = 0.0
+        # 配额上限：不设的话上游停顿时会攒下巨量配额，恢复后一瞬间涌出。
+        # 上限给 2 片——够覆盖一次正常停顿，又不会攒出「一下蹦出」。
+        self._max_credit = float(chunk_size * 2)
+        self._last_sent_at: float | None = None
+
+    async def feed(self, text: str) -> AsyncIterator[str]:
+        """吃进一段上游增量，逐片**按节奏**送出。
+
+        不足一片的尾巴留在切片器缓冲区里，等下一次 feed 或 flush。
+        """
+        for piece in self._slicer.feed(text):
+            await self._wait(piece)
+            yield piece
+
+    async def flush(self) -> AsyncIterator[str]:
+        """流结束时把缓冲区清空，同样按节奏送出。"""
+        for piece in self._slicer.flush():
+            await self._wait(piece)
+            yield piece
+
+    async def _wait(self, piece: str) -> None:
+        """按令牌桶节奏等到「配额够」再放这一片出去。
+
+        ``_credit`` 是**还能立刻送出的字数**：每送一片扣掉它的字数，
+        欠了就等——等的时间就是欠的字数除以目标速度。
+        """
+        if self._last_sent_at is not None:
+            # 距上一片的时间流逝会补回配额：这段时间上游「送」了那么多字，
+            # 我们也就有那么多字可以立刻发出去。
+            elapsed = time.monotonic() - self._last_sent_at
+            self._credit = min(
+                self._credit + elapsed * self._chars_per_second,
+                self._max_credit,
+            )
+            # 至少隔 ``min_interval``——不然会变成「一个字一个字蹦」。
+            min_wait = self._min_interval - elapsed
+            if self._credit < 0:
+                min_wait = max(min_wait, -self._credit / self._chars_per_second)
+            if min_wait > 0:
+                await asyncio.sleep(min_wait)
+                # 等够了，欠的配额补平（多等出来的时间算富余）。
+                self._credit = max(0.0, self._credit + min_wait * self._chars_per_second)
+
+        self._credit -= len(piece)
+        self._last_sent_at = time.monotonic()
