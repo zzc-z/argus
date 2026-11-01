@@ -9,6 +9,7 @@
 
 import asyncio
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 from uuid import UUID
 
@@ -22,6 +23,7 @@ from app.models.report import Report, ReportSource
 from app.services import agent as agent_mod
 from app.services.citation import Reference
 from app.services.stream import DoneEvent
+from tests.conftest import turn_chunks
 
 
 # ── helpers ───────────────────────────────────────────────
@@ -83,18 +85,23 @@ def _auth(client: TestClient, user: User | int) -> None:
     client.cookies.set("argus_session", create_access_token(uid))
 
 
-async def _fake_turn(client: Any, messages: list[dict[str, Any]], tools: Any) -> Any:
+async def _fake_turn(
+    client: Any, messages: list[dict[str, Any]], tools: Any
+) -> AsyncIterator[agent_mod.TurnChunk]:
     """一轮就产出正文的假模型。"""
     from app.services import agent as agent_mod
 
-    return agent_mod.TurnResult(
-        text="结论如上[1]。",
-        tool_calls=[],
-        content=[],
-        stop_reason="end_turn",
-        input_tokens=100,
-        output_tokens=50,
-    )
+    for chunk in turn_chunks(
+        agent_mod.TurnResult(
+            text="结论如上[1]。",
+            tool_calls=[],
+            content=[],
+            stop_reason="end_turn",
+            input_tokens=100,
+            output_tokens=50,
+        )
+    ):
+        yield chunk
 
 
 async def _fake_verify(client: Any, report_text: str, sources: dict[int, str]) -> Any:
@@ -139,7 +146,9 @@ async def test_report_persisted_with_citations(
 
     calls = {"n": 0}
 
-    async def _two_turns(client: Any, messages: list[dict[str, Any]], tools: Any) -> Any:
+    async def _two_turns(
+        client: Any, messages: list[dict[str, Any]], tools: Any
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
         """第一轮请求工具，第二轮产出正文。
 
         **只有第一轮给 tool_calls**：主循环看到工具调用就继续，而一旦
@@ -148,22 +157,29 @@ async def test_report_persisted_with_citations(
         """
         calls["n"] += 1
         if calls["n"] == 1:
-            return agent_mod.TurnResult(
-                text="",
-                tool_calls=[{"id": "t1", "name": "local_search", "input": {"query": "q"}}],
+            for chunk in turn_chunks(
+                agent_mod.TurnResult(
+                    text="",
+                    tool_calls=[{"id": "t1", "name": "local_search", "input": {"query": "q"}}],
+                    content=[],
+                    stop_reason="tool_use",
+                    input_tokens=10,
+                    output_tokens=5,
+                )
+            ):
+                yield chunk
+            return
+        for chunk in turn_chunks(
+            agent_mod.TurnResult(
+                text="结论如上[1]。",
+                tool_calls=[],
                 content=[],
-                stop_reason="tool_use",
-                input_tokens=10,
-                output_tokens=5,
+                stop_reason="end_turn",
+                input_tokens=100,
+                output_tokens=50,
             )
-        return agent_mod.TurnResult(
-            text="结论如上[1]。",
-            tool_calls=[],
-            content=[],
-            stop_reason="end_turn",
-            input_tokens=100,
-            output_tokens=50,
-        )
+        ):
+            yield chunk
 
     async def _fake_tools(
         tool_calls: Any,
@@ -387,7 +403,9 @@ async def test_finalize_text_is_persisted_without_slicer_newlines(
 
     calls = {"n": 0}
 
-    async def _all_tool_turns(client: Any, messages: list[dict[str, Any]], tools: Any) -> Any:
+    async def _all_tool_turns(
+        client: Any, messages: list[dict[str, Any]], tools: Any
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
         """每轮都要工具，直到第 MAX_TURNS 轮才作答——逼出 `_finalize`。
 
         **最后一轮也要 tool_calls**：`run_agent` 的 `_finalize` 分支在
@@ -400,27 +418,31 @@ async def test_finalize_text_is_persisted_without_slicer_newlines(
         否则 `long_text in content` 可能命中的是主循环那份，与 finalize
         路径无关，断言就钉不住要防的东西。
         """
-        # `no_tools` 非空就是 `_finalize` 的收尾那一次调用（主循环传的是
-        # 真工具表）。用调用点本身区分两种请求，比数轮次可靠——轮次会被
-        # `MAX_TURNS` 之类的改动带着走。
         if not tools:
-            return agent_mod.TurnResult(
-                text=finalize_text,
-                tool_calls=[],
-                content=[],
-                stop_reason="end_turn",
-                input_tokens=100,
-                output_tokens=200,
-            )
+            for chunk in turn_chunks(
+                agent_mod.TurnResult(
+                    text=finalize_text,
+                    tool_calls=[],
+                    content=[],
+                    stop_reason="end_turn",
+                    input_tokens=100,
+                    output_tokens=200,
+                )
+            ):
+                yield chunk
+            return
         calls["n"] += 1
-        return agent_mod.TurnResult(
-            text="",
-            tool_calls=[{"id": f"t{calls['n']}", "name": "local_search", "input": {}}],
-            content=[],
-            stop_reason="tool_use",
-            input_tokens=10,
-            output_tokens=5,
-        )
+        for chunk in turn_chunks(
+            agent_mod.TurnResult(
+                text="",
+                tool_calls=[{"id": f"t{calls['n']}", "name": "local_search", "input": {}}],
+                content=[],
+                stop_reason="tool_use",
+                input_tokens=10,
+                output_tokens=5,
+            )
+        ):
+            yield chunk
 
     async def _empty_tools(
         tool_calls: Any,
@@ -475,7 +497,9 @@ async def test_dangling_citation_does_not_lose_the_whole_report(
 
     calls = {"n": 0}
 
-    async def _fake_turn(client: Any, messages: list[dict[str, Any]], tools: Any) -> Any:
+    async def _fake_turn(
+        client: Any, messages: list[dict[str, Any]], tools: Any
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
         """第一轮请求工具、第二轮产出正文。
 
         必须分两轮：主循环见到 ``tool_calls=[]`` 就直接 break，
@@ -484,22 +508,29 @@ async def test_dangling_citation_does_not_lose_the_whole_report(
         """
         calls["n"] += 1
         if calls["n"] % 2 == 1:
-            return agent_mod.TurnResult(
-                text="",
-                tool_calls=[{"id": f"t{calls['n']}", "name": "local_search", "input": {}}],
+            for chunk in turn_chunks(
+                agent_mod.TurnResult(
+                    text="",
+                    tool_calls=[{"id": f"t{calls['n']}", "name": "local_search", "input": {}}],
+                    content=[],
+                    stop_reason="tool_use",
+                    input_tokens=10,
+                    output_tokens=5,
+                )
+            ):
+                yield chunk
+            return
+        for chunk in turn_chunks(
+            agent_mod.TurnResult(
+                text="结论如上[1][2]。",
+                tool_calls=[],
                 content=[],
-                stop_reason="tool_use",
+                stop_reason="end_turn",
                 input_tokens=10,
                 output_tokens=5,
             )
-        return agent_mod.TurnResult(
-            text="结论如上[1][2]。",
-            tool_calls=[],
-            content=[],
-            stop_reason="end_turn",
-            input_tokens=10,
-            output_tokens=5,
-        )
+        ):
+            yield chunk
 
     async def _tools_with_ghost(
         tool_calls: Any,
@@ -881,17 +912,24 @@ async def test_crash_still_persists_partial_report(
         agent_mod.TurnResult(
             content=[{"type": "text", "text": "第一轮的结论"}],
             text="第一轮的结论",
-            tool_calls=[{"type": "tool_use", "id": "toolu_1", "name": "tavily_search", "input": {}}],
+            tool_calls=[
+                {"type": "tool_use", "id": "toolu_1", "name": "tavily_search", "input": {}}
+            ],
             stop_reason="tool_use",
             input_tokens=100,
             output_tokens=50,
         ),
     ]
 
-    async def _boom(client: Any, messages: list[Any], tools: Any) -> agent_mod.TurnResult:
+    async def _boom(
+        client: Any, messages: list[Any], tools: Any
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
         if script:
-            return script.pop(0)
+            for chunk in turn_chunks(script.pop(0)):
+                yield chunk
+            return
         raise ConnectionError("第 2 轮挂掉")
+        yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
     async def _no_tools(calls: list[Any], sink: list[Any], context: Any, refs: list[Any]) -> Any:
         if False:
@@ -935,8 +973,11 @@ async def test_crash_with_no_text_does_not_persist_empty_report(
 
     user = await _user(db_session, "crash-empty@report.test")
 
-    async def _boom(client: Any, messages: list[Any], tools: Any) -> agent_mod.TurnResult:
+    async def _boom(
+        client: Any, messages: list[Any], tools: Any
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
         raise ConnectionError("第 1 轮就挂掉")
+        yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
     monkeypatch.setattr(agent_mod, "_run_turn", _boom)
 
@@ -978,12 +1019,15 @@ async def test_crash_path_persist_timeout_is_shorter(
         ),
     ]
 
-    async def _boom(client: Any, messages: list[Any], tools: Any) -> agent_mod.TurnResult:
-        # 第 1 轮要有正文——没有正文时崩溃路径压根不落盘（守卫），
-        # 那条路径上根本不会调 _persist_report，测不到超时参数。
+    async def _boom(
+        client: Any, messages: list[Any], tools: Any
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
         if script:
-            return script.pop(0)
+            for chunk in turn_chunks(script.pop(0)):
+                yield chunk
+            return
         raise ConnectionError("第 2 轮挂掉")
+        yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
     async def _no_tools(calls: list[Any], sink: list[Any], context: Any, refs: list[Any]) -> Any:
         if False:
@@ -1136,10 +1180,15 @@ async def test_crash_persisted_report_is_marked_truncated(
         ),
     ]
 
-    async def _run(client: Any, messages: list[Any], tools: Any) -> agent_mod.TurnResult:
+    async def _run(
+        client: Any, messages: list[Any], tools: Any
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
         if script:
-            return script.pop(0)
+            for chunk in turn_chunks(script.pop(0)):
+                yield chunk
+            return
         raise ConnectionError("第 2 轮挂掉")
+        yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
     async def _no_tools(*args: Any, **kwargs: Any) -> Any:
         if False:

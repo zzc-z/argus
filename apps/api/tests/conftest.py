@@ -7,6 +7,7 @@
 """
 
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -24,10 +25,44 @@ from app.db import _enable_sqlite_foreign_keys, get_session
 from app.gateway.auth import OAUTH_STATE_COOKIE
 from app.main import app
 from app.models import Base
+from app.services.agent import TurnChunk, TurnResult
 from app.services.llm import LLMNotConfiguredError, get_anthropic_client, get_tavily_client
 from app.services.vectorstore import create_vector_engine, get_vector_engine
 
 pytest_plugins: list[str] = []
+
+
+def turn_chunks(result: TurnResult) -> list[TurnChunk]:
+    """把一个 ``TurnResult`` 转成 ``_run_turn`` 会 yield 的片段序列。
+
+    ``_run_turn`` 现在是异步生成器（边收上游 delta 边发），所以打桩时
+    不能只返回一个 ``TurnResult``——必须 yield 出同样的片段序列，
+    否则测试测的就不是真实调用形态了。
+
+    正文先于 result：与真实顺序一致（正文增量在流中到达，result 是
+    流结束时的收尾）。
+    """
+    chunks: list[TurnChunk] = []
+    if result.text:
+        chunks.append(TurnChunk(kind="text", text=result.text))
+    chunks.append(TurnChunk(kind="result", result=result))
+    return chunks
+
+
+async def collect_turn(client: Any, messages: Any, tools: Any) -> TurnResult:
+    """跑完 ``_run_turn`` 这个生成器，返回它的 ``TurnResult``。
+
+    测试大多只关心整轮结果（usage / stop_reason / content），不关心
+    中间发了哪些片段——这个辅助把生成器跑到底、取出收尾的那块。
+    """
+    from app.services.agent import _run_turn
+
+    result: TurnResult | None = None
+    async for chunk in _run_turn(client, messages, tools):
+        if chunk.kind == "result":
+            result = chunk.result
+    assert result is not None, "_run_turn 没有产出 result 片段"
+    return result
 
 
 def _tavily_unavailable() -> object:

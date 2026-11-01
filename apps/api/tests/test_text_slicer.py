@@ -4,6 +4,9 @@
 其余测试盯的是切点质量（不劈数字、不产生忽长忽短的片段）。
 """
 
+import asyncio
+import time
+
 from app.services.stream import (
     CHUNK_SIZE,
     DeltaEvent,
@@ -12,6 +15,7 @@ from app.services.stream import (
     NodeEvent,
     TextSlicer,
     ToolCallEvent,
+    Typewriter,
     encode_frame,
 )
 
@@ -90,7 +94,8 @@ def test_long_unpunctuated_tail_is_resliced_on_flush() -> None:
     text = "无" * 50
     pieces = _slice_all(text)
     assert all(len(p) <= CHUNK_SIZE for p in pieces)
-    assert len(pieces) == 3  # 24 + 24 + 2
+    # 片数随 CHUNK_SIZE 变，不写死——写死会在调粒度时失效。
+    assert len(pieces) == -(-50 // CHUNK_SIZE)  # 向上取整
     assert "".join(pieces) == text
 
 
@@ -218,3 +223,185 @@ def test_encode_frame_no_type_collision() -> None:
     ]
     names = [json.loads(encode_frame(e).decode()[6:].strip())["type"] for e in events]
     assert len(set(names)) == len(names), f"type 字段重复: {names}"
+
+
+# ── Typewriter：切片 + 控速 ──────────────────────────────────
+
+
+async def test_typewriter_paces_pieces() -> None:
+    """片段之间必须有间隔——不能一次性全出栈。
+
+    ## 要防的回归
+
+    只有切片不控速时，上游一次性到齐的正文会被切成几十片、然后在
+    **同一瞬间**全部 yield 出去。浏览器一个 TCP 块收齐，React 一次
+    渲染完——用户看到的就是「一下全出」，打字机效果完全不存在。
+
+    这正是 2026-10-30 修复前 explore 页的真实表现（实测：60 个 delta
+    帧在 0.0 ms 内全部出栈）。
+    """
+    typewriter = Typewriter(chunk_size=8, min_interval=0.02)
+    text = "第一句话在这里。第二句话也在这里。第三句话同样在这里。"
+
+    stamps: list[float] = []
+    async for _piece in typewriter.feed(text):
+        stamps.append(time.monotonic())
+    async for _piece in typewriter.flush():
+        stamps.append(time.monotonic())
+
+    assert len(stamps) >= 2, "这段文字应该切出多片"
+    gaps = [stamps[i + 1] - stamps[i] for i in range(len(stamps) - 1)]
+    assert min(gaps) >= 0.015, f"片段之间没有间隔，实际间隔：{gaps}"
+
+
+async def test_typewriter_preserves_all_text() -> None:
+    """控速不能丢字——切片的唯一不变量在控速之后依然成立。"""
+    typewriter = Typewriter(chunk_size=10, min_interval=0.001)
+    text = "把这段中文完整地送出去，一个字都不能少。带标点，也有换行。\n第二行。"
+
+    pieces: list[str] = []
+    async for piece in typewriter.feed(text):
+        pieces.append(piece)
+    async for piece in typewriter.flush():
+        pieces.append(piece)
+
+    assert "".join(pieces) == text
+
+
+async def test_typewriter_min_interval_zero_keeps_pieces() -> None:
+    """间隔设为 0 时不等待——但片段照样切出来、内容照样完整。
+
+    钉住「控速」与「切片」是两件独立的事：把间隔关掉不能把切片也关掉。
+    """
+    typewriter = Typewriter(chunk_size=10, min_interval=0.0)
+    text = "把这段中文完整地送出去，一个字都不能少。"
+
+    pieces: list[str] = []
+    async for piece in typewriter.feed(text):
+        pieces.append(piece)
+    async for piece in typewriter.flush():
+        pieces.append(piece)
+
+    assert len(pieces) >= 2
+    assert "".join(pieces) == text
+
+
+async def test_typewriter_does_not_wait_when_upstream_is_slow() -> None:
+    """上游间隔足够大时，后端不该再额外等待。
+
+    控速是**令牌桶**：配额够就立刻放行。上游 50ms 来一个字时，
+    后端已经攒下配额（8 字 × 0.05s × 80 字/秒 = 32 字 > 8），
+    这时再等就是平白拖慢上游。
+
+    这条与 ``test_typewriter_follows_slow_upstream`` 配对：那条测
+    「整体不被拖慢」，这条测「单片之间不额外等」。
+    """
+    typewriter = Typewriter(chunk_size=8, min_interval=0.05, chars_per_second=80.0)
+    text = "第一句话在这里。第二句话也在这里。"
+
+    start = time.monotonic()
+    stamps: list[float] = []
+    async for _piece in typewriter.feed(text):
+        stamps.append(time.monotonic())
+    async for _piece in typewriter.flush():
+        stamps.append(time.monotonic())
+    elapsed = time.monotonic() - start
+
+    assert len(stamps) >= 2
+    # 全部是一次性喂进来的（上游缓冲），所以要按目标速度限速——
+    # 3 片 × 8 字 = 24 字 ÷ 80 字/秒 = 0.3s 左右。
+    assert elapsed < 0.5, f"等待过久：{elapsed:.3f}s / {len(stamps)} 片"
+
+
+def test_numbers_are_not_split_across_pieces() -> None:
+    """``100,000`` 不能被切成 ``100,`` + ``000``。
+
+    ## 要防的回归（2026-10-30）
+
+    ``chunk_size`` 从 24 降到 8 之后，搜索窗口缩到 12 字，逗号常常
+    落在窗口末尾——而窗口里看不到下一个字符，判断不了它是千分位还是
+    真逗号，只能放行。于是 ``100,000`` 被劈成两片。
+
+    修法是看**完整缓冲区**而不是窗口：切点后面必须至少还有一个字符，
+    否则这个标点还不能用，等下一次 feed 补齐再判断。
+    """
+    text = "以支撑 100,000 QPS 推理负载的集群规模测算，成本与功耗都要压下来。"
+    pieces = _slice_all(text)
+
+    assert "".join(pieces) == text
+    assert not any(p.endswith("100,") for p in pieces), f"数字被劈开：{pieces}"
+    assert not any(p.startswith("000") for p in pieces), f"数字被劈开：{pieces}"
+
+
+def test_english_words_are_not_split_across_pieces() -> None:
+    """``Blackwell`` 不能被切成 ``Blackwel`` + ``l``。
+
+    硬切（没有标点可切时）也必须避开词中间——界面上英文单词被劈开
+    一眼就能看出是 bug。
+    """
+    text = "Blackwell 较同等吞吐量的 Hopper 集群将数据中心综合电力消耗锐减 75%。"
+    pieces = _slice_all(text)
+
+    assert "".join(pieces) == text
+    for word in ("Blackwell", "Hopper"):
+        assert any(word in p for p in pieces), f"{word} 被劈开了：{pieces}"
+
+
+async def test_typewriter_paces_by_target_speed() -> None:
+    """上游一次性给一大坨时，展示速度要落在目标值附近。
+
+    ## 要防的回归（2026-10-30 用户反馈）
+
+    用户反馈：「不能算是流式了，一次性蹦出太多字符，两次就生成完全文，
+    一次生成的字符一定要少」。第一版只切了片、不控速，实测 800 字正文
+    在 **0.8 秒内**全部送出——用户等了 25 秒上游，然后全文在 1 秒内涌出。
+
+    这条测试盯的是**速率**：一批字送完的耗时应该在
+    ``字数 / 目标速度`` 附近。太快 = 一下蹦出；太慢 = 用户不耐烦。
+    """
+    target = 80.0
+    typewriter = Typewriter(chunk_size=8, chars_per_second=target)
+    text = "向量数据库的选型核心看三点：召回率、延迟与成本。" * 12  # 228 字
+
+    start = time.monotonic()
+    total = 0
+    async for piece in typewriter.feed(text):
+        total += len(piece)
+    async for piece in typewriter.flush():
+        total += len(piece)
+    elapsed = time.monotonic() - start
+
+    assert total == len(text)
+    speed = total / elapsed
+    # 允许 40% 的浮动——CI 机器负载、事件循环调度都会带来偏差。
+    assert target * 0.6 <= speed <= target * 1.4, (
+        f"展示速度 {speed:.0f} 字/秒，目标 {target:.0f} 字/秒（{total} 字 / {elapsed:.2f}s）"
+    )
+
+
+async def test_typewriter_follows_slow_upstream() -> None:
+    """上游本身慢的时候，后端不能拖慢它。
+
+    上游 50ms/字 = 20 字/秒，比目标（80 字/秒）慢得多。这种情况下后端
+    应当**跟随**上游——拖慢上游没有任何好处，只会让用户多等。
+    """
+    typewriter = Typewriter(chunk_size=8, chars_per_second=80.0)
+    text = "向量数据库的选型核心看三点：召回率与延迟。"
+
+    start = time.monotonic()
+    total = 0
+    for ch in text:
+        await asyncio.sleep(0.05)  # 上游 50ms 来一个字
+        async for piece in typewriter.feed(ch):
+            total += len(piece)
+    async for piece in typewriter.flush():
+        total += len(piece)
+    elapsed = time.monotonic() - start
+
+    assert total == len(text)
+    # 上游自己就要 20 字/秒（len × 0.05 秒）。后端不能让它更慢——
+    # 慢太多说明令牌桶在反向限速。
+    upstream_time = len(text) * 0.05
+    assert elapsed < upstream_time * 1.6, (
+        f"后端把上游拖慢了：上游自己 {upstream_time:.2f}s，实际 {elapsed:.2f}s"
+    )

@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.gateway import research as research_module
 from app.gateway.deps import SESSION_COOKIE
-from app.services.agent import TurnResult
+from app.services.agent import TurnChunk, TurnResult
 from app.services.llm import LLMNotConfiguredError
 from app.services.stream import (
     AgentEvent,
@@ -30,6 +30,7 @@ from app.services.stream import (
     ReferenceEvent,
     ToolCallEvent,
 )
+from tests.conftest import turn_chunks
 
 # ── 假 agent ──────────────────────────────────────────────────
 
@@ -558,8 +559,9 @@ async def test_end_to_end_with_stubbed_llm(client: TestClient, monkeypatch: pyte
         _turn(text="最终结论是：向量数据库适合高维近邻检索。"),
     ]
 
-    async def _fake_turn(cl: Any, messages: Any, tools: Any) -> TurnResult:
-        return script.pop(0)
+    async def _fake_turn(cl: Any, messages: Any, tools: Any) -> AsyncIterator[TurnChunk]:
+        for chunk in turn_chunks(script.pop(0)):
+            yield chunk
 
     monkeypatch.setattr(agent_module, "_run_turn", _fake_turn)
     await _login(client, api_db)

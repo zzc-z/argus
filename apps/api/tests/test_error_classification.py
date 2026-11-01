@@ -81,6 +81,7 @@ from app.services.errors import (
     LLM_STREAM_INTERRUPTED,
     LLM_TIMEOUT,
     LLM_UNAVAILABLE,
+    LLM_UPSTREAM_ERROR,
     classify_embedding_error,
     classify_llm_error,
     classify_tool_error,
@@ -862,3 +863,97 @@ def test_new_retrieval_error_code_is_not_retryable() -> None:
         assert classified.message, f"{code} 缺 message"
         assert classified.preview, f"{code} 缺 preview"
         assert classified.retryable is False, f"{code} 不该可重试"
+
+
+# ── 流内错误（HTTP 200 + SSE error 事件）────────────────────────
+
+
+def _stream_error(error: dict[str, Any]) -> Exception:
+    """造一个「流内错误」：HTTP 200，但 body 里有 error 对象。
+
+    流式请求的错误不走状态码——响应头发出时是 200，错误随后以 SSE
+    ``error`` 事件送达（见 anthropic SDK 的 ``_streaming.py``：
+    ``sse.event == "error"`` 时 raise ``_make_status_error``，
+    而 response 已经是 200）。
+
+    这就是生产上看到的样子：``APIStatusError`` + ``status_code == 200``。
+    """
+    return _status_error(200, {"type": "error", "error": error})
+
+
+def test_in_stream_error_not_reported_as_unavailable() -> None:
+    """流内错误不能报成「模型服务暂时不可用」。
+
+    ## 要防的回归（2026-10-31）
+
+    流内错误的 HTTP 状态码是 200，原来的分类器按状态码查表必然落空 →
+    兜底成 ``llm_unavailable``「模型服务暂时不可用，请稍后重试」。
+
+    但上游 message 写的是 "Please retry."——这是临时故障，重试一次就能
+    过。报成「服务不可用」把用户引向「等着吧」，而实际该做的是重试。
+
+    断言具体 code：写「不是 unavailable」的话，把流内错误也归进
+    unavailable 的实现同样能过。
+    """
+    classified = classify_llm_error(
+        _stream_error(
+            {
+                "type": "api_error",
+                "code": "subscription_identity_review_unavailable",
+                "message": "The protected subscription response could not be approved. Please retry.",
+            }
+        )
+    )
+
+    assert classified.code == LLM_UPSTREAM_ERROR
+    assert classified.retryable is True
+    assert "重试" in classified.message
+
+
+def test_in_stream_error_type_maps_to_same_class_as_http_status() -> None:
+    """流内 ``error.type`` 应当与非流式的同类型**分到同一档**。
+
+    Anthropic 官方说明：流式下 ``overloaded_error`` 对应非流式的 529、
+    ``rate_limit_error`` 对应 429——「应当按与非流式相同的分支逻辑处理」。
+
+    断言两个码相等：只断言「不是 unavailable」的话，把所有流内错误都
+    塞进一个新码的实现同样能过——那就违背了官方语义，
+    用户会丢掉「限流要等」与「key 失效要换」这些处置差异。
+    """
+    for error_type, http_status, expected in (
+        ("overloaded_error", 529, LLM_OVERLOADED),
+        ("rate_limit_error", 429, LLM_RATE_LIMITED),
+        ("authentication_error", 401, LLM_AUTH_FAILED),
+        ("permission_error", 403, LLM_PERMISSION_DENIED),
+    ):
+        in_stream = classify_llm_error(_stream_error({"type": error_type, "message": "x"}))
+        by_status = classify_llm_error(
+            _status_error(http_status, {"type": "error", "error": {"type": error_type}})
+        )
+
+        assert in_stream.code == expected, f"{error_type} 的流内分类不对"
+        assert in_stream.code == by_status.code, f"{error_type} 流内与非流式分档不一致"
+
+
+def test_in_stream_auth_failure_is_not_retryable() -> None:
+    """流内鉴权失败重试无用——必须让用户去换 key。
+
+    retryable 的取值直接决定前端给不给「重试」按钮。断言具体值：
+    只断言 code 的话，把 retryable 一律设成 True 的实现同样能过。
+    """
+    classified = classify_llm_error(
+        _stream_error({"type": "authentication_error", "message": "invalid x-api-key"})
+    )
+
+    assert classified.code == LLM_AUTH_FAILED
+    assert classified.retryable is False
+
+
+def test_http_200_without_error_body_is_not_in_stream_error() -> None:
+    """HTTP 200 但 body 里没有 error 对象 → 不是流内错误。
+
+    判据收紧到「body 里有 error 且带 type」。否则任何 200 的异常都会被
+    误判成流内错误——包括那些根本不是 SDK 状态异常的东西。
+    """
+    classified = classify_llm_error(_status_error(200, {"type": "message"}))
+    assert classified.code != LLM_UPSTREAM_ERROR

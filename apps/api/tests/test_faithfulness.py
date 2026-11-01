@@ -1,5 +1,6 @@
 """引用忠实度校验（Critic 节点，sprint plan Day 13）。"""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -13,6 +14,7 @@ from app.services.faithfulness import (
     _parse_verdicts,
     load_source_texts,
 )
+from tests.conftest import turn_chunks
 
 # ── 抽取引用句子 ──────────────────────────────────────────────
 
@@ -110,16 +112,19 @@ async def test_run_agent_emits_faithfulness_event(monkeypatch: pytest.MonkeyPatc
 
     async def _fake_run_turn(
         client: Any, messages: list[dict[str, Any]], tools: Any
-    ) -> agent_mod.TurnResult:
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
         calls.append(1)
-        return agent_mod.TurnResult(
-            content=[],
-            text="结论如上[1]。",
-            tool_calls=[],
-            stop_reason="end_turn",
-            input_tokens=100,
-            output_tokens=50,
-        )
+        for chunk in turn_chunks(
+            agent_mod.TurnResult(
+                content=[],
+                text="结论如上[1]。",
+                tool_calls=[],
+                stop_reason="end_turn",
+                input_tokens=100,
+                output_tokens=50,
+            )
+        ):
+            yield chunk
 
     monkeypatch.setattr(agent_mod, "_run_turn", _fake_run_turn)
 
@@ -154,15 +159,18 @@ async def test_done_precedes_faithfulness_event(
 
     async def _fake_run_turn(
         client: Any, messages: list[dict[str, Any]], tools: Any
-    ) -> agent_mod.TurnResult:
-        return agent_mod.TurnResult(
-            text="x",
-            tool_calls=[],
-            content=[],
-            stop_reason="end_turn",
-            input_tokens=1,
-            output_tokens=1,
-        )
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
+        for chunk in turn_chunks(
+            agent_mod.TurnResult(
+                text="x",
+                tool_calls=[],
+                content=[],
+                stop_reason="end_turn",
+                input_tokens=1,
+                output_tokens=1,
+            )
+        ):
+            yield chunk
 
     monkeypatch.setattr(agent_mod, "_run_turn", _fake_run_turn)
 
@@ -181,6 +189,7 @@ async def test_error_path_emits_no_faithfulness_event(
 
     async def _boom(client: Any, messages: list[dict[str, Any]], tools: Any) -> Any:
         raise RuntimeError("中转站挂了")
+        yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
     monkeypatch.setattr(agent_mod, "_run_turn", _boom)
 
@@ -198,15 +207,18 @@ async def test_empty_response_path_still_sends_done(
 
     async def _thinking_only(
         client: Any, messages: list[dict[str, Any]], tools: Any
-    ) -> agent_mod.TurnResult:
-        return agent_mod.TurnResult(
-            text="",
-            tool_calls=[],
-            content=[],
-            stop_reason="end_turn",
-            input_tokens=300,
-            output_tokens=150,
-        )
+    ) -> AsyncIterator[agent_mod.TurnChunk]:
+        for chunk in turn_chunks(
+            agent_mod.TurnResult(
+                text="",
+                tool_calls=[],
+                content=[],
+                stop_reason="end_turn",
+                input_tokens=300,
+                output_tokens=150,
+            )
+        ):
+            yield chunk
 
     monkeypatch.setattr(agent_mod, "_run_turn", _thinking_only)
     events = [e async for e in agent_mod.run_agent("问题", user_id=1)]

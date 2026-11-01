@@ -27,6 +27,7 @@
   这条与上面那条配对：只判「非流中断」而不区分超时的话，只有这条能抓到。
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
@@ -38,7 +39,13 @@ from anthropic import APIConnectionError, APITimeoutError
 from app.services import agent as agent_module
 from app.services.agent import _run_turn
 from app.services.errors import error_event_for
-from app.services.llm import STREAM_INTERRUPT_RETRIES, is_stream_interrupt, is_timeout
+from app.services.llm import (
+    STREAM_INTERRUPT_BACKOFF_SECONDS,
+    STREAM_INTERRUPT_RETRIES,
+    is_stream_interrupt,
+    is_timeout,
+)
+from tests.conftest import collect_turn
 
 # ── 上游的替身 ────────────────────────────────────────────────
 
@@ -69,6 +76,22 @@ class _FakeMessage:
         return {"content": [b.model_dump(exclude_none) for b in self.content]}
 
 
+class _FakeDelta:
+    """模拟 SDK 的 text_delta。"""
+
+    def __init__(self, text: str) -> None:
+        self.type = "text_delta"
+        self.text = text
+
+
+class _FakeDeltaEvent:
+    """模拟 SDK 的 content_block_delta 事件。"""
+
+    def __init__(self, text: str) -> None:
+        self.type = "content_block_delta"
+        self.delta = _FakeDelta(text)
+
+
 class _FlakyStream:
     """async context manager。失败计数由**共享**的计数器决定。
 
@@ -88,6 +111,11 @@ class _FlakyStream:
 
     async def __aexit__(self, *args: Any) -> None:
         return None
+
+    async def __aiter__(self) -> AsyncIterator[Any]:
+        """产出假的上游事件——``_run_turn`` 消费它们实现流式展示。"""
+        for ch in self._message.content[0].model_dump(exclude_none=True).get("text", ""):
+            yield _FakeDeltaEvent(ch)
 
     async def get_final_message(self) -> _FakeMessage:
         return self._message
@@ -152,7 +180,7 @@ async def test_retries_then_succeeds() -> None:
     删掉重试循环这条测试会直接抛 RemoteProtocolError。
     """
     client = _FlakyClient(_FakeMessage("答案"), fail_times=1)
-    result = await _run_turn(client, [{"role": "user", "content": "q"}], ())
+    result = await collect_turn(client, [{"role": "user", "content": "q"}], ())
 
     assert result.text == "答案"
     assert client.messages.calls == 2
@@ -164,7 +192,7 @@ async def test_gives_up_after_max_retries() -> None:
     expected_attempts = STREAM_INTERRUPT_RETRIES + 1
 
     with pytest.raises(httpx2.RemoteProtocolError):
-        await _run_turn(client, [{"role": "user", "content": "q"}], ())
+        await collect_turn(client, [{"role": "user", "content": "q"}], ())
 
     assert client.messages.calls == expected_attempts
 
@@ -174,7 +202,7 @@ async def test_business_error_not_retried() -> None:
     client = _FlakyClient(_FakeMessage("答案"), fail_times=0, exc=ValueError("bad request"))
 
     with pytest.raises(ValueError):
-        await _run_turn(client, [{"role": "user", "content": "q"}], ())
+        await collect_turn(client, [{"role": "user", "content": "q"}], ())
 
     assert client.messages.calls == 1
 
@@ -185,7 +213,7 @@ async def test_timeout_not_retried() -> None:
     client = _FlakyClient(_FakeMessage("答案"), fail_times=0, exc=timeout)
 
     with pytest.raises(APITimeoutError):
-        await _run_turn(client, [{"role": "user", "content": "q"}], ())
+        await collect_turn(client, [{"role": "user", "content": "q"}], ())
 
     assert client.messages.calls == 1
 
@@ -196,7 +224,7 @@ async def test_retry_sends_identical_request() -> None:
     改了载荷意味着模型看到的上下文变了，产出可能与原计划不同。
     """
     client = _FlakyClient(_FakeMessage("答案"), fail_times=1)
-    await _run_turn(client, [{"role": "user", "content": "原问题"}], ())
+    await collect_turn(client, [{"role": "user", "content": "原问题"}], ())
 
     assert client.messages.calls == 2
 
@@ -239,3 +267,150 @@ def test_stream_interrupt_and_timeout_codes_differ() -> None:
     interrupt = error_event_for(httpx2.RemoteProtocolError("x"))
     timeout = error_event_for(APITimeoutError(request=httpx.Request("POST", "http://x")))
     assert interrupt.code != timeout.code
+
+
+# ── 消费途中断流：已发出的正文要作废 ──────────────────────────
+
+
+class _MidStreamFailure:
+    """吐了一半才断的上游——模拟「消费途中被掐断」。"""
+
+    def __init__(self, message: _FakeMessage, emit: int) -> None:
+        self._message = message
+        self._emit = emit
+
+    async def __aenter__(self) -> "_MidStreamFailure":
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        return None
+
+    async def __aiter__(self) -> AsyncIterator[Any]:
+        text = self._message.content[0].model_dump(exclude_none=True).get("text", "")
+        for ch in text[: self._emit]:
+            yield _FakeDeltaEvent(ch)
+        raise httpx2.RemoteProtocolError("incomplete chunked read")
+
+    async def get_final_message(self) -> _FakeMessage:
+        return self._message
+
+
+class _MidStreamMessages:
+    """第一次吐一半就断，第二次正常。
+
+    断流点在**消费途中**——这才是真实的中转站行为（实测
+    ``httpx2.RemoteProtocolError: incomplete chunked read``）。
+    """
+
+    def __init__(self, message: _FakeMessage, emit: int) -> None:
+        self._message = message
+        self._emit = emit
+        self.calls = 0
+
+    def stream(self, **kwargs: Any) -> Any:
+        self.calls += 1
+        if self.calls == 1:
+            return _MidStreamFailure(self._message, self._emit)
+        return _FlakyStream(self._message, [0])
+
+
+class _MidStreamClient:
+    def __init__(self, message: _FakeMessage, emit: int) -> None:
+        self.messages = _MidStreamMessages(message, emit)
+
+
+async def test_retry_resets_already_sent_text() -> None:
+    """消费途中断流后重发，必须先发 reset 让前端清掉已收的正文。
+
+    ## 要防的回归
+
+    改成真流式之后，正文在**上游还在吐的时候**就已经发到前端了。
+    断流重发会从头再生成一遍，而上游有随机性（实测同一 prompt 连发 4 次，
+    字数 1653/1155/1737/2164 各不相同）——没法靠裁剪前缀去重。
+
+    少了 reset，用户会看到同一段正文出现两遍：前半截是断流前的，
+    后半截是重发后的。
+
+    这条断言盯的是**事件序列**：正文片段之后必须紧跟一个 reset，
+    然后才是重发后的正文。
+    """
+    message = _FakeMessage(
+        "这是一段会在中途断流的正文，用来验证重发时的重置行为，"
+        "它必须足够长才能被切片器切出至少一片出来。"
+    )
+    # 切断点要够长（> 切片器的 36 字门槛），否则第一轮一个字都发不出去，
+    # 也就没有「已发正文要作废」这回事——那测的是另一条路径。
+    client = _MidStreamClient(message, emit=45)
+
+    kinds: list[str] = []
+    texts: list[str] = []
+    async for chunk in _run_turn(client, [{"role": "user", "content": "q"}], ()):
+        kinds.append(chunk.kind)
+        if chunk.kind == "text":
+            texts.append(chunk.text)
+        if chunk.kind == "reset":
+            texts.append("")
+
+    assert "reset" in kinds, f"断流重发必须发 reset，实际事件：{kinds}"
+    reset_at = kinds.index("reset")
+    assert reset_at > 0, "reset 之前应当已经发过正文（否则没有可清的东西）"
+    assert "result" in kinds
+    assert kinds[-1] == "result", f"result 必须是最后一个事件，实际：{kinds}"
+
+
+async def test_no_reset_when_nothing_was_sent() -> None:
+    """建连就断（一个字都没发）时不该发 reset。
+
+    纯工具轮断流时前端正文区是空的，发 reset 没有意义——多一个
+    无谓的帧，前端还要多跑一次清空逻辑。
+    """
+    client = _FlakyClient(_FakeMessage("答案"), fail_times=1)
+
+    kinds: list[str] = []
+    async for chunk in _run_turn(client, [{"role": "user", "content": "q"}], ()):
+        kinds.append(chunk.kind)
+
+    assert "reset" not in kinds, f"没发过正文就不该有 reset，实际：{kinds}"
+
+
+# ── 退避：必须指数递增，不能是固定间隔 ────────────────────────
+
+
+async def test_retry_backoff_is_exponential(monkeypatch: pytest.MonkeyPatch) -> None:
+    """重发之间的等待必须**指数递增**。
+
+    ## 要防的回归（2026-11-01 实测）
+
+    当时断连的根因是本机网络层抖动——Tavily 与 Anthropic 两个不同的服务
+    在**同一秒**断开。日志时间线：
+
+    ```
+    17:10:53  POST /api/v1/research/ask 200
+    17:11:01  模型流被中断，第 1 次重发整轮请求
+    17:11:01  模型流被中断，第 2 次重发整轮请求
+    17:11:01  模型流被中断，第 3 次重发整轮请求
+    ```
+
+    3 次重发挤在同一秒里全挂——**固定的 1 秒间隔让所有重试都落在同一个
+    坏窗口内**，白等。指数退避把最后一次重发推到 3 秒之后。
+
+    断言**递增**而不是断言具体秒数：写死「等于 2.0」的断言在参数调整后
+    会失效，而「后一次比前一次长」是真正要守住的性质。
+    """
+    sleeps: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def _fake_sleep(delay: float) -> None:
+        sleeps.append(delay)
+        await real_sleep(0)  # 不真的等
+
+    monkeypatch.setattr(agent_module.asyncio, "sleep", _fake_sleep)
+
+    client = _FlakyClient(_FakeMessage("答案"), fail_times=99)
+    with pytest.raises(httpx2.RemoteProtocolError):
+        await collect_turn(client, [{"role": "user", "content": "q"}], ())
+
+    assert len(sleeps) == STREAM_INTERRUPT_RETRIES, f"退避次数不对：{sleeps}"
+    assert sleeps == sorted(sleeps), f"退避没有递增：{sleeps}"
+    assert sleeps[-1] > sleeps[0], f"退避不是指数增长：{sleeps}"
+    assert sleeps[0] == STREAM_INTERRUPT_BACKOFF_SECONDS, f"退避基数不对：{sleeps}"

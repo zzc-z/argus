@@ -14,8 +14,8 @@ from typing import Any
 import pytest
 
 from app.services import agent as agent_module
-from app.services.agent import _run_turn
 from app.services.tools import DEDUP_SPEC, TAVILY_SEARCH_SPEC
+from tests.conftest import collect_turn
 
 # ── 上游响应的替身 ────────────────────────────────────────────
 
@@ -51,8 +51,30 @@ class _FakeMessage:
         return {"content": [b.model_dump(exclude_none) for b in self.content]}
 
 
+class _FakeDelta:
+    """模拟 SDK 的 text_delta。"""
+
+    def __init__(self, text: str) -> None:
+        self.type = "text_delta"
+        self.text = text
+
+
+class _FakeDeltaEvent:
+    """模拟 SDK 的 content_block_delta 事件。"""
+
+    def __init__(self, text: str) -> None:
+        self.type = "content_block_delta"
+        self.delta = _FakeDelta(text)
+
+
 class _FakeStream:
-    """async context manager，yield 自己后 get_final_message 返回预设响应。"""
+    """async context manager，yield 自己后 get_final_message 返回预设响应。
+
+    ``__aiter__`` 产出的是**假的上游事件**——真实的 SDK 在这里吐
+    ``content_block_delta``，而 ``_run_turn`` 现在正是消费它们来实现流式
+    展示（2026-10-30 起）。桩必须能真的产出事件，否则测的就不是
+    真实调用形态。
+    """
 
     def __init__(self, message: _FakeMessage) -> None:
         self._message = message
@@ -64,6 +86,15 @@ class _FakeStream:
 
     async def __aexit__(self, *args: Any) -> None:
         return None
+
+    async def __aiter__(self) -> AsyncIterator[Any]:
+        # 上游的 text 块按字吐——一次一个字，最贴近真实的中转站行为。
+        for block in self._message.content:
+            if block.model_dump(exclude_none=True).get("type") != "text":
+                continue
+            text = block.model_dump(exclude_none=True).get("text", "")
+            for ch in text:
+                yield _FakeDeltaEvent(ch)
 
     async def get_final_message(self) -> _FakeMessage:
         return self._message
@@ -105,7 +136,9 @@ async def test_signature_survives_model_dump() -> None:
     丢了或被 exclude_none 洗掉，第二轮请求直接被拒。
     """
     message = _FakeMessage([_thinking(), _text("好的，我来查。"), _tool_use()], "tool_use")
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     thinking_blocks = [b for b in result.content if b.get("type") == "thinking"]
     assert len(thinking_blocks) == 1
@@ -119,7 +152,9 @@ async def test_exclude_none_strips_null_citations() -> None:
     中转站实测能接受，但直连官方 API 的严格模式可能拒收。
     """
     message = _FakeMessage([_text("无引用的正文")], "end_turn")
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     text_block = next(b for b in result.content if b.get("type") == "text")
     assert "citations" not in text_block
@@ -129,7 +164,9 @@ async def test_exclude_none_strips_null_citations() -> None:
 async def test_citations_kept_when_present() -> None:
     """有引用时 citations 要保留——不能被 exclude_none 误伤。"""
     message = _FakeMessage([_text("带引用的正文", citations=[{"type": "char_location"}])], "end_turn")
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     text_block = next(b for b in result.content if b.get("type") == "text")
     assert text_block["citations"] == [{"type": "char_location"}]
@@ -141,7 +178,9 @@ async def test_citations_kept_when_present() -> None:
 async def test_text_concatenated_across_blocks() -> None:
     """多个 text block 要拼成完整正文，不能只取第一个。"""
     message = _FakeMessage([_thinking(), _text("第一段。"), _text("第二段。")], "end_turn")
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     assert result.text == "第一段。第二段。"
 
@@ -152,7 +191,9 @@ async def test_tool_calls_filtered_from_content() -> None:
         [_text("我去查一下"), _tool_use("tavily_search"), _tool_use("dedup")],
         "tool_use",
     )
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     assert [c["name"] for c in result.tool_calls] == ["tavily_search", "dedup"]
     # content 里也要保留，供下一轮回传
@@ -162,7 +203,9 @@ async def test_tool_calls_filtered_from_content() -> None:
 async def test_usage_parsed() -> None:
     """token 计数要被读出来——前端 DAG 头部要显示。"""
     message = _FakeMessage([_text("答案")], "end_turn")
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     assert result.input_tokens == 123
     assert result.output_tokens == 45
@@ -171,7 +214,9 @@ async def test_usage_parsed() -> None:
 async def test_stop_reason_none_falls_back() -> None:
     """上游没给 stop_reason 时兜底成 end_turn，不能是 None。"""
     message = _FakeMessage([_text("答案")], None)
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     assert result.stop_reason == "end_turn"
 
@@ -184,7 +229,9 @@ async def test_request_shape() -> None:
     message = _FakeMessage([_text("答案")], "end_turn")
     client = _FakeClient(message)
 
-    await _run_turn(client, [{"role": "user", "content": "问题"}], (TAVILY_SEARCH_SPEC, DEDUP_SPEC))
+    await collect_turn(
+        client, [{"role": "user", "content": "问题"}], (TAVILY_SEARCH_SPEC, DEDUP_SPEC)
+    )
     kwargs = client.messages.last_kwargs
 
     assert kwargs["model"]
@@ -199,14 +246,16 @@ async def test_tools_omitted_when_empty() -> None:
     message = _FakeMessage([_text("答案")], "end_turn")
     client = _FakeClient(message)
 
-    await _run_turn(client, [{"role": "user", "content": "问题"}], ())
+    await collect_turn(client, [{"role": "user", "content": "问题"}], ())
     assert "tools" not in client.messages.last_kwargs
 
 
 async def test_empty_text_when_only_thinking() -> None:
     """只有 thinking 没有 text 时，正文应为空串而不是 None。"""
     message = _FakeMessage([_thinking()], "tool_use")
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     assert result.text == ""
     assert result.tool_calls == []
@@ -218,7 +267,9 @@ async def test_empty_text_when_only_thinking() -> None:
 async def test_content_is_json_serializable() -> None:
     """回传载荷必须能 JSON 序列化——它是直接塞进 messages 的。"""
     message = _FakeMessage([_thinking(), _text("正文"), _tool_use()], "tool_use")
-    result = await _run_turn(_FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,))
+    result = await collect_turn(
+        _FakeClient(message), [{"role": "user", "content": "q"}], (DEDUP_SPEC,)
+    )
 
     dumped = json.dumps({"role": "assistant", "content": result.content}, ensure_ascii=False)
     assert "SIG-REAL" in dumped
@@ -234,13 +285,13 @@ async def test_roundtrip_through_messages() -> None:
     first = _FakeMessage([_thinking(), _text("我要查一下"), _tool_use()], "tool_use")
     messages: list[dict[str, Any]] = [{"role": "user", "content": "问题"}]
 
-    turn1 = await _run_turn(_FakeClient(first), messages, (DEDUP_SPEC,))
+    turn1 = await collect_turn(_FakeClient(first), messages, (DEDUP_SPEC,))
     messages.append({"role": "assistant", "content": turn1.content})
     messages.append({"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_x", "content": "结果"}]})
 
     second = _FakeMessage([_text("最终答案")], "end_turn")
     client = _FakeClient(second)
-    await _run_turn(client, messages, ())
+    await collect_turn(client, messages, ())
 
     sent = client.messages.last_kwargs["messages"]
     assert sent[0]["role"] == "user"

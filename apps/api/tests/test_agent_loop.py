@@ -5,13 +5,21 @@
 全都是确定的。
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
 
 from app.services import agent as agent_module
-from app.services.agent import MAX_TURNS, NodeTracker, Stage, TurnResult, run_agent
+from app.services.agent import (
+    MAX_TURNS,
+    NodeTracker,
+    Stage,
+    TurnChunk,
+    TurnResult,
+    run_agent,
+)
 from app.services.stream import (
     AgentEvent,
     DeltaEvent,
@@ -60,17 +68,24 @@ def _stub_turns(
     monkeypatch: pytest.MonkeyPatch,
     script: list[TurnResult],
 ) -> list[list[dict[str, Any]]]:
-    """按脚本依次返回 TurnResult，并记录每次调用时的 messages 快照。"""
+    """按脚本依次返回 TurnResult，并记录每次调用时的 messages 快照。
+
+    ``_run_turn`` 现在是异步生成器（边收边发），所以桩也必须是生成器：
+    yield 一个 ``kind="text"`` 的正文片段，再 yield ``kind="result"``。
+    """
     calls: list[list[dict[str, Any]]] = []
     remaining = list(script)
 
     async def _fake_run_turn(
         client: Any, messages: list[dict[str, Any]], tools: Any
-    ) -> TurnResult:
+    ) -> AsyncIterator[TurnChunk]:
         calls.append([dict(m) for m in messages])
         if not remaining:
             raise AssertionError("agent 调用轮数超出脚本预期")
-        return remaining.pop(0)
+        result = remaining.pop(0)
+        if result.text:
+            yield TurnChunk(kind="text", text=result.text)
+        yield TurnChunk(kind="result", result=result)
 
     monkeypatch.setattr(agent_module, "_run_turn", _fake_run_turn)
     return calls
@@ -388,8 +403,9 @@ async def test_error_paths_stop_at_the_failing_node(monkeypatch: pytest.MonkeyPa
     _stub_turns(monkeypatch, [_turn(text="")])
     empty = _node_sequence(await _collect())
 
-    async def _boom(client: Any, messages: list[Any], tools: Any) -> TurnResult:
+    async def _boom(client: Any, messages: list[Any], tools: Any) -> AsyncIterator[TurnChunk]:
         raise ConnectionError("中转站不可达")
+        yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
     monkeypatch.setattr(agent_module, "_run_turn", _boom)
     crashed = _node_sequence(await _collect())
@@ -412,8 +428,9 @@ async def test_error_paths_stop_at_the_failing_node(monkeypatch: pytest.MonkeyPa
 async def test_llm_failure_emits_error_not_crash(monkeypatch: pytest.MonkeyPatch) -> None:
     """模型挂掉要变成 error 事件，不能抛异常炸掉 SSE 流。"""
 
-    async def _boom(client: Any, messages: list[Any], tools: Any) -> TurnResult:
+    async def _boom(client: Any, messages: list[Any], tools: Any) -> AsyncIterator[TurnChunk]:
         raise ConnectionError("中转站不可达")
+        yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
     monkeypatch.setattr(agent_module, "_run_turn", _boom)
     events = await _collect()
@@ -435,10 +452,15 @@ async def test_failure_still_reports_consumed_tokens(monkeypatch: pytest.MonkeyP
         _turn(tool_calls=[_tool_call()]),
     ]
 
-    async def _fail_on_third(client: Any, messages: list[Any], tools: Any) -> TurnResult:
+    async def _fail_on_third(
+        client: Any, messages: list[Any], tools: Any
+    ) -> AsyncIterator[TurnChunk]:
         if not script:
             raise ConnectionError("第 3 轮挂掉")
-        return script.pop(0)
+        result = script.pop(0)
+        if result.text:
+            yield TurnChunk(kind="text", text=result.text)
+        yield TurnChunk(kind="result", result=result)
 
     monkeypatch.setattr(agent_module, "_run_turn", _fail_on_third)
     events = await _collect()
@@ -559,3 +581,135 @@ def test_prompt_untouched_when_both_available() -> None:
         "问题", (TAVILY_SEARCH_SPEC, LOCAL_SEARCH_SPEC), has_local=True
     )
     assert prompt == "问题"
+
+
+# ── 流式展示：正文必须边收边发 ────────────────────────────────
+
+
+class _Delta:
+    """模拟 SDK 的 text_delta。"""
+
+    def __init__(self, text: str) -> None:
+        self.type = "text_delta"
+        self.text = text
+
+
+class _DeltaEvent:
+    """模拟 SDK 的 content_block_delta 事件。"""
+
+    def __init__(self, text: str) -> None:
+        self.type = "content_block_delta"
+        self.delta = _Delta(text)
+
+
+class _StreamingMessage:
+    """模拟 SDK 的 Message。"""
+
+    def __init__(self, text: str) -> None:
+        self.content = [{"type": "text", "text": text}]
+        self.stop_reason = "end_turn"
+        self.usage = type("U", (), {"input_tokens": 10, "output_tokens": 5})()
+
+    def model_dump(self, exclude_none: bool = False) -> dict[str, Any]:
+        return {"content": self.content}
+
+
+class _GatedStream:
+    """吐完第一批就**挂住**的上游。
+
+    挂住的意义：让测试能在「上游还没结束」的这一刻观察后端的行为。
+    上游若已经结束，「攒完再发」和「边收边发」两种实现看起来一样，
+    断言就区分不出来。
+    """
+
+    def __init__(self, first: str, rest: str, gate: asyncio.Event) -> None:
+        self._first = first
+        self._rest = rest
+        self._gate = gate
+        self._message = _StreamingMessage(first + rest)
+
+    async def __aenter__(self) -> "_GatedStream":
+        return self
+
+    async def __aexit__(self, *args: Any) -> None:
+        return None
+
+    async def __aiter__(self) -> AsyncIterator[Any]:
+        for ch in self._first:
+            yield _DeltaEvent(ch)
+        # 挂在这里，等测试放行。
+        await self._gate.wait()
+        for ch in self._rest:
+            yield _DeltaEvent(ch)
+
+    async def get_final_message(self) -> _StreamingMessage:
+        return self._message
+
+
+class _GatedClient:
+    def __init__(self, stream: _GatedStream) -> None:
+        self._stream = stream
+
+    class _Messages:
+        def __init__(self, stream: _GatedStream) -> None:
+            self._stream = stream
+
+        def stream(self, **kwargs: Any) -> _GatedStream:
+            return self._stream
+
+    @property
+    def messages(self) -> Any:
+        return self._Messages(self._stream)
+
+
+async def test_text_is_emitted_before_the_upstream_stream_ends() -> None:
+    """正文必须在上游流**结束前**就发出去。
+
+    ## 要防的回归（2026-10-30 修复的核心）
+
+    原实现是 ``await stream.get_final_message()`` —— 把整轮流攒完才返回，
+    主循环随后一次性发出去。用户看到的是「憋十几秒，然后整段蹦出来」。
+
+    这个断言靠「上游挂起」把两种实现区分开：
+
+    - 边收边发：第一批正文在上游挂起期间**已经**到达调用方
+    - 攒完再发：上游挂起期间调用方一个字都收不到
+
+    两种实现最终发出的正文完全一样——所以只能靠**时序**区分。
+    """
+    gate = asyncio.Event()
+    # 第一批必须够长（> 切片器的 36 字门槛）才能切出片段——切片器
+    # 攒够 1.5 片才切，是为了切点质量（不切在刚过阈值的位置）。
+    first = "第一段正文在这里，它需要足够长才能被切成至少一片出来，多加几个字凑够门槛。"
+    rest = "第二段正文继续写下去。"
+    client = _GatedClient(_GatedStream(first, rest, gate))
+
+    seen: list[str] = []
+    finished = False
+
+    async def _drive() -> None:
+        nonlocal finished
+        async for chunk in agent_module._run_turn(client, [{"role": "user", "content": "q"}], ()):
+            if chunk.kind == "text":
+                seen.append(chunk.text)
+            if chunk.kind == "result":
+                finished = True
+
+    task = asyncio.create_task(_drive())
+    # 给上游足够时间吐完第一批并挂住。
+    for _ in range(50):
+        await asyncio.sleep(0)
+        if seen:
+            break
+
+    assert seen, "上游还没结束就该收到正文——攒完再发的实现这里会失败"
+    # 已发出的应当是第一批的**前缀**：切片器会把不足一片的尾巴留在
+    # 缓冲区里，等下一次 feed 或 flush 才发（这是它的既有语义）。
+    assert first.startswith("".join(seen)), f"第一批正文应当原样到达，实际：{seen}"
+    assert not finished, "上游还没结束，不该已经拿到整轮结果"
+
+    gate.set()
+    await task
+
+    assert finished
+    assert "".join(seen) == first + rest
