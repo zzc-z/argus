@@ -123,6 +123,7 @@ Turbopack 的既存缺陷。
 | 硬切不避词中间 | `test_english_words_are_not_split_across_pieces` |
 | 去掉流内错误分类 | 3 条流内错误测试 |
 | 流内判定用宽松的 `_error_body` | `test_http_200_without_error_body_is_not_in_stream_error` |
+| 退避改成固定间隔 | `test_retry_backoff_is_exponential` |
 
 `_stream_turn_once` 那条是核心：靠「上游挂起」把「边收边发」和「攒完再发」
 区分开 —— 两种实现最终发出的正文**完全一样**，只能靠时序区分。
@@ -145,18 +146,15 @@ Turbopack 的既存缺陷。
 
 ## 未完成 / 待办
 
-- **改动已提交**（5 个 commit，见 `git log`）。指数退避那一条的变异验证
-  仍未跑成（分类器 `claude-opus-4-7[1M] is temporarily unavailable`
-  持续拦截 Bash / Monitor / ctx_execute）。
+- **改动已提交**（6 个 commit，见 `git log`）。指数退避的变异验证**已跑完**
+  （2026-11-01）：把 `STREAM_INTERRUPT_BACKOFF_SECONDS * (2**attempt)`
+  改成固定间隔后，`test_retry_backoff_is_exponential` 变红：
 
-  **静态推演已确认能抓到**（2026-11-01）：变异后 `sleeps` 是 `[1.0, 1.0]`，
-  `sleeps[-1] > sleeps[0]` → `1.0 > 1.0` → False → 断言失败。
+  ```
+  AssertionError: 退避没有严格递增：[1.0, 1.0]
+  ```
 
-  接手后要做（改 `app/services/agent.py` 的 `_run_turn`）：
-  把 `STREAM_INTERRUPT_BACKOFF_SECONDS * (2**attempt)` 改成
-  `STREAM_INTERRUPT_BACKOFF_SECONDS`，跑
-  `pytest tests/test_stream_interrupt_retry.py`，
-  确认 `test_retry_backoff_is_exponential` 变红，再改回来。
+  变异对照表补齐后，这条不再是待办。
 - `apps/web/next-env.d.ts` 是 next dev 自动改的（dev 模式的类型路径不同），
   AGENTS.md 说「连同改动一起提交能让工作树干净」。
 
