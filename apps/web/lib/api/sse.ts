@@ -24,6 +24,16 @@ export interface NodeEventV {
 export interface DeltaEventV {
   node_id: string
   text: string
+  /**
+   * `true` 表示「把已收到的正文清掉，从这里重新开始」。
+   *
+   * 只在**流被掐断后整轮重发**时出现——重发会从头再生成一遍，
+   * 而上游有随机性（实测同一 prompt 连发 4 次，字数 1653/1155/1737/2164
+   * 各不相同），没法靠裁剪前缀去重，只能清零重来。
+   *
+   * 少了这个处理，用户会看到同一段正文出现两遍。
+   */
+  reset?: boolean
 }
 
 /**

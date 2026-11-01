@@ -37,7 +37,6 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react'
-import { Inter } from 'next/font/google'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 
@@ -61,7 +60,10 @@ import { ResumeRunCard } from './components/ResumeRunCard'
 import { ApiError, apiStream, type SseEvent } from '@/lib/api/client'
 import { clearChunkCache, fetchChunks } from '@/lib/api/sources'
 import { parseEvent } from '@/lib/api/sse'
+import { useStickToBottom } from '@/lib/hooks/useStickToBottom'
+import { IconSpan } from '@/components/common/IconSpan'
 import type {
+  DeltaEventV,
   DoneEventV,
   ErrorEventV,
   FaithfulnessEventV,
@@ -87,12 +89,6 @@ import {
   writeLastRun,
 } from './lastRun'
 import styles from './page.module.css'
-
-const inter = Inter({
-  subsets: ['latin'],
-  display: 'swap',
-  weight: ['400', '500', '600'],
-})
 
 /**
  * 运行态。刻意不含 'error'——错误由 `errorInfo` 单独承担。
@@ -267,9 +263,18 @@ function applyEventInner(event: SseEvent, h: RunHandlers): void {
       h.setNodes((prev) => prev.map((n) => (n.id === nodeId ? applyNode(n, nv) : n)))
       break
     }
-    case 'delta':
-      h.setStreamedText((prev) => prev + parseEvent<{ text: string }>(event).text)
+    case 'delta': {
+      const delta = parseEvent<DeltaEventV>(event)
+      // reset：流被掐断后整轮重发，已收到的正文作废。
+      // 不清零的话用户会看到同一段正文出现两遍（前半截是断流前的、
+      // 后半截是重发后的）。
+      if (delta.reset) {
+        h.setStreamedText('')
+        break
+      }
+      h.setStreamedText((prev) => prev + delta.text)
       break
+    }
     case 'error': {
       const err = parseEvent<ErrorEventV>(event)
       h.setErrorInfo({
@@ -380,6 +385,10 @@ export default function ExplorePage() {
   const [runState, setRunState] = useState<RunState>('idle')
   const [nodes, setNodes] = useState<AgentNode[]>(initialNodes)
   const [streamedText, setStreamedText] = useState('')
+  // 正文增长时自动跟随到底部；用户手动上滚则暂停跟随。
+  // 依赖传**正文长度**（单调递增），不传对象——对象每次渲染都是新引用，
+  // 跟随逻辑会被反复触发。
+  const stick = useStickToBottom(streamedText.length)
   // 错误的完整信息：code + 文案 + 是否值得重试。
   //
   // 刻意不塞进一个字符串：banner 要同时显示「哪一类错误」（code）
@@ -593,7 +602,7 @@ export default function ExplorePage() {
   const reportId = summary?.report_id ?? null
 
   return (
-    <div className={`${styles.shell} ${inter.className}`}>
+    <div className={styles.shell}>
       <div className={styles.pageBar}>
         <span className={styles.pageTitle}>研究控制台 / Explore</span>
         <button
@@ -608,7 +617,7 @@ export default function ExplorePage() {
 
       <div className={styles.main}>
         {/* Center column: DAG + Streaming Report */}
-        <main className={styles.center}>
+        <main className={styles.center} ref={stick.ref}>
           <AgentDAG
             onSelectNode={handleSelectNode}
             nodes={nodes}
@@ -656,6 +665,20 @@ export default function ExplorePage() {
             streaming={runState === 'running'}
             query={question || undefined}
           />
+          {/* 用户上滚后暂停跟随，给一个回到底部的入口——主流项目
+              （ChatGPT / Claude）的标准交互。没有它的话，被推走的
+              正文就没有回去的路。 */}
+          {stick.paused && (
+            <button
+              type="button"
+              className={styles.scrollToBottom}
+              onClick={() => stick.scrollToBottom()}
+              aria-label="回到底部"
+              title="回到底部"
+            >
+              <IconSpan name="arrow_downward" size={18} />
+            </button>
+          )}
         </main>
 
         {/* Right inspector (collapsible) */}

@@ -16,6 +16,11 @@
   color: var(--token-on-surface, #191c1d);
   display: flex;
   flex-direction: column;
+
+  /* Inter 由 app/layout.tsx 声明并注入 CSS 变量（--font-inter）。
+     这里不能自己 import next/font/google —— Next 16 要求全项目只有
+     一个 next/font/google 导入入口，多一个就 500。 */
+  font-family: var(--font-inter), system-ui, sans-serif;
 }
 
 .main {
@@ -164,4 +169,34 @@
 
 .reportLink:hover {
   text-decoration: underline;
+}
+
+/* ── 回到底部（流式跟随被暂停时出现）─────────────────────────
+   定位在 .main（position: relative）而不是 .center——.center 是滚动
+   容器，absolute 相对它会跟着内容滚走；相对 .main 则固定在视口内，
+   正是「悬浮按钮」该有的行为。 */
+.scrollToBottom {
+  position: absolute;
+  /* 底部留出输入框栏的高度：底栏是 fixed 的，按钮压在上面会被挡住。 */
+  bottom: 5.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--token-outline-variant, #cac3d9);
+  background: var(--token-surface-container-lowest, #ffffff);
+  color: var(--token-on-surface-variant, #494456);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgb(25 28 29 / 12%);
+  transition: background 150ms ease-out;
+}
+
+.scrollToBottom:hover {
+  background: var(--token-surface-container, #edeeef);
 }
