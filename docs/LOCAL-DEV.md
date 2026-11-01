@@ -2,6 +2,27 @@
 
 **2026-10-23 立。** 新会话接手时先读这份 —— 下面几件事做错不会报错，只会「看起来正常但数据是旧的」。
 
+## 0. 只用 `~/Desktop/argus` 这一份
+
+**2026-11-01 定。** 机器上曾经有两份 argus 指向**同一个** GitHub 仓库：
+
+| 路径 | remote | 说明 |
+|---|---|---|
+| `~/Desktop/argus` | SSH over 443 | **用这份** |
+| `~/Projects/argus` | HTTPS | 旧副本，2026-11-01 时落后 131 个 commit |
+
+两份指向同一个仓库，但各自有独立的本地状态 —— 在 `Projects/argus` 里
+`git log` 看不到另一份的 commit，看起来像「推送没成功」。
+
+**VSCode 请打开 `~/Desktop/argus`。** `.vscode/settings.json` 的注释里
+也记着这个坑（2026-10-09 那次是解释器路径解析失败）。
+
+验证自己在哪份：
+
+```bash
+pwd && git remote -v && git log --oneline -1
+```
+
 ## 1. 跑起来
 
 ```bash
