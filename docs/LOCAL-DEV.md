@@ -16,6 +16,33 @@ pnpm --filter web dev
 前端默认打 `http://localhost:8000`（`apps/web/lib/api/client.ts` 的 `API_BASE`），
 可用 `NEXT_PUBLIC_API_BASE` 覆盖。
 
+### 1.1 前端 dev 必须用 webpack（`--webpack`）
+
+**`pnpm --filter web dev` 已经固定带 `--webpack`**，不要改成裸 `next dev`。
+
+原因（实测 2026-11-01，Next 16.3.8）：**Turbopack 下 `next/font/google`
+的字体 loader 解析不了**，页面直接 500：
+
+```
+Error: Module not found: Can't resolve '@vercel/turbopack-next/internal/font/google/font'
+next/font/google queries have exactly one entry
+```
+
+同一个代码用 `--webpack` 起来就是 200。这是 Next 16.3.8 + Turbopack 的
+既存问题，与项目代码无关（`git stash` 到 HEAD 同样 500）。
+
+`@vercel/turbopack-next` 是 Next 的**虚拟模块**（不在 npm registry 上），
+由 Next 自己的 loader 解析——16.3.8 的包里没有对应的解析代码。
+
+想试 Turbopack 用 `pnpm --filter web dev:turbopack`，但预期是 500。
+
+### 1.2 `next/font/google` 全项目只能有一个导入入口
+
+Next 16 要求 `next/font/google` 只有**一处** import。字体的 CSS 变量统一
+在 `app/layout.tsx` 声明（`--font-geist` / `--font-jetbrains-mono` /
+`--font-inter`），页面里用 `var(--font-inter)` 引用，**不要在自己页面里
+再 import 一次**。
+
 ## 2. 改了后端代码 → 必须重启
 
 **后端没开 `--reload`。** 改了 Python 文件不重启，进程跑的还是旧代码。
@@ -129,6 +156,19 @@ pnpm --filter web exec tsc --noEmit
   **403 + permission_error**，message 才是真因
   （「Trial quota (40 requests) used up」）。只看状态码会报成
   「没有该模型的权限」，把排查方向带偏。
+- **流式请求的错误不走状态码**。响应头发出时是 **200**，错误随后以 SSE
+  ``error`` 事件送达（Anthropic 官方说明：``overloaded_error`` 等在流式下
+  就是 200 + 流内 error 事件，非流式才对应 529/429）。
+  只按状态码分类的话，这类错误全落进「200 → 兜底」，报成
+  「模型服务暂时不可用」——而上游 message 往往明写 "Please retry"，
+  实际重试一次就能过。
+
+  实测（2026-10-31，中转站 llmapi.pro）：
+  `{"type":"error","error":{"type":"api_error","code":"subscription_identity_review_unavailable","message":"The protected subscription response could not be approved. Please retry."}}`
+
+  处理在 `app/services/errors.py` 的 `_in_stream_error_classified`：
+  按 `error.type` 分档（与**非流式同类型分到同一档**），未知类型落到
+  `llm_upstream_error`（可重试）。
 - **`httpx2` 与 `httpx` 的异常类不通用**。`httpx2.ConnectError` 不是内建
   `ConnectionError` 的子类，判网络类异常时两个都得认。
 - **扩展思考会吃光输出预算**。请求里不设 `thinking.budget_tokens` 时，
@@ -136,6 +176,33 @@ pnpm --filter web exec tsc --noEmit
   （表现为 `empty_response`）。**重试没用**——实测连打 5 次全部同样被
   吃光，是确定性的不是偶发。详见 `app/services/agent.py` 的
   `THINKING_BUDGET_TOKENS`。
+- **中转站的流式是「越长越流式」**。短输出被上游缓冲成一次性吐完，
+  长输出才逐字吐（实测 2026-10-30，同一个 prompt 连发 4 次）：
+
+  | 正文长度 | 上游帧数 | 到达跨度 |
+  |---|---|---|
+  | ~100 字 | 5 | 0.00s（一次性到齐） |
+  | ~300 字 | 14 | 0.44s |
+  | ~1800 字 | 105 | 10.31s |
+
+  所以**「等上游逐字吐」不能只靠上游**——短报告照样会「一下全出」。
+  后端 `stream.py` 的 `Typewriter` 因此做了两件事：切片（粒度，8 字/片）+
+  控速（节奏，令牌桶按 **80 字/秒** 限速）。上游缓冲时靠控速拆开；
+  上游真流式时跟随上游速度，不拖慢它。
+  详见 `docs/SPEC-streaming-typewriter.md`。
+- **explore 页的滚动宿主是 `.center`，不是 `window`**。`page.module.css` 里
+  `.shell` 是 `overflow: hidden` + 固定高度，整页不滚；只有 `.center`
+  （`overflow-y: auto`）滚。要做「跟随底部」之类的效果，ref 要挂在
+  `.center` 上。主流项目的贴底滚动在 `lib/hooks/useStickToBottom.ts`：
+  内容增长自动跟底，用户上滚则暂停并给「回到底部」浮标。
+- **断流重发会重复正文**。上游有随机性（同一 prompt 连发 4 次，
+  字数 1653/1155/1737/2164 各不相同），裁剪前缀去重不可靠。改成真流式
+  后正文在流途中就发出去了，重发必须先发 `reset` 让前端清零——
+  少了它用户会看到同一段正文出现两遍。
+- **重发的退避必须是指数的**。固定 1 秒间隔会让所有重试落在同一个网络
+  坏窗口里（实测 2026-11-01：3 次重发挤在同一秒全挂）。现在按
+  `基数 * 2**(n-1)`（1s → 2s），见 `app/services/agent.py` 的
+  `_run_turn`。
 
 ## 链接
 
@@ -143,3 +210,5 @@ pnpm --filter web exec tsc --noEmit
 - [apps/api/CONTRIBUTING.md](../apps/api/CONTRIBUTING.md) — 后端贡献指南
 - [docs/CONVENTIONS.md](CONVENTIONS.md) — 编码与设计约定
 - [docs/CODE-QUALITY.md](CODE-QUALITY.md) — 代码质量约定
+- [docs/SPEC-streaming-typewriter.md](SPEC-streaming-typewriter.md) — 流式打字机与滚动跟随的规格
+- [docs/WORKLOG-streaming-typewriter.md](WORKLOG-streaming-typewriter.md) — 那一轮的进展记录与未完成项
