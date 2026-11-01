@@ -104,6 +104,45 @@ export async function apiStream(
     signal,
   })
 
+  await consumeSse(res, onEvent)
+}
+
+/**
+ * 消费 SSE 流（GET 版本）。
+ *
+ * 用于「接回一个已经在跑的研究」——服务端把会话持有住了，客户端刷新
+ * 或切页之后拿 run id 重新连上就行，不必重新提问（那会再烧一次钱）。
+ *
+ * 与 `apiStream` 的区别只有两处：方法不同、没有请求体。其余
+ * （鉴权 cookie、帧解析、错误处理）完全一样，所以共用 `consumeSse`。
+ */
+export async function apiStreamGet(
+  path: string,
+  onEvent: (event: SseEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: {
+      Accept: 'text/event-stream',
+    },
+    signal,
+  })
+
+  await consumeSse(res, onEvent)
+}
+
+/**
+ * 读一个 SSE 响应体并逐帧回调。
+ *
+ * 抽出来是因为 POST 与 GET 两条路径的**解析**完全相同，只有取响应的方式
+ * 不同——复制一遍解析逻辑，两边迟早会漂移。
+ */
+async function consumeSse(
+  res: Response,
+  onEvent: (event: SseEvent) => void,
+): Promise<void> {
   if (!res.ok) {
     let message = `请求失败（${res.status}）`
     try {

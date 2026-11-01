@@ -92,6 +92,35 @@ class ReferenceEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class RunEvent:
+    """流的**第一帧**：告诉前端这次研究的 run id 与问题原文。
+
+    ## 为什么用事件而不是响应头
+
+    run id 必须让前端知道，才能在刷新 / 切页之后接回那一轮
+    （见 ``app/services/runs.py``）。用 HTTP 响应头下发要额外配
+    ``CORSMiddleware(expose_headers=...)``——跨域下 JS 读不到没
+    expose 的自定义头，读到的是 null，而症状是「重连永远 404」，
+    很难查。事件帧走的是流本身，没有这个坑。
+
+    ## 为什么必须是第一帧
+
+    前端拿到 run id 之后要**存下来**（刷新后还要用）。如果它排在
+    正文中间，用户可能在正文已经出来之前就刷新了——那时候前端手里
+    没有 run id，接不回来。所以它必须先于一切内容到达。
+
+    ## 为什么带 question
+
+    重连时前端是空的，它不知道这一轮问的是什么。服务端知道（run 里有），
+    所以由第一帧带过去——省得前端再存一份 question 到 localStorage，
+    也避免两份数据不一致（前端存的那份可能是上一轮的）。
+    """
+
+    run_id: str
+    question: str
+
+
+@dataclass(frozen=True, slots=True)
 class DoneEvent:
     """正常收尾。必须带 session_id 与 token 数——前端 DAG 头部要显示。"""
 
@@ -141,7 +170,8 @@ class ErrorEvent:
 
 
 AgentEvent = (
-    NodeEvent
+    RunEvent
+    | NodeEvent
     | DeltaEvent
     | ToolCallEvent
     | ReferenceEvent
@@ -164,6 +194,7 @@ def encode_frame(event: AgentEvent) -> bytes:
 def _type_name(event: AgentEvent) -> str:
     """事件类型名。用类名小写而不是枚举——少一层映射。"""
     return {
+        RunEvent: "run",
         NodeEvent: "node",
         DeltaEvent: "delta",
         ToolCallEvent: "tool_call",

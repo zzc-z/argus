@@ -12,6 +12,28 @@
 /** 智能体节点生命周期。后端只发 active / completed，pending 是前端初始态。 */
 export type NodeLifecycle = 'pending' | 'active' | 'completed' | 'failed'
 
+/**
+ * `type: "run"` —— 流的**第一帧**，带这次研究的 run id。
+ *
+ * 前端把它存下来：刷新页面或切到别的页面再回来时，拿它调
+ * `GET /api/v1/research/runs/{run_id}/stream` 接回那一轮——**不重新提问**，
+ * 已烧的 token 不白烧（服务端把会话持有住了）。
+ *
+ * 必须是第一帧：它要先于正文到达，否则用户在正文出来之前刷新，
+ * 前端手里没有 run id，接不回来。
+ */
+export interface RunEventV {
+  run_id: string
+  /**
+   * 本轮的问题原文。
+   *
+   * 重连时前端是空的——它不知道这一轮问的是什么。服务端知道（run 里有），
+   * 所以由第一帧带过来，省得前端再存一份到 localStorage（也避免两份
+   * 数据不一致：前端存的那份可能是上一轮的）。
+   */
+  question: string
+}
+
 /** `type: "node"` —— 节点生命周期变化。任一时刻只允许一个 active。 */
 export interface NodeEventV {
   node_id: string

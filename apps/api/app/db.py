@@ -65,6 +65,24 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    """后台任务用的 session 工厂。
+
+    ## 为什么不复用 get_session
+
+    ``get_session`` 给的 session 随**请求**结束而关闭。后台任务的生命周期
+    可能超过请求——研究流要跑 30-60 秒，而 HTTP 响应早就发完了。拿请求的
+    session 跑后台任务，跑到一半 session 已关，报错还很难看出来。
+
+    ## 为什么要做成依赖
+
+    测试要把它换成测试库的工厂。直接调 ``SessionLocal()`` 是普通函数调用，
+    ``dependency_overrides`` 对它无效——那会让后台任务静悄悄连上开发库
+    ``argus.db``（与 ``get_session`` 同一个坑，见 ``conftest.api_db`` 的注释）。
+    """
+    return SessionLocal
+
+
 # ── 健康检查 ─────────────────────────────────────────────────
 async def check_db_health() -> bool:
     """/readyz 用：执行 SELECT 1 验证 DB 连接。失败抛异常。"""

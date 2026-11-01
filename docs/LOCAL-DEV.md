@@ -224,12 +224,33 @@ pnpm --filter web exec tsc --noEmit
   坏窗口里（实测 2026-11-01：3 次重发挤在同一秒全挂）。现在按
   `基数 * 2**(n-1)`（1s → 2s），见 `app/services/agent.py` 的
   `_run_turn`。
+- **研究流现在是「服务端持有」的**（2026-11-01）。agent 跑在**后台任务**
+  里，事件先进 `app/services/runs.py` 的进程内注册表，HTTP 连接只是
+  订阅者。所以**刷新 / 切页不会终止生成**——用户切回来靠
+  `GET /api/v1/research/runs/{run_id}/stream` 接回那一轮。
+  详见 `docs/SPEC-run-session.md`。
+  - run 存在**内存**里：后端进程重启后未完成的 run 会丢；多 worker 部署
+    时不同进程看不见彼此的 run（本项目现在是单进程，不构成问题）。
+  - run 保留 **30 分钟**（`RUN_TTL_SECONDS`）。**不能按「已收尾」删**——
+    完成的那一刻删掉，用户切回来看到空白。
+  - 重问会取消上一轮（`cancel_latest_for_user`）。生成在服务端跑着，
+    不取消的话上一轮继续烧 token、继续占并发槽位（闸门只有 4 个）。
+- **后台任务的 DB session 必须走依赖注入**（`app/db.py` 的
+  `get_sessionmaker`）。直接调 `SessionLocal()` 是普通函数调用，
+  `dependency_overrides` 对它无效——测试里后台任务会静悄悄连上开发库
+  `argus.db`，症状是「测试全绿，但开发库被写了」。
+- **`TestClient` 里的 `asyncio.Event` 不能跨循环用**。`TestClient` 把 app
+  跑在另一个线程的另一个事件循环里（portal），测试代码跑在 pytest-asyncio
+  的循环里——`asyncio.Event` 绑定创建它的那��循环，跨循环 `set()` 不唤醒
+  等待者，测试**永久挂住**。用 `threading.Event`，agent 侧
+  `await asyncio.to_thread(ev.wait, timeout)` 等它。
 
 ## 链接
-
 - [AGENTS.md（仓库根）](../AGENTS.md) — 硬配置、收尾流程
 - [apps/api/CONTRIBUTING.md](../apps/api/CONTRIBUTING.md) — 后端贡献指南
 - [docs/CONVENTIONS.md](CONVENTIONS.md) — 编码与设计约定
 - [docs/CODE-QUALITY.md](CODE-QUALITY.md) — 代码质量约定
 - [docs/SPEC-streaming-typewriter.md](SPEC-streaming-typewriter.md) — 流式打字机与滚动跟随的规格
 - [docs/WORKLOG-streaming-typewriter.md](WORKLOG-streaming-typewriter.md) — 那一轮的进展记录与未完成项
+- [docs/SPEC-run-session.md](SPEC-run-session.md) — 研究会话（run）与可重连的流的规格
+- [docs/WORKLOG-run-session.md](WORKLOG-run-session.md) — 那一轮的进展记录与踩过的坑

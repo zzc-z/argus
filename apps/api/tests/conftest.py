@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.config import get_settings
-from app.db import _enable_sqlite_foreign_keys, get_session
+from app.db import _enable_sqlite_foreign_keys, get_session, get_sessionmaker
 from app.gateway.auth import OAUTH_STATE_COOKIE
 from app.main import app
 from app.models import Base
@@ -215,6 +215,23 @@ async def api_db(db_session: AsyncSession) -> AsyncGenerator[AsyncSession, None]
     # 向量库必须与业务表同库：混合检索的 source_ids 过滤是在向量库的
     # document_chunks 上做子查询，两边不同库的话子查询永远查不到行。
     app.dependency_overrides[get_vector_engine] = lambda: db_session.get_bind()
+    # **后台任务的 session 工厂**也要换。
+    #
+    # ``app.db.get_sessionmaker`` 返回 ``SessionLocal``，它绑的是
+    # ``app.db.engine``——**开发库的 engine**。后台任务直接调它就是普通
+    # 函数调用，``dependency_overrides`` 对它无效，于是研究在测试里会
+    # 静悄悄连上 ``argus.db``：往开发库写报告，测试却全绿。
+    #
+    # 用 ``db_session.bind`` 而不是新建 engine：内存 SQLite 的
+    # ``:memory:`` 每个连接都是**独立的库**——新建 engine 会得到一个
+    # 全新空库，表都没有。``db_session.bind`` 是它的 engine，同一个
+    # 连接池，能看到同一份数据。
+    #
+    # （注意 ``AsyncSession.get_bind()`` 返回的是**同步** Engine，
+    # SQLAlchemy 2.0 的行为；``.bind`` 才是 AsyncEngine。）
+    app.dependency_overrides[get_sessionmaker] = lambda: async_sessionmaker(
+        db_session.bind, class_=AsyncSession, expire_on_commit=False, autoflush=False
+    )
     try:
         yield db_session
     finally:

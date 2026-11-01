@@ -153,21 +153,44 @@ async def test_stream_frames_are_valid_json(client: TestClient, monkeypatch: pyt
     with client.stream("POST", "/api/v1/research/ask", json={"question": "问题"}) as resp:
         frames = _frames(resp)
 
-    assert len(frames) == 7
+    assert len(frames) == 8
     for frame in frames:
         assert "type" in frame
         assert "v" in frame
 
 
 async def test_frame_types_in_expected_order(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
-    """事件顺序：节点切换 → 正文 → 收尾。"""
+    """事件顺序：run（第一帧）→ 节点切换 → 正文 → 收尾。
+
+    ``run`` 帧必须在**最前面**：前端拿到 run id 才能在刷新后接回这一轮，
+    它要是排在正文中间，用户在正文出来之前刷新就接不回来。
+    """
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
 
     with client.stream("POST", "/api/v1/research/ask", json={"question": "问题"}) as resp:
         types = [f["type"] for f in _frames(resp)]
 
-    assert types == ["node", "node", "node", "delta", "delta", "node", "done"]
+    assert types == ["run", "node", "node", "node", "delta", "delta", "node", "done"]
+
+
+async def test_run_frame_carries_run_id_and_question(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """第一帧带 run id 与问题原文——前端靠它接回这一轮。
+
+    少了 run id，刷新之后前端不知道该接哪一轮，只能重新提问（再烧一次钱）。
+    """
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "什么是向量数据库"}) as resp:
+        frames = _frames(resp)
+
+    run_frame = frames[0]
+    assert run_frame["type"] == "run"
+    assert run_frame["v"]["run_id"]
+    assert run_frame["v"]["question"] == "什么是向量数据库"
 
 
 async def test_done_carries_session_and_tokens(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
@@ -351,12 +374,21 @@ async def test_stream_releases_slot_on_error(
 async def test_agent_gets_the_override_session(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
 ) -> None:
-    """agent 拿到的必须是测试库那个 session，不能是开发库。
+    """agent 拿到的必须连**测试库**，不能是开发库。
 
     这条守着 ``api_db`` fixture 的 override：一旦有人把 db 改成
     ``SessionLocal()`` 或 ``asynccontextmanager(get_session)()``（两者都是
     普通函数调用、绕过依赖求解器），override 就不生效，测试会静悄悄地
     连到 ``argus.db`` 上去——症状是「测试全绿，但开发库被写了」。
+
+    ## 断言的是「同一个 engine」而不是「同一个 session 对象」
+
+    2026-11-01 起 agent 跑在**后台任务**里，后台任务自己开 session
+    （请求的 session 随响应结束就关了，跑不到那么久）。同一个 engine
+    的不同 session 是**必须**的——它们是两个连接，能同时用。
+
+    所以断言 engine 相同：那才是「连的是哪个库」的决定因素。
+    断言 session 对象相同在新架构下反而是错的。
     """
     seen: dict[str, object] = {}
 
@@ -373,7 +405,11 @@ async def test_agent_gets_the_override_session(
         assert resp.status_code == 200
         resp.read()
 
-    assert seen["db"] is api_db, "agent 拿到的不是测试库 session——override 被绕过了"
+    agent_db = seen["db"]
+    assert isinstance(agent_db, AsyncSession)
+    assert agent_db.bind is api_db.bind, (
+        "agent 拿到的 session 不在测试库上——override 被绕过了"
+    )
 
 
 async def test_agent_session_is_usable_during_stream(
@@ -438,9 +474,10 @@ async def test_agent_error_event_passes_through(client: TestClient, monkeypatch:
     with client.stream("POST", "/api/v1/research/ask", json={"question": "问题"}) as resp:
         frames = _frames(resp)
 
-    assert len(frames) == 1
-    assert frames[0]["v"]["code"] == "llm_unavailable"
-    assert frames[0]["v"]["retryable"] is True
+    # 第一帧是 run（run id + 问题），后面才是 agent 的 error 帧。
+    assert [f["type"] for f in frames] == ["run", "error"]
+    assert frames[1]["v"]["code"] == "llm_unavailable"
+    assert frames[1]["v"]["retryable"] is True
 
 
 # ── 开流前的服务端配置错误 ────────────────────────────────────

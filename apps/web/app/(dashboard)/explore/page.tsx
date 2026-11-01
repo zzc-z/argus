@@ -57,7 +57,7 @@ import {
 } from './components/FaithfulnessPanel'
 import { PromptInput } from './components/PromptInput'
 import { ResumeRunCard } from './components/ResumeRunCard'
-import { ApiError, apiStream, type SseEvent } from '@/lib/api/client'
+import { ApiError, apiStream, apiStreamGet, type SseEvent } from '@/lib/api/client'
 import { clearChunkCache, fetchChunks } from '@/lib/api/sources'
 import { parseEvent } from '@/lib/api/sse'
 import { useStickToBottom } from '@/lib/hooks/useStickToBottom'
@@ -69,6 +69,7 @@ import type {
   FaithfulnessEventV,
   NodeEventV,
   ReferenceEventV,
+  RunEventV,
   ToolCallEventV,
 } from '@/lib/api/sse'
 import {
@@ -88,6 +89,11 @@ import {
   subscribeLastRun,
   writeLastRun,
 } from './lastRun'
+import {
+  clearActiveRunId,
+  readActiveRunId,
+  writeActiveRunId,
+} from './activeRun'
 import styles from './page.module.css'
 
 /**
@@ -183,11 +189,18 @@ type RunHandlers = {
   /**
    * 本轮的问题原文。
    *
-   * 不是 setter——``done`` 事件到达时要把它写进「上次研究」的本地记录，
-   * 而那时 state 里的值可能还没更新（setState 是异步的）。所以由调用方
-   * 直接给出这一轮的问题。
+   * 是**函数**而不是字符串：``done`` 事件到达时要把它写进「上次研究」的
+   * 本地记录，而重连时问题原文要等**第一帧**（run 帧）才到——那时
+   * 直接读捕获的快照会是空串。函数让读取发生在真正需要的那一刻。
    */
-  question: string
+  currentQuestion: () => string
+  /**
+   * 记下本轮的问题（state + ref）。
+   *
+   * 拆成两个 setter 是因为「写 state」与「写 ref」的时机不同：ref 必须
+   * 同步更新（``done`` 事件紧接着就要读它），state 的更新是异步的。
+   */
+  setCurrentQuestion: (question: string) => void
 }
 
 /**
@@ -248,6 +261,16 @@ function applyEvent(event: SseEvent, h: RunHandlers): void {
  */
 function applyEventInner(event: SseEvent, h: RunHandlers): void {
   switch (event.type) {
+    case 'run': {
+      // 第一帧：这次研究的 run id + 问题原文。
+      //
+      // 存下 run id，刷新 / 切页之后靠它接回这一轮（服务端持有会话，
+      // 生成不会因为连接断开而停）。
+      const run = parseEvent<RunEventV>(event)
+      writeActiveRunId(run.run_id)
+      h.setCurrentQuestion(run.question)
+      break
+    }
     case 'node': {
       const nv = parseEvent<NodeEventV>(event)
       // 运行时校验（``parseEvent`` 只是编译期断言，见 sse.ts 的注释）。
@@ -296,7 +319,7 @@ function applyEventInner(event: SseEvent, h: RunHandlers): void {
       if (done.report_id != null) {
         writeLastRun({
           reportId: done.report_id,
-          question: h.question,
+          question: h.currentQuestion(),
           sessionId: done.session_id,
           savedAt: new Date().toISOString(),
         })
@@ -356,7 +379,7 @@ function resetForRun(h: RunHandlers, question: string): void {
   h.setErrorInfo(null)
   h.setSummary(null)
   h.setFaithfulness({ kind: 'idle' })
-  h.setQuestion(question)
+  h.setCurrentQuestion(question)
   h.setRunState('running')
   // 引用表和工具轨迹一样属于单次运行的产物，重问时必须清空——否则上一轮
   // 的编号会跟这一轮的正文对不上。
@@ -434,6 +457,46 @@ export default function ExplorePage() {
   // 重问时把仍在飞的原文请求也 abort 掉（虽然令牌已经拦住了写 state，
   // 但带宽还在白跑，一个长文档的 payload 能有十几 MB）。
   const sourceAbortRef = useRef<AbortController | null>(null)
+  // 当前这一轮的问题原文。**放 ref 而不是直接用 state**：``done`` 事件
+  // 到达时要把它写进「上次研究」的本地记录，而那时 state 里的值可能
+  // 还没更新（setState 是异步的）。ref 是同步的，读到的一定是最新值。
+  const questionRef = useRef('')
+
+  /**
+   * 造一套事件写入器。
+   *
+   * 抽出来是因为「问一轮」和「接回一轮」要用**完全相同**的那套写入器——
+   * 两处各写一遍的话，节点推进、正文累积、错误收尾迟早会漂移。
+   *
+   * setXxx 都是稳定引用（React 保证），所以每次新建也不会读到过期值
+   * ——它捕获的全是 React 的稳定引用与 useRef 对象。
+   */
+  const buildHandlers = useCallback((): RunHandlers => {
+    return {
+      setNodes,
+      setStreamedText,
+      setErrorInfo,
+      setSummary,
+      setRunState,
+      setFaithfulness,
+      setToolCalls,
+      setCitations,
+      setInspectorPayload,
+      setQuestion,
+      invalidateSourceText: () => {
+        sourceAbortRef.current?.abort()
+        sourceTextToken.current += 1
+        setSourceText({ kind: 'none' })
+      },
+      currentQuestion: () => questionRef.current,
+      setCurrentQuestion: (question: string) => {
+        // ref 同步更新——``done`` 事件紧接着就要读它，而 state 的更新
+        // 是异步的，那时读 state 拿到的还是旧值。
+        questionRef.current = question
+        setQuestion(question)
+      },
+    }
+  }, [])
 
   const handleSelectNode = useCallback(
     (node: AgentNode) => {
@@ -503,29 +566,10 @@ export default function ExplorePage() {
     const controller = new AbortController()
     abortRef.current = controller
 
-    // setXxx 都是稳定引用（React 保证），所以 `handlers` 每次调用 run 时
-    // 新建也不会读到过期值——它捕获的全是 React 的稳定引用与 useRef 对象。
-    const handlers: RunHandlers = {
-      setNodes,
-      setStreamedText,
-      setErrorInfo,
-      setSummary,
-      setRunState,
-      setFaithfulness,
-      setToolCalls,
-      setCitations,
-      setInspectorPayload,
-      setQuestion,
-      invalidateSourceText: () => {
-        sourceAbortRef.current?.abort()
-        sourceTextToken.current += 1
-        setSourceText({ kind: 'none' })
-      },
-      question,
-    }
+    questionRef.current = question
+    const handlers = buildHandlers()
 
     resetForRun(handlers, question)
-
     try {
       await apiStream(
         '/api/v1/research/ask',
@@ -560,7 +604,67 @@ export default function ExplorePage() {
       settleFaithfulness(handlers)
       setRunState('completed')
     }
-  }, [])
+  }, [buildHandlers])
+
+  /**
+   * 接回上一轮还在跑（或刚跑完）的研究。
+   *
+   * ## 为什么需要
+   *
+   * 以前生成绑在 HTTP 连接上——刷新、切页、关标签都会**终止生成**，
+   * 用户回来只看到一片空白。现在服务端持有会话（后端的 run 注册表），
+   * 连接只是订阅者，所以断开了可以接回来。
+   *
+   * ## 什么时候接
+   *
+   * 挂载时。本地记着 run id（`activeRun.ts`）就说明有一轮值得接。
+   * 接不上（run 过期被清理了）就安静地回到空态——不是错误，只是那一轮
+   * 已经不在了。
+   */
+  const reconnect = useCallback(async () => {
+    const runId = readActiveRunId()
+    if (!runId) return
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const handlers = buildHandlers()
+    // 重连时问题原文还没到（它在第一帧里），先清空——第一帧会填上。
+    resetForRun(handlers, '')
+
+    try {
+      await apiStreamGet(
+        `/api/v1/research/runs/${encodeURIComponent(runId)}/stream`,
+        (event) => applyEvent(event, handlers),
+        controller.signal,
+      )
+      settleFaithfulness(handlers)
+      setRunState((prev) => (prev === 'running' ? 'completed' : prev))
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      // 404 = 那一轮已经被 TTL 清理了（30 分钟没碰）。这不是错误——
+      // 回到空态即可，用户看到「尚未提问」比看到一条红色横幅合理。
+      if (err instanceof ApiError && err.status === 404) {
+        clearActiveRunId()
+        setRunState('idle')
+        setNodes(initialNodes())
+        return
+      }
+      setErrorInfo((prev) => {
+        if (prev) return prev
+        const status = err instanceof ApiError ? err.status : null
+        const mapped = status != null ? HTTP_ERROR_CODES[status] : undefined
+        return {
+          code: mapped?.code ?? HTTP_ERROR_FALLBACK.code,
+          message: err instanceof Error ? err.message : '连接失败',
+          retryable: mapped?.retryable ?? HTTP_ERROR_FALLBACK.retryable,
+        }
+      })
+      settleFaithfulness(handlers)
+      setRunState('completed')
+    }
+  }, [buildHandlers])
 
   const handleSlashSelect = useCallback((cmd: SlashCommand) => {
     setPromptValue(`${cmd.template} `)
@@ -572,6 +676,13 @@ export default function ExplorePage() {
       if (!trimmed) return
       if (runState === 'running') return
       setPromptValue('')
+      // 清掉旧的 run id。**必须清**：新 run 的第一帧要等一会儿才到
+      // （要走一遍鉴权、建 run、起后台任务），这段时间里本地记的
+      // 还是上一轮的 id——用户此时刷新，接回来的是**上一轮**的内容，
+      // 看起来像「我刚问的问题没跑」。
+      //
+      // 后端也会取消上一轮（`cancel_latest_for_user`），两边一致。
+      clearActiveRunId()
       void run(trimmed)
     },
     [runState, run],
@@ -591,6 +702,9 @@ export default function ExplorePage() {
   }, [])
 
   // 卸载时中断挂起的请求，否则组件没了 fetch 还在跑。
+  //
+  // **只中断订阅，不终止生成**——生成在服务端跑着（后端的 run 注册表），
+  // 断开只是不再收帧。用户切回来时靠 reconnect 接回去。
   useEffect(
     () => () => {
       abortRef.current?.abort()
@@ -598,6 +712,27 @@ export default function ExplorePage() {
     },
     [],
   )
+
+  // 挂载时接回上一轮。
+  //
+  // **只在挂载时跑一次**（依赖数组空）。依赖 `reconnect` 会让它在每次
+  // 渲染后都重跑——那会不断重置界面、清掉正在显示的正文。
+  //
+  // ## 为什么不用 ref 守卫「只跑一次」
+  //
+  // StrictMode 下 effect 会 setup → cleanup → setup 跑两遍（开发模式的
+  // 刻意行为，用来暴露副作用没清理干净的问题）。用 ref 守卫跳过第二次
+  // 反而会**弄坏它**：第一次的 reconnect 在 cleanup 里被 abort 了，第二次
+  // 又被守卫跳过——用户看到一片空白。
+  //
+  // `reconnect` 本身是幂等的：它先 abort 掉上一个订阅、再
+  // `resetForRun` 清空界面，然后重新订阅。重跑一次的结果是「干净地
+  // 重连一遍」，不会让正文重复（reset 之后服务端从头回放）。
+  useEffect(() => {
+    void reconnect()
+    // reconnect 是 useCallback([]) 出来的稳定引用，放进依赖里不会让它
+    // 反复触发。
+  }, [reconnect])
 
   const reportId = summary?.report_id ?? null
 
