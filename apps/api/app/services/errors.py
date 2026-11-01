@@ -124,6 +124,23 @@ LLM_CONTENT_FILTERED = "llm_content_filtered"
 LLM_UNAVAILABLE = "llm_unavailable"
 """模型服务兜底：归不出类的失败。"""
 
+LLM_UPSTREAM_ERROR = "llm_upstream_error"
+"""上游在**流内**报错（HTTP 200 + SSE ``error`` 事件）。
+
+流式请求的错误不走状态码：响应头发出时是 200，错误在流里以
+``error`` 事件送达（Anthropic 官方说明：``overloaded_error`` 等错误
+在流式下就是 200 + 流内 error 事件，非流式才对应 529 等状态码）。
+
+不单独分这一档的话，这类错误全都掉进「状态码 200 → 兜底」，
+报成「模型服务暂时不可用」——但上游 message 往往明说「Please retry」，
+用户被引向「服务挂了、等着吧」，而实际重试一次就能过。
+
+实测（2026-10-31，中转站 llmapi.pro）：
+``{"type": "error", "error": {"type": "api_error",
+"code": "subscription_identity_review_unavailable", "message":
+"The protected subscription response could not be approved. Please retry."}}``
+"""
+
 LLM_NOT_CONFIGURED = "llm_not_configured"
 """没配 API key。"""
 
@@ -190,6 +207,66 @@ def _status_code(exc: BaseException) -> int | None:
         if isinstance(value, int):
             return value
     return None
+
+
+def _in_stream_error_classified(exc: BaseException) -> Classified | None:
+    """流内错误（HTTP 200 + SSE ``error`` 事件）→ 分类。
+
+    不是流内错误就返回 ``None``，让调用方继续按状态码分档。
+
+    ## 判据
+
+    三条同时成立才算流内错误：
+
+    1. HTTP 状态码是 **200**——响应头已经发出去，错误只能走流内
+    2. 响应体里有 ``error`` **对象**（不是整个 body）
+    3. 那个对象里有 ``type``
+
+    第 1 条是关键：状态码非 200 的错误走正常分档（401/403/429/529 都有
+    各自的处置方式）。只有 200 才可能是流内错误——流式请求本身成功，
+    错误是生成途中才冒出来的。
+
+    第 2 条用**专用的取法**而不是 :func:`_error_body`：后者在没有
+    ``error`` 键时会返回整个 body（为了兼容 OpenAI 那种扁平 body），
+    于是 ``{"type": "message"}`` 会被当成了 ``error.type``——
+    ``message`` 不是任何已知错误类型，会被兜底成「上游流内错误」。
+    """
+
+    if _status_code(exc) != 200:
+        return None
+
+    error: dict[str, Any] | None = None
+    for item in cause_chain(exc):
+        body = getattr(item, "body", None)
+        if not isinstance(body, dict):
+            continue
+        candidate = body.get("error")
+        if isinstance(candidate, dict):
+            error = candidate
+            break
+    if error is None:
+        return None
+
+    error_type = error.get("type")
+    if not isinstance(error_type, str) or not error_type:
+        return None
+
+    entry = _STREAM_ERROR_CLASSES.get(error_type)
+    if entry is not None:
+        code, message, preview, retryable = entry
+        return Classified(code, message, preview=preview, retryable=retryable)
+
+    # ``api_error`` 与中转站自造的私有 code（实测
+    # ``subscription_identity_review_unavailable``）都落在这里。
+    #
+    # 文案说「重试」而不是「服务不可用」——上游 message 明写
+    # "Please retry"，这是临时故障，不是服务挂了。
+    return Classified(
+        LLM_UPSTREAM_ERROR,
+        "模型服务在生成途中报错，请稍后重试",
+        preview="上游流内错误",
+        retryable=True,
+    )
 
 
 def _error_body(exc: BaseException) -> dict[str, Any]:
@@ -273,6 +350,56 @@ _STATUS_CLASSES: dict[int, tuple[str, str, str, bool]] = {
     ),
 }
 
+# 流内错误的 ``error.type`` → 分类。
+#
+# ## 为什么要单独一张表
+#
+# 流式请求的错误不走状态码：响应头发出时是 200，错误随后以 SSE
+# ``error`` 事件送达。Anthropic 官方说明这类错误**应当按与非流式
+# 相同的分支逻辑处理**——非流式下 ``overloaded_error`` 对应 529，
+# ``rate_limit_error`` 对应 429，流式下它们都藏在 body 的 ``error.type`` 里。
+#
+# 不查这张表的话，它们全都落进「状态码 200 → 兜底」，
+# 报成「模型服务暂时不可用」——把一个重试就能过的临时故障说成服务挂了。
+#
+# 键是上游的 ``error.type``；``code`` 字段（中转站自造的
+# ``subscription_identity_review_unavailable`` 之类）不在这张表里——
+# 那些是各家中转站的私有码，靠 ``api_error`` 这档兜住。
+#
+# 值是 (code, 文案, 短标签, 是否可重试)。
+_STREAM_ERROR_CLASSES: dict[str, tuple[str, str, str, bool]] = {
+    "overloaded_error": (
+        LLM_OVERLOADED,
+        "模型服务当前过载，请稍后重试",
+        "模型服务过载",
+        True,
+    ),
+    "rate_limit_error": (
+        LLM_RATE_LIMITED,
+        "模型服务限流，请稍后重试",
+        "模型服务限流",
+        True,
+    ),
+    "authentication_error": (
+        LLM_AUTH_FAILED,
+        "模型服务鉴权失败：API key 无效或已失效，请检查 ANTHROPIC_API_KEY",
+        "API key 无效",
+        False,
+    ),
+    "permission_error": (
+        LLM_PERMISSION_DENIED,
+        "模型服务拒绝访问：当前 key 没有该模型的权限",
+        "无模型权限",
+        False,
+    ),
+    "invalid_request_error": (
+        LLM_BAD_REQUEST,
+        "模型服务拒绝了这次请求，请稍后重试",
+        "请求被拒",
+        True,
+    ),
+}
+
 
 def classify_llm_error(exc: BaseException) -> Classified:
     """把模型服务的异常分类成一条具体的错误。
@@ -309,6 +436,14 @@ def classify_llm_error(exc: BaseException) -> Classified:
             "模型响应超时，请缩小问题范围后重试",
             preview="模型响应超时",
         )
+
+    # 流内错误**在状态码之前**判：它的 HTTP 状态码是 200（响应头先发，
+    # 错误随后以 SSE ``error`` 事件送达），查表必然落空 → 兜底成
+    # 「模型服务暂时不可用」。而上游 message 往往明说「Please retry」，
+    # 用户被引向「服务挂了等着吧」，实际重试一次就能过。
+    in_stream = _in_stream_error_classified(exc)
+    if in_stream is not None:
+        return in_stream
 
     status = _status_code(exc)
     if status is None:
