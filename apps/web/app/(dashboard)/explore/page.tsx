@@ -57,7 +57,7 @@ import {
 } from './components/FaithfulnessPanel'
 import { PromptInput } from './components/PromptInput'
 import { ResumeRunCard } from './components/ResumeRunCard'
-import { ApiError, apiStream, apiStreamGet, type SseEvent } from '@/lib/api/client'
+import { ApiError, type SseEvent } from '@/lib/api/client'
 import { clearChunkCache, fetchChunks } from '@/lib/api/sources'
 import { parseEvent } from '@/lib/api/sse'
 import { useStickToBottom } from '@/lib/hooks/useStickToBottom'
@@ -89,11 +89,8 @@ import {
   subscribeLastRun,
   writeLastRun,
 } from './lastRun'
-import {
-  clearActiveRunId,
-  readActiveRunId,
-  writeActiveRunId,
-} from './activeRun'
+import { writeActiveRunId } from './activeRun'
+import { useRunSession } from './useRunSession'
 import styles from './page.module.css'
 
 /**
@@ -264,11 +261,24 @@ function applyEventInner(event: SseEvent, h: RunHandlers): void {
     case 'run': {
       // 第一帧：这次研究的 run id + 问题原文。
       //
-      // 存下 run id，刷新 / 切页之后靠它接回这一轮（服务端持有会话，
-      // 生成不会因为连接断开而停）。
+      // run id 的**权威在 URL**（`useRunSession` 负责写进去）。这里存一份
+      // 到 localStorage 只是在「无 id 时找回这一轮」用（见 activeRun.ts）。
       const run = parseEvent<RunEventV>(event)
       writeActiveRunId(run.run_id)
-      h.setCurrentQuestion(run.question)
+      // **重置界面放在这里**，而不是在挂载 / 重连之前。
+      //
+      // 第一帧天然标记「新的一轮开始了」——之后的 delta、node、reference
+      // 都是这一轮的产物。放在这里清一次，重连时收到的回放就会把界面
+      // 重新填满（旧内容不会残留）。
+      //
+      // 为什么不放在 effect 里：effect 里同步 setState 会触发级联渲染
+      // （`react-hooks/set-state-in-effect` 规则），而且那一刻还不知道
+      // 要接的是哪一轮。
+      //
+      // 幂等：``run`` 回调里也调了一次 resetForRun（那里是为了立刻把
+      // 运行态标成 running、禁掉输入框，防重复提交）。两次调用的效果
+      // 相同 —— 第二次是「已经 running 的那一轮」被重置成同样的值。
+      resetForRun(h, run.question)
       break
     }
     case 'node': {
@@ -409,9 +419,15 @@ export default function ExplorePage() {
   const [nodes, setNodes] = useState<AgentNode[]>(initialNodes)
   const [streamedText, setStreamedText] = useState('')
   // 正文增长时自动跟随到底部；用户手动上滚则暂停跟随。
+  //
+  // **ref 由这里建、传给 hook**（不是 hook 建了再返回）。原因见
+  // `useStickToBottom` 的注释：hook 返回一个内嵌 ref 的对象时，
+  // ESLint 的 `react-hooks/refs` 规则会把整个返回值当成「可能是个
+  // ref」，渲染期读它的任何属性都报错。
+  const scrollRef = useRef<HTMLElement | null>(null)
   // 依赖传**正文长度**（单调递增），不传对象——对象每次渲染都是新引用，
   // 跟随逻辑会被反复触发。
-  const stick = useStickToBottom(streamedText.length)
+  const stick = useStickToBottom(scrollRef, streamedText.length)
   // 错误的完整信息：code + 文案 + 是否值得重试。
   //
   // 刻意不塞进一个字符串：banner 要同时显示「哪一类错误」（code）
@@ -450,12 +466,13 @@ export default function ExplorePage() {
   // A 的原文画到 B 的编号下面。
   const sourceTextToken = useRef(0)
 
-  // 中断用的 AbortController：用户重问或卸载页面时取消上一次请求。
-  const abortRef = useRef<AbortController | null>(null)
-  // 原文拉取单独一个 controller。不复用 abortRef——那个的命周期是「一轮
-  // 研究」，原文拉取是「一次点击」，两者该在不同的时机取消。共用一个会让
-  // 重问时把仍在飞的原文请求也 abort 掉（虽然令牌已经拦住了写 state，
-  // 但带宽还在白跑，一个长文档的 payload 能有十几 MB）。
+  // 原文拉取的 AbortController。点角标后拉全文，切换时要取消上一次。
+  //
+  // 研究流的连接由 `useRunSession` 自己管（它有独立的 controller）——
+  // 那条命周期是「一轮研究」，原文拉取是「一次点击」，两者该在不同的
+  // 时机取消。共用一个会让重问时把仍在飞的原文请求也 abort 掉（虽然
+  // 令牌已经拦住了写 state，但带宽还在白跑，一个长文档的 payload 能有
+  // 十几 MB）。
   const sourceAbortRef = useRef<AbortController | null>(null)
   // 当前这一轮的问题原文。**放 ref 而不是直接用 state**：``done`` 事件
   // 到达时要把它写进「上次研究」的本地记录，而那时 state 里的值可能
@@ -497,6 +514,52 @@ export default function ExplorePage() {
       },
     }
   }, [])
+
+  /**
+   * 把「HTTP 层的失败」变成一条错误信息。
+   *
+   * **已有 errorInfo 时不覆盖**——后端可能已经下发了 error 帧（带具体 code
+   * 与 retryable），而流是在那之后才断的。覆盖掉会把「模型连接中断」换成
+   * 笼统的「network_error」，正好丢掉我们要保留的信息。
+   *
+   * 用函数式更新读 prev：捕获的 setter 读不到闭包外的最新 state。
+   */
+  const reportStreamError = useCallback((err: unknown) => {
+    setErrorInfo((prev) => {
+      if (prev) return prev
+      // HTTP 层的错（后端 detail 已在 ApiError.message 里）或网络层的错。
+      // 两者都没有后端的 error 帧——开流之前后端还没发过。
+      const status = err instanceof ApiError ? err.status : null
+      const mapped = status != null ? HTTP_ERROR_CODES[status] : undefined
+      return {
+        code: mapped?.code ?? HTTP_ERROR_FALLBACK.code,
+        message: err instanceof Error ? err.message : '连接失败',
+        retryable: mapped?.retryable ?? HTTP_ERROR_FALLBACK.retryable,
+      }
+    })
+    // 守卫与 resolve 分支对称：结论已经收到时不能因为连接随后出错就清空。
+    setFaithfulness((prev) => (prev.kind === 'pending' ? { kind: 'abort' } : prev))
+    setRunState('completed')
+  }, [])
+
+  // 会话 hook 要用 buildHandlers，但 buildHandlers 定义在后面会形成
+  // 循环依赖。用 ref 破环：hook 的回调读 ref.current（总是最新的）。
+  //
+  // **ref 只在 effect 里写** —— 渲染期间写 ref 是 React 明令禁止的
+  // （`react-hooks/refs` 规则：渲染期间的 ref 值不可靠，React 可能
+  // 丢弃那次渲染）。
+  const handlersRef = useRef<RunHandlers | null>(null)
+  useEffect(() => {
+    handlersRef.current = buildHandlers()
+  })
+
+  const session = useRunSession({
+    onEvent: useCallback((event: SseEvent) => {
+      const h = handlersRef.current
+      if (h) applyEvent(event, h)
+    }, []),
+    onError: reportStreamError,
+  })
 
   const handleSelectNode = useCallback(
     (node: AgentNode) => {
@@ -561,110 +624,29 @@ export default function ExplorePage() {
     setInspectorOpen(false)
   }, [])
 
-  const run = useCallback(async (question: string) => {
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
-
-    questionRef.current = question
-    const handlers = buildHandlers()
-
-    resetForRun(handlers, question)
-    try {
-      await apiStream(
-        '/api/v1/research/ask',
-        { question },
-        (event) => applyEvent(event, handlers),
-        controller.signal,
-      )
-      settleFaithfulness(handlers)
-      setRunState((prev) => (prev === 'running' ? 'completed' : prev))
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      // 流中断的失败。**已有 errorInfo 时不覆盖**——后端可能已经下发了
-      // error 帧（带具体 code 与 retryable），而流是在那之后才断的。
-      // 覆盖掉会把「模型连接中断」换成笼统的「network_error」，正好丢掉
-      // 我们要保留的信息。
-      //
-      // 用函数式更新读 prev：handlers 里捕获的是稳定 setter，读不到
-      // 闭包外的最新 state。
-      setErrorInfo((prev) => {
-        if (prev) return prev
-        // HTTP 层的错（后端 detail 已在 ApiError.message 里）或网络层的错。
-        // 两者都没有后端的 error 帧——开流之前后端还没发过。
-        const status = err instanceof ApiError ? err.status : null
-        const mapped = status != null ? HTTP_ERROR_CODES[status] : undefined
-        return {
-          code: mapped?.code ?? HTTP_ERROR_FALLBACK.code,
-          message: err instanceof Error ? err.message : '连接失败',
-          retryable: mapped?.retryable ?? HTTP_ERROR_FALLBACK.retryable,
-        }
-      })
-      // 守卫与 resolve 分支对称：结论已经收到时不能因为连接随后出错就清空。
-      settleFaithfulness(handlers)
-      setRunState('completed')
-    }
-  }, [buildHandlers])
-
   /**
-   * 接回上一轮还在跑（或刚跑完）的研究。
+   * 发起一轮研究。
    *
-   * ## 为什么需要
-   *
-   * 以前生成绑在 HTTP 连接上——刷新、切页、关标签都会**终止生成**，
-   * 用户回来只看到一片空白。现在服务端持有会话（后端的 run 注册表），
-   * 连接只是订阅者，所以断开了可以接回来。
-   *
-   * ## 什么时候接
-   *
-   * 挂载时。本地记着 run id（`activeRun.ts`）就说明有一轮值得接。
-   * 接不上（run 过期被清理了）就安静地回到空态——不是错误，只是那一轮
-   * 已经不在了。
+   * 连接与 run id 的管理都在 `useRunSession` 里（它负责把 run id 写进
+   * URL）。这里只管「收到帧之后怎么落到 state 上」。
    */
-  const reconnect = useCallback(async () => {
-    const runId = readActiveRunId()
-    if (!runId) return
+  const run = useCallback(
+    async (question: string) => {
+      questionRef.current = question
+      const handlers = buildHandlers()
 
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
+      resetForRun(handlers, question)
 
-    const handlers = buildHandlers()
-    // 重连时问题原文还没到（它在第一帧里），先清空——第一帧会填上。
-    resetForRun(handlers, '')
-
-    try {
-      await apiStreamGet(
-        `/api/v1/research/runs/${encodeURIComponent(runId)}/stream`,
-        (event) => applyEvent(event, handlers),
-        controller.signal,
-      )
-      settleFaithfulness(handlers)
-      setRunState((prev) => (prev === 'running' ? 'completed' : prev))
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return
-      // 404 = 那一轮已经被 TTL 清理了（30 分钟没碰）。这不是错误——
-      // 回到空态即可，用户看到「尚未提问」比看到一条红色横幅合理。
-      if (err instanceof ApiError && err.status === 404) {
-        clearActiveRunId()
-        setRunState('idle')
-        setNodes(initialNodes())
-        return
-      }
-      setErrorInfo((prev) => {
-        if (prev) return prev
-        const status = err instanceof ApiError ? err.status : null
-        const mapped = status != null ? HTTP_ERROR_CODES[status] : undefined
-        return {
-          code: mapped?.code ?? HTTP_ERROR_FALLBACK.code,
-          message: err instanceof Error ? err.message : '连接失败',
-          retryable: mapped?.retryable ?? HTTP_ERROR_FALLBACK.retryable,
+      await session.start(question, (event) => {
+        applyEvent(event, handlers)
+        if (event.type === 'done') {
+          settleFaithfulness(handlers)
+          setRunState((prev) => (prev === 'running' ? 'completed' : prev))
         }
       })
-      settleFaithfulness(handlers)
-      setRunState('completed')
-    }
-  }, [buildHandlers])
+    },
+    [buildHandlers, session],
+  )
 
   const handleSlashSelect = useCallback((cmd: SlashCommand) => {
     setPromptValue(`${cmd.template} `)
@@ -676,13 +658,6 @@ export default function ExplorePage() {
       if (!trimmed) return
       if (runState === 'running') return
       setPromptValue('')
-      // 清掉旧的 run id。**必须清**：新 run 的第一帧要等一会儿才到
-      // （要走一遍鉴权、建 run、起后台任务），这段时间里本地记的
-      // 还是上一轮的 id——用户此时刷新，接回来的是**上一轮**的内容，
-      // 看起来像「我刚问的问题没跑」。
-      //
-      // 后端也会取消上一轮（`cancel_latest_for_user`），两边一致。
-      clearActiveRunId()
       void run(trimmed)
     },
     [runState, run],
@@ -701,38 +676,40 @@ export default function ExplorePage() {
     setPromptValue(value)
   }, [])
 
-  // 卸载时中断挂起的请求，否则组件没了 fetch 还在跑。
+  // 卸载时中断挂起的原文请求，否则组件没了 fetch 还在跑。
   //
-  // **只中断订阅，不终止生成**——生成在服务端跑着（后端的 run 注册表），
-  // 断开只是不再收帧。用户切回来时靠 reconnect 接回去。
+  // 研究流的连接由 `useRunSession` 自己清理（它有独立的 controller）。
+  //
+  // **中断订阅不等于终止生成**——生成在服务端跑着（后端的 run 注册表），
+  // 断开只是不再收帧。用户切回来时靠 URL 上的 run id 接回去。
   useEffect(
     () => () => {
-      abortRef.current?.abort()
       sourceAbortRef.current?.abort()
     },
     [],
   )
 
-  // 挂载时接回上一轮。
+  // 挂载时接回上一轮；URL 上的 run id 变了也重连。
   //
-  // **只在挂载时跑一次**（依赖数组空）。依赖 `reconnect` 会让它在每次
-  // 渲染后都重跑——那会不断重置界面、清掉正在显示的正文。
+  // **依赖 `session.runId`**：run id 在 URL 上，用户换一个链接（分享来的、
+  // 或者浏览器前进后退）就该接那一轮。依赖空数组的话只在挂载时接一次。
   //
   // ## 为什么不用 ref 守卫「只跑一次」
   //
   // StrictMode 下 effect 会 setup → cleanup → setup 跑两遍（开发模式的
   // 刻意行为，用来暴露副作用没清理干净的问题）。用 ref 守卫跳过第二次
-  // 反而会**弄坏它**：第一次的 reconnect 在 cleanup 里被 abort 了，第二次
-  // 又被守卫跳过——用户看到一片空白。
+  // 反而会**弄坏它**：第一次的连接在 cleanup 里被 abort 了，第二次又被
+  // 守卫跳过——用户看到一片空白。
   //
-  // `reconnect` 本身是幂等的：它先 abort 掉上一个订阅、再
-  // `resetForRun` 清空界面，然后重新订阅。重跑一次的结果是「干净地
-  // 重连一遍」，不会让正文重复（reset 之后服务端从头回放）。
+  // `connect` 本身是幂等的：它先 abort 掉上一个订阅、再重新订阅。重跑
+  // 一次的结果是「干净地重连一遍」，不会让正文重复（reset 之后服务端
+  // 从头回放）。
   useEffect(() => {
-    void reconnect()
-    // reconnect 是 useCallback([]) 出来的稳定引用，放进依赖里不会让它
-    // 反复触发。
-  }, [reconnect])
+    // 无 id 时 hook 会自己问后端「我最近一轮是什么」（用户从别的页面直接
+    // 点进 /explore 的情况），有就把 URL 补上再接回。
+    session.connect(session.runId)
+    // session.runId 是 URL 上的值——它变了就是「要接另一轮」。
+  }, [session.runId, session])
 
   const reportId = summary?.report_id ?? null
 
@@ -752,7 +729,7 @@ export default function ExplorePage() {
 
       <div className={styles.main}>
         {/* Center column: DAG + Streaming Report */}
-        <main className={styles.center} ref={stick.ref}>
+        <main className={styles.center} ref={scrollRef}>
           <AgentDAG
             onSelectNode={handleSelectNode}
             nodes={nodes}

@@ -37,15 +37,18 @@ run 注册表（内存）                     存 run id 到 localStorage
 
 | 文件 | 改动 |
 |---|---|
-| `app/services/runs.py` | **新**。run 注册表：事件缓冲 + 订阅广播 + 取消 |
+| `app/services/runs.py` | **新**。run 注册表：事件缓冲 + 订阅广播 + 按 id 取消 |
 | `app/services/tasks.py` | **新**。后台任务的统一入口（保住强引用） |
-| `app/gateway/research.py` | agent 移到后台任务；新增 `GET /runs/{id}/stream`；重问取消上一轮 |
+| `app/gateway/research.py` | agent 移到后台任务；新增 `GET /runs/{id}/stream` 与 `GET /runs/latest`；重问按 id 取消上一轮 |
+| `app/schemas/research.py` | `AskRequest` 加 `replace_run_id` |
 | `app/services/stream.py` | 新增 `RunEvent`（第一帧带 run id 与问题） |
 | `app/db.py` | 新增 `get_sessionmaker()`（后台任务用，可被 override） |
 | `apps/web/lib/api/client.ts` | 新增 `apiStreamGet`；解析逻辑抽成共用的 `consumeSse` |
 | `apps/web/lib/api/sse.ts` | 新增 `RunEventV` 镜像 |
-| `apps/web/app/(dashboard)/explore/activeRun.ts` | **新**。存当前 run id |
-| `apps/web/app/(dashboard)/explore/page.tsx` | 处理 `run` 帧；挂载时接回；重问时清 id |
+| `apps/web/app/(dashboard)/explore/useRunSession.ts` | **新**。连接与 run id 的生命周期；run id 写进 URL |
+| `apps/web/app/(dashboard)/explore/activeRun.ts` | **新**。最近一轮的 run id（只是回退线索） |
+| `apps/web/app/(dashboard)/explore/page.tsx` | 处理 `run` 帧；挂载时接回 |
+| `apps/web/lib/hooks/useStickToBottom.ts` | ref 改由调用方传入（见「踩过的坑」第 6 条） |
 
 **没有动 schema**（用户的决定：存内存）。不用写 Alembic 迁移。
 
@@ -115,7 +118,44 @@ run id 必须让前端知道才能接回。用响应头要额外配
 ### 5. StrictMode 双调用会重复订阅
 
 开发模式下 effect 跑两次。重复订阅让同一批帧被处理两次——正文重复。
-用 `reconnectedRef` 记住「已经接过了」。
+
+**第一版用 ref 守卫「只跑一次」，反而更糟**：第一次的连接在 cleanup 里被
+abort 了，第二次又被守卫跳过——dev 下页面空白（守卫 + abort 的组合把
+重连彻底掐死）。最后改成让连接函数**幂等**（先 abort 上一个、再重连），
+不设守卫。
+
+### 6. `useStickToBottom` 返回内嵌 ref 的对象 → ESLint 报「渲染期访问 ref」
+
+这个 hook 原来返回 `{ ref, paused, scrollToBottom }`。返回的对象里**嵌着
+一个 ref**，ESLint 的 `react-hooks/refs` 规则（v7，React Compiler 基础）
+把整个返回值当成「可能是个 ref」，于是在渲染期读它的任何属性
+（`stick.ref`、`stick.paused`）都被判错。
+
+同样的代码在加 `useRunSession` 之前是绿的 —— 编译器分析的对象图变了，
+规则的行为就变了。这说明**规则报的「哪里」不可信，要看它真正在防什么**。
+
+修法：ref 改由调用方建、传给 hook（`useStickToBottom(scrollRef, len)`），
+hook 返回的只有普通值与函数。这也是 React 里更常见的写法：ref 归组件所有。
+
+### 7. effect 里同步 setState → 级联渲染
+
+`react-hooks/set-state-in-effect` 规则：effect 体里同步调 setState 会
+触发级联渲染。
+
+「重连时清空界面」原本放在 effect 里。修法不是加 disable 注释，而是
+**把重置挪到「run 帧」里**（第一帧天然标记「新的一轮开始了」）——
+那样重连与新开跑走同一条路径，界面状态只有一处来源，而且 effect 里
+一个 setState 都不剩。
+
+### 8. 测试计时踩坑：`hold.wait(5.0)` 让「还在跑」的 run 提前收尾
+
+第一版测「按 id 取消」时，让 agent 卡 5 秒。但**每个请求的 context 退出
+都会等 agent 结束** —— 三个请求跑下来 95 秒，而且第一轮在第三轮发出前
+就已经收尾了（`closed=True` → 取消不了）。
+
+改成 spy：直接断言「端点把哪个 id 传给了 `cancel_by_id`」——那才是这条
+要守的契约（**按 id 精确**，不是按「用户最近一轮」）。取消本身由注册表
+层的测试守住。两层分开测，各测一件事，都快。
 
 ## 变异验证
 
@@ -126,6 +166,9 @@ run id 必须让前端知道才能接回。用响应头要额外配
 | 回放与实时重叠（正文发两遍） | `test_reconnect_does_not_duplicate_text` 等 | 7 条红 |
 | 取消只打标记不打断任务 | `test_cancel_interrupts_the_background_task` | 1 条红 |
 | 收尾的 run 立刻被删（重连无内容） | `test_registry_keeps_finished_run_for_replay` 等 | 5 条红 |
+| 端点忽略 `replace_run_id`（改回「取消最近一轮」） | `test_asking_again_cancels_only_the_named_run` | 1 条红 |
+| `cancel_by_id` 不校验归属 | `test_cancel_by_id_ignores_other_users_run` | 1 条红 |
+| `latest_for_user` 返回最旧的一轮 | `test_latest_run_returns_the_most_recent_one` | 1 条红 |
 
 每条都是**先改坏 → 跑测试 → 改回来**，跑完确认工作树无残留
 （`grep -c MUTATION` 为 0，671 pytest 全绿）。
@@ -135,13 +178,14 @@ run id 必须让前端知道才能接回。用响应头要额外配
 - **多 worker 部署时不同进程看不见彼此的 run**（本项目现在是单进程，不构成
   问题）
 - **进程重启丢未完成的 run**
-- **run id 存 localStorage，两个标签页会互相覆盖**。真正的问题不是「接错」
-  （接的是同一个 run，内容一致），而是「一个标签页的提问被另一个标签页
-  抢走」。彻底解决要把 run id 放进 URL——主流项目的做法，留到下一轮。
+- **run 在内存里，跨设备访问不了**。链接发给别人的时候，他打开会看到
+  404（那个 run 只在本进程内存里）。真要跨设备得把 run 落库。
+- **两个标签页各跑各的，但「重问」只取消自己那一轮**（按 URL 里的 id 精确
+  取消）—— 这正是 URL 方案带来的隔离。
 
 ## 门禁
 
-- 后端：670 pytest / ruff / mypy 全绿
+- 后端：679 pytest / ruff / mypy 全绿
 - 前端：tsc / eslint 全绿
 
 ## 关键链接

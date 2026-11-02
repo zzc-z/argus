@@ -308,3 +308,48 @@ async def test_registry_does_not_cancel_other_users_run() -> None:
 async def test_registry_cancel_is_noop_without_runs() -> None:
     """没有 run 时取消不能抛。"""
     await RunRegistry().cancel_latest_for_user(1)
+
+
+# ── 按 id 精确取消 ────────────────────────────────────────────
+
+
+async def test_cancel_by_id_cancels_the_named_run() -> None:
+    """按 id 取消——只取消这一个，不是「用户最近一轮」。"""
+    registry = RunRegistry()
+    old = registry.create(user_id=1, question="旧问题")
+    new = registry.create(user_id=1, question="新问题")
+
+    assert await registry.cancel_by_id(old.id, 1) is True
+    assert old.cancelled
+    assert not new.cancelled, "按 id 取消却把别的 run 也取消了"
+
+
+async def test_cancel_by_id_ignores_other_users_run() -> None:
+    """别人的 run 不能被取消。
+
+    ``replace_run_id`` 是客户端传来的 id——不校验归属的话，任何人都能
+    掐掉别人的研究。
+    """
+    registry = RunRegistry()
+    other = registry.create(user_id=2, question="别人的")
+
+    assert await registry.cancel_by_id(other.id, 1) is False
+    assert not other.cancelled
+
+
+async def test_cancel_by_id_returns_false_for_unknown_id() -> None:
+    """不存在的 id → False，不抛错。
+
+    「要取消的东西不存在」对用户没有可执行的动作，报错只会制造困惑。
+    """
+    registry = RunRegistry()
+    assert await registry.cancel_by_id("根本没这个 id", 1) is False
+
+
+async def test_cancel_by_id_returns_false_for_finished_run() -> None:
+    """已收尾的 run 取消不了（返回 False）——它已经跑完了，没什么可停的。"""
+    registry = RunRegistry()
+    run = registry.create(user_id=1, question="q")
+    await run.close()
+
+    assert await registry.cancel_by_id(run.id, 1) is False

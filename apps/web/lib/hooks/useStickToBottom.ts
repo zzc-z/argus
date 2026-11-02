@@ -27,14 +27,6 @@ import * as React from 'react'
  * 1px 的误差就判定「用户离开了底部」），又够紧（用户真的往上翻了
  * 100px 以上就该停）。
  */
-export interface StickToBottom {
-  /** 挂到滚动容器上的 ref。 */
-  ref: React.RefObject<HTMLElement | null>
-  /** 用户已上滚、跟随被暂停。 */
-  paused: boolean
-  /** 滚回底部，恢复跟随。 */
-  scrollToBottom: (behavior?: ScrollBehavior) => void
-}
 
 /** 距底部多少像素内算「还在底部」。 */
 const BOTTOM_THRESHOLD_PX = 100
@@ -42,23 +34,40 @@ const BOTTOM_THRESHOLD_PX = 100
 /**
  * 让滚动容器在内容增长时跟随底部。
  *
+ * ## 为什么 ref 由调用方传进来
+ *
+ * 早先这个 hook 自己建 ref 再返回 `{ ref, paused, scrollToBottom }`。
+ * 那样返回的对象里**嵌着一个 ref**，ESLint 的 `react-hooks/refs` 规则
+ * 会把整个返回值当成「可能是个 ref」，于是在渲染期读它的任何属性
+ * （`stick.ref`、`stick.paused`）都被判成「渲染期访问 ref」而报错。
+ *
+ * 改成「调用方建 ref、传进来」之后，hook 返回的只有普通值与函数，
+ * 规则无从误判 —— 而且这本来就是 React 里更常见的写法：ref 归组件所有。
+ *
+ * @param ref 滚动容器的 ref。**由调用方建**（`useRef`）。
  * @param content 依赖它变化的「内容长度」——用它触发跟随。它必须是**单调
  *   递增**的（流式文本的长度正合适）。用对象或数组当依赖会每次渲染都变，
  *   导致跟随逻辑被反复触发。
+ * @returns 跟随状态与操作。**不含 ref**（见上）。
  */
-export function useStickToBottom(content: number): StickToBottom {
-  const ref = React.useRef<HTMLElement | null>(null)
+export function useStickToBottom(
+  ref: React.RefObject<HTMLElement | null>,
+  content: number,
+): { paused: boolean; scrollToBottom: (behavior?: ScrollBehavior) => void } {
   const [paused, setPaused] = React.useState(false)
   // 用 ref 存「是否跟随」，避免每次 setState 都触发闭包重建。
   const followingRef = React.useRef(true)
 
-  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = 'smooth') => {
-    const el = ref.current
-    if (!el) return
-    followingRef.current = true
-    setPaused(false)
-    el.scrollTo({ top: el.scrollHeight, behavior })
-  }, [])
+  const scrollToBottom = React.useCallback(
+    (behavior: ScrollBehavior = 'smooth') => {
+      const el = ref.current
+      if (!el) return
+      followingRef.current = true
+      setPaused(false)
+      el.scrollTo({ top: el.scrollHeight, behavior })
+    },
+    [ref],
+  )
 
   // 用户手动滚动 → 判断他是在往上看还是在回底部。
   //
@@ -82,7 +91,7 @@ export function useStickToBottom(content: number): StickToBottom {
 
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
-  }, [])
+  }, [ref])
 
   // 内容增长 → 跟随到底。
   React.useEffect(() => {
@@ -95,7 +104,7 @@ export function useStickToBottom(content: number): StickToBottom {
     // 此刻的 scrollHeight 不是最终底部——下一轮内容增长时会再校正一次，
     // 误差只有一片的高度。
     el.scrollTop = el.scrollHeight
-  }, [content])
+  }, [ref, content])
 
-  return { ref, paused, scrollToBottom }
+  return { paused, scrollToBottom }
 }

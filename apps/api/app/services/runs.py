@@ -241,11 +241,37 @@ class RunRegistry:
         return latest
 
     async def cancel_latest_for_user(self, user_id: int) -> None:
-        """取消这个用户最近的一个 run（如果还在跑）。"""
+        """取消这个用户最近的一个 run（如果还在跑）。
+
+        只在**没有指定 run id** 时用——见 :meth:`cancel_by_id`。
+        """
         run = self.latest_for_user(user_id)
         if run is None or run.closed:
             return
         await run.cancel()
+
+    async def cancel_by_id(self, run_id: str, user_id: int) -> bool:
+        """取消指定的那一轮。返回是否真的取消了。
+
+        ## 为什么按 id 而不是「用户最近一轮」
+
+        用户可能开着两个标签页各跑一个研究。按「最近一轮」取消的话，
+        第二个标签页一提问就把第一个标签页的生成掐掉了——那一个标签页
+        的人正盯着正文往上长，突然停了。
+
+        前端知道**自己**这个标签页正在跑哪一轮（URL 里的 run id），
+        所以精确传上来，服务端只取消这一个。
+
+        ## 别人的 id 一律忽略
+
+        返回 False 而不是抛错：「要取消的东西不存在或不是你的」对用户
+        没有可执行的动作，报错只会制造困惑。
+        """
+        run = self.get(run_id)
+        if run is None or run.user_id != user_id or run.closed:
+            return False
+        await run.cancel()
+        return True
 
     def clear(self) -> None:
         """清空全部 run。测试用——单例跨用例残留会互相干扰。"""

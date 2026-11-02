@@ -285,3 +285,129 @@ async def test_slot_is_released_after_the_run_finishes(
         await asyncio.sleep(0.01)
 
     assert not research_module._slots.locked(), "研究结束后槽位没归还"
+
+
+# ── URL 方案：按 id 精确取消 + 最近一轮查询 ──────────────────
+
+
+async def test_asking_again_cancels_only_the_named_run(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """重问时取消的是**指定的那一轮**，不是「用户最近一轮」。
+
+    ## 要防的回归
+
+    用户可能开着两个标签页各跑一个研究。按「用户最近一轮」取消的话，
+    第二个标签页一提问就把第一个标签页的生成掐掉——那一个标签页的人
+    正盯着正文往上长，突然停了。
+
+    前端知道**自己**这个标签页正在跑哪一轮（URL 里的 run id），所以
+    精确传上来。
+
+    ## 为什么用 spy 而不是真的取消
+
+    真的取消需要让 run 一直「在跑」，而 agent 卡住会让每个请求等它结束
+    ——实测三个请求就跑了 95 秒。而且真跑起来时「那一轮是否已收尾」
+    成了时序问题，测的是时序不是行为。
+
+    spy 直接断言「端点把哪个 id 传给了 cancel_by_id」——那才是这条要守
+    的契约（**按 id 精确**，不是按「用户最近一轮」）。取消本身由
+    ``test_cancel_by_id_cancels_the_named_run``（注册表层）守住。
+    """
+    seen: list[tuple[str, int]] = []
+    real_cancel = get_run_registry().cancel_by_id
+
+    async def _spy(run_id: str, user_id: int) -> bool:
+        seen.append((run_id, user_id))
+        return await real_cancel(run_id, user_id)
+
+    async def _agent(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _agent)
+    monkeypatch.setattr(get_run_registry(), "cancel_by_id", _spy)
+
+    target = "some-run-id"
+    with client.stream(
+        "POST",
+        "/api/v1/research/ask",
+        json={"question": "q", "replace_run_id": target},
+    ) as resp:
+        resp.read()
+
+    assert seen, "端点没有调用 cancel_by_id——replace_run_id 没被处理"
+    assert seen[0][0] == target, f"取消的是 {seen[0][0]}，不是前端指定的 {target}"
+
+
+async def test_replace_run_id_ignores_other_users_run(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """别人的 run 不能被取消。
+
+    ``replace_run_id`` 是客户端传来的 id——不校验归属的话，任何人都能
+    掐掉别人的研究。
+    """
+
+    async def _agent(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
+
+    await _login(client, api_db, tag="owner")
+    monkeypatch.setattr(research_module, "run_agent", _agent)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "q"}) as resp:
+        resp.read()
+    owner_run_id = _only_run_id()
+
+    # 换成另一个用户，试着取消 owner 的 run
+    client.cookies.set(SESSION_COOKIE, "")
+    await _login(client, api_db, tag="intruder")
+
+    with client.stream(
+        "POST",
+        "/api/v1/research/ask",
+        json={"question": "q2", "replace_run_id": owner_run_id},
+    ) as resp:
+        resp.read()
+
+    owner_run = get_run_registry().get(owner_run_id)
+    assert owner_run is not None
+    assert not owner_run.cancelled, "别人的 run 被取消了——鉴权漏了"
+
+
+async def test_latest_run_returns_the_most_recent_one(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """``GET /runs/latest`` 返回最近一轮的 id 与问题。
+
+    前端从别的页面直接点进 ``/explore``（地址栏里没有 run id）时靠它
+    找回当前那一轮，并把 id 补进 URL。
+    """
+
+    async def _agent(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _agent)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "第一个问题"}) as resp:
+        resp.read()
+    first_id = _only_run_id()
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "第二个问题"}) as resp:
+        resp.read()
+
+    resp = client.get("/api/v1/research/runs/latest")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["run_id"] != first_id, "返回的不是最近一轮"
+    assert body["question"] == "第二个问题"
+
+
+async def test_latest_run_returns_404_without_any_run(
+    client: TestClient, api_db: AsyncSession
+) -> None:
+    """没有任何 run 时 404——前端据此停在空态。"""
+    await _login(client, api_db)
+    resp = client.get("/api/v1/research/runs/latest")
+    assert resp.status_code == 404

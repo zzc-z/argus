@@ -19,6 +19,24 @@ class AskRequest(BaseModel):
         description="要研究的问题。空字符串或纯空白会被拒绝。",
     )
 
+    replace_run_id: str | None = Field(
+        default=None,
+        description=(
+            "这一轮要**取代**的 run id（同一标签页里重问时传上一轮的 id）。"
+            "服务端会取消它——不取消的话上一轮会继续烧 token 并占着并发槽位。"
+        ),
+    )
+    """要取代的 run id。
+
+    **为什么按 id 而不是「用户最近一轮」。** 用户可能开着两个标签页各跑
+    一个研究——按「最近一轮」取消的话，第二个标签页一提问就把第一个
+    标签页的生成掐掉了。前端知道**自己**这个标签页正在跑哪一轮（URL
+    里的 run id），所以精确传上来，服务端只取消这一个。
+
+    别的用户或不存在的 id 一律忽略（不报错）——那只是「没有要取消的
+    东西」，不是用户的错。
+    """
+
     @field_validator("question")
     @classmethod
     def _not_blank(cls, value: str) -> str:

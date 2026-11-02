@@ -91,23 +91,62 @@ data: {"type":"run","v":{"run_id":"...","question":"..."}}
 流以**显式的结束标记**（`EndOfRun` 哨兵）结束，由跑 run 的那侧在收尾时
 发出。
 
-### 3.6 前端
+### 3.6 前端：run id 在 URL 上
+
+run id 放在 **`/explore?run=xxx`** 的查询参数里。这不只是「刷新能恢复」——
+它带来三件别处得不到的东西：
+
+1. **可分享**：把链接发给别人，对方打开看到同一轮研究
+2. **可收藏**：浏览器的收藏夹能存住某一轮研究
+3. **多标签页隔离**：每个标签页有自己的 URL，各跑各的，互不干扰
+
+第三条是 localStorage 方案做不到的 —— 它是全局一份，两个标签页会互相
+覆盖（一个标签页的提问被另一个抢走）。
 
 | 文件 | 职责 |
 |---|---|
 | `lib/api/client.ts` | 新增 `apiStreamGet`（GET 版 SSE），解析逻辑与 POST 共用 `consumeSse` |
 | `lib/api/sse.ts` | 新增 `RunEventV` 镜像类型 |
-| `explore/activeRun.ts` | 存当前 run id 到 localStorage |
-| `explore/page.tsx` | 处理 `run` 帧；挂载时接回上一轮；重问时清掉旧 id |
+| `explore/useRunSession.ts` | **新**。连接与 run id 的生命周期：发起 / 接回 / 写 URL |
+| `explore/activeRun.ts` | 存最近一轮的 run id 到 localStorage（**只是回退线索**） |
+| `explore/page.tsx` | 处理 `run` 帧；挂载时接回 |
 
-**挂载时接回**：`useEffect` 跑一次 `reconnect()`——拿本地记的 run id 调
-`GET /runs/{id}/stream`。接不上（404 = 被 TTL 清理）就安静回到空态。
+**URL 是权威，localStorage 只是线索**：用户从别的页面直接点进 `/explore`
+（地址栏里没有 run id）时，问一次后端「我最近一轮是什么」，拿到就把 URL
+补上（`replaceState`），照常接回。
 
-**StrictMode 双调用**：开发模式下 effect 会跑两次。用 `reconnectedRef`
-记住「已经接过了」，第二次跳过——重复订阅会让同一批帧处理两次，正文重复。
+**为什么用 `window.history.replaceState` 而不是 `router.replace`**：本项目
+开了 `typedRoutes`，`router.replace` 只接受**字面量**路由（动态拼出来的
+字符串编译不过）。而这里改的只是查询参数、路径不变 —— Next 官方文档给的
+正是这个用法（`docs/01-app/02-guides/single-page-applications.md`）。Next
+会 patch `history.replaceState`，所以 `useSearchParams` 会跟着更新。
 
-**重问时清 id**：新 run 的第一帧要等一会儿才到，这段时间本地记的还是
-上一轮的 id——用户此时刷新会接回**上一轮**，看起来像「我刚问的问题没跑」。
+**`replaceState` 而非 `pushState`**：重问不该让浏览器后退键回到上一轮 ——
+用户按后退期待的是离开这个页面，不是看上一轮的报告。
+
+**重置界面的时机**：放在「run 帧」里（第一帧），不放在 effect 里。第一帧
+天然标记「新的一轮开始了」；而且 effect 里同步 setState 会触发级联渲染
+（`react-hooks/set-state-in-effect` 规则）。重连与新开跑因此走同一条路径，
+界面状态只有一处来源。
+
+### 3.7 后端：按 id 精确取消
+
+`AskRequest` 加了 `replace_run_id`。提新问题时取消**它**。
+
+**为什么按 id 而不是「用户最近一轮」**：用户可能开着两个标签页各跑一个
+研究。按「最近一轮」取消的话，第二个标签页一提问就把第一个标签页的生成
+掐掉 —— 那一个标签页的人正盯着正文往上长，突然停了。前端知道自己那个
+标签页正在跑哪一轮（URL 里的 id），精确传上来。
+
+别人的 id 一律忽略（不报错）——「要取消的东西不存在或不是你的」对用户
+没有可执行的动作。
+
+### 3.8 后端：`GET /runs/latest`
+
+用户从别的页面直接点进 `/explore`（没有 run id）时的回退：返回最近一轮的
+id 与问题。只给 id 不给内容 —— 内容要走 SSE 重放（那才是一致的那一份）。
+
+404 = 没有过 run，前端停在空态。
 
 ## 4. 存哪里
 
@@ -123,10 +162,8 @@ data: {"type":"run","v":{"run_id":"...","question":"..."}}
   （`uvicorn app.main:app`），不构成问题；要多 worker 时得换共享存储
   （Redis / Postgres）。
 - **进程重启丢未完成的 run**。
-- **run id 存 localStorage，两个标签页会互相覆盖**。真正的问题不是
-  「接错」（接的是同一个 run，内容一致），而是「一个标签页的提问被
-  另一个标签页抢走」。彻底解决要把 run id 放进 URL——主流项目的做法，
-  留到下一轮。
+- **run 在内存里，跨设备访问不了**。链接发给别人的时候，他打开会看到
+  404（那个 run 只在本进程内存里）。真要跨设备得把 run 落库。
 
 ## 5. TTL
 

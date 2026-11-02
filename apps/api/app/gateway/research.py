@@ -127,10 +127,15 @@ async def ask(
     _reject_if_llm_unconfigured()
 
     registry = get_run_registry()
-    # 提新问题时取消上一轮。生成现在跑在服务端，不取消的话它会继续烧
+    # 提新问题时取消**上一轮**。生成现在跑在服务端，不取消的话它会继续烧
     # token（一次研究几十万）并占着并发槽位（闸门只有 4 个）。
     # 旧行为（生成绑在连接上）本来就是「重问 = 上一轮停」。
-    await registry.cancel_latest_for_user(user.id)
+    #
+    # **按 id 精确取消**，不按「用户最近一轮」：用户可能开着两个标签页
+    # 各跑一个研究，按「最近一轮」会把另一个标签页的生成掐掉。前端把
+    # 自己那一轮的 id 传上来（URL 里的那个），服务端只取消它。
+    if payload.replace_run_id:
+        await registry.cancel_by_id(payload.replace_run_id, user.id)
 
     run = registry.create(user_id=user.id, question=payload.question)
 
@@ -183,6 +188,32 @@ async def stream_run(run_id: str, user: CurrentUser) -> StreamingResponse:
         media_type="text/event-stream",
         headers=_SSE_HEADERS,
     )
+
+
+@router.get("/runs/latest", summary="当前用户最近的一轮研究")
+async def latest_run(user: CurrentUser) -> dict[str, str]:
+    """取当前用户最近的一轮研究（只要 id 与问题，不给事件流）。
+
+    ## 为什么需要这个端点
+
+    run id 在 **URL** 上（主流项目的做法）。但用户从别的页面直接点进
+    ``/explore``（地址栏里没有 run id），那一轮就接不回来了 —— 他会看到
+    一片空白，以为自己刚才白问了。
+
+    这个端点给「无 id 时的回退」：前端在 ``/explore``（没 id）时问一次
+    「我最近一轮是什么」，拿到 id 就把 URL 补上（``replaceState``），
+    然后照常接回。
+
+    ## 只给 id 不给内容
+
+    内容要走 SSE 重放（那才是一致的那一份）。这个端点只是**找到它**。
+
+    404 = 没有过 run（或者都过期了）。前端据此停在空态。
+    """
+    run = get_run_registry().latest_for_user(user.id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "没有进行中的研究")
+    return {"run_id": run.id, "question": run.question}
 
 
 async def _try_acquire_slot() -> bool:
