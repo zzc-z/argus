@@ -52,6 +52,14 @@ run 注册表（内存）                     存 run id 到 localStorage
 | `apps/web/app/(dashboard)/explore/components/PromptInput/index.tsx` | 输入框 ref 透出（「新建会话」后聚焦） |
 | `apps/web/lib/hooks/useStickToBottom.ts` | ref 改由调用方传入（见「踩过的坑」第 6 条） |
 
+### 后续两个 commit
+
+| commit | 内容 |
+|---|---|
+| `990b904` | run id 放进 URL —— 多标签页隔离 + 可分享 |
+| `292a0c8` | 「新建会话」+ 取消时保留已生成的正文 |
+| `3f116ad` | 修反复重连导致的「一下全出 + 页面卡」（见「踩过的坑」第 10 条） |
+
 **没有动 schema**（用户的决定：存内存）。不用写 Alembic 迁移。
 
 ## 关键设计点
@@ -174,6 +182,47 @@ turn 只 yield text 不 yield result，落盘就是空的，一看就知道。
 要守的契约（**按 id 精确**，不是按「用户最近一轮」）。取消本身由注册表
 层的测试守住。两层分开测，各测一件事，都快。
 
+### 10. 最贵的坑：`useSearchParams()` 每次渲染都是新对象 → 反复重连
+
+**这个坑让我把「流式输出变成一下全出 + 页面卡」背了 3 个 commit。**
+
+链条：
+
+```
+useSearchParams() 每次渲染新对象（Next 不做 memo）
+  → writeRunIdToUrl 的 useCallback 依赖里放了它 → 回调每次渲染都变
+    → start 跟着变 → hook 返回的 session 每次渲染都是新对象
+      → 页面的 effect（依赖 [session]）每次渲染都重跑
+        → 每次都重连 → 服务端把缓冲里的正文**一次性回放**
+          → 「一下全出」+ 连接反复重建 → 页面卡
+```
+
+实测证据：同一个 run 被订阅了 **39314 次**（后端 access log 数出来的）。
+
+**ESLint 的 `exhaustive-deps` 不报这个** —— 它只检查「依赖有没有漏」，
+不检查「依赖是不是稳定」。这是那条规则的盲区，我该自己想到的。
+
+修法两处，**缺一不可**：
+
+1. 用 ref 读最新的 searchParams（`searchParamsRef`），依赖里换成稳定的
+2. **hook 的返回值用 `useMemo` 包起来** —— 页面 effect 依赖整个对象
+   （lint 规则要求），「安全」的前提就是它 memo 了
+
+我第一次只改了 1，症状没消 —— 因为 `session` 本身还是每次新对象。
+
+**教训**：给 hook 写返回值时，要问一句「这个对象每次渲染都是新的吗」。
+如果它会被放进别人的 effect 依赖里，就必须 memo。
+
+### 11. 规则报的「哪里」不可信
+
+`react-hooks/refs` 在 `stick.ref` / `stick.paused` 上报错 —— 那两行我
+**根本没动**。同一份代码在加 `useRunSession` 之前是绿的：编译器分析的
+对象图变了，规则行为就跟着变。
+
+**规则防的是「渲染期读 ref 可能拿到不一致的值」**，而我读的是 `paused`
+（普通 state）。真正要改的是**结构**（ref 由调用方建、传进 hook），
+而不是加 disable 注释。
+
 ## 变异验证
 
 | 变异 | 抓到它的测试 | 结果 |
@@ -207,6 +256,11 @@ turn 只 yield text 不 yield result，落盘就是空的，一看就知道。
 
 - 后端：685 pytest / ruff / mypy 全绿
 - 前端：tsc / eslint 全绿
+- 真实浏览器验证（Playwright）：
+  - 重连次数 39314 → **每个 run 1 次**
+  - 流式：正文每帧 **~100ms / 每次 +8 字**，90 次变化
+  - 页面帧间隔中位 **17ms**（60fps 满帧），最大 19ms —— 不卡
+  - 刷新后内容完整保留（1535 字一字不差，URL 不变）
 
 ## 关键链接
 

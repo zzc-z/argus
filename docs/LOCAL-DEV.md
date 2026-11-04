@@ -233,12 +233,68 @@ pnpm --filter web exec tsc --noEmit
     时不同进程看不见彼此的 run（本项目现在是单进程，不构成问题）。
   - run 保留 **30 分钟**（`RUN_TTL_SECONDS`）。**不能按「已收尾」删**——
     完成的那一刻删掉，用户切回来看到空白。
-  - 重问会取消上一轮（`cancel_latest_for_user`）。生成在服务端跑着，
-    不取消的话上一轮继续烧 token、继续占并发槽位（闸门只有 4 个）。
+  - 重问会取消上一轮，**按 id 精确取消**（`cancel_by_id` + 前端传的
+    `replace_run_id`）。**不能按「用户最近一轮」**——用户可能开着两个
+    标签页各跑一个，按「最近一轮」会把另一个标签页的生成掐掉。
+    生成在服务端跑着，不取消的话上一轮继续烧 token、继续占并发槽位
+    （闸门只有 4 个）。
+  - run id 在 **URL** 上（`/explore?run=xxx`），localStorage 只是「无 id
+    时找回这一轮」的线索。
+  - 「新建会话」= `DELETE /runs/{id}` + URL 去掉 run 参数。取消时**已生成
+    的那半截正文会落盘**（标 `truncated=True`）——主流项目也是这个行为
+    （ChatGPT 的停止按钮）。
 - **后台任务的 DB session 必须走依赖注入**（`app/db.py` 的
   `get_sessionmaker`）。直接调 `SessionLocal()` 是普通函数调用，
   `dependency_overrides` 对它无效——测试里后台任务会静悄悄连上开发库
   `argus.db`，症状是「测试全绿，但开发库被写了」。
+- **`useSearchParams()` 返回的每次渲染都是新对象**（Next 不做 memo）。
+  放进任何 `useCallback` 的依赖里 → 那个回调每次渲染都变 → 依赖它的
+  effect 每次渲染都重跑。
+
+  **这个坑的实际代价（2026-11-04 实测）**：explore 页的 effect 依赖
+  `session` 对象（hook 的返回值），而 `session` 的身份取决于内部那些
+  回调 —— 链条：`useSearchParams` → `writeRunIdToUrl` → `start` →
+  `session` → effect → **每次渲染都重连**。重连时服务端把缓冲里的正文
+  一次性回放，用户看到「一下全出」，连接被反复重建 → 页面卡。
+  实测同一个 run 被订阅了 **39314 次**。
+
+  **ESLint 的 `exhaustive-deps` 不会报这个** —— 它只检查「依赖有没有漏」，
+  不检查「依赖是不是稳定」。这是那条规则的盲区。
+
+  两处都要做，缺一不可：
+  1. 用 ref 读最新的 `searchParams`（`searchParamsRef`），依赖里换成
+     稳定的东西
+  2. **hook 的返回值用 `useMemo` 包起来** —— 页面 effect 依赖整个对象
+     （lint 规则要求），「安全」的前提就是它 memo 了
+
+- **hook 返回「内嵌 ref 的对象」会被 ESLint 判成「渲染期访问 ref」**。
+  `react-hooks/refs` 规则（v7，React Compiler 基础）把「返回对象里含
+  ref」的值整体当成「可能是个 ref」，于是在渲染期读它的**任何**属性都
+  报错（`stick.ref`、`stick.paused` 都中招）。
+
+  同一份代码在加了一个 hook 之前是绿的 —— 编译器分析的对象图变了，
+  规则行为就跟着变。**规则报的「哪里」不可信，要看它真正在防什么**
+  （它防的是「渲染期读 ref 可能拿到不一致的值」，而那时读的是 state）。
+
+  修法：ref 改由调用方建、传进 hook（`useStickToBottom(scrollRef, len)`），
+  hook 返回的只有普通值与函数。这也是 React 里更常见的写法：ref 归组件所有。
+
+- **`CancelledError` 继承 `BaseException` 而不是 `Exception`**。所以
+  `except Exception` **捕不到**它 —— 取消路径要单独一个分支
+  （`app/services/agent.py` 的 `run_agent` 里那个）。想判「是不是取消」
+  用 `except asyncio.CancelledError:`，它会先于 `except Exception` 命中。
+
+- **取消 run 时要 `await` 后台任务结束**（`runs.py` 的 `Run.cancel`）。
+  agent 捕到 `CancelledError` 后的落盘是 `await` ——不等的话结束标记先发，
+  随后那个带 `report_id` 的 `done` 帧没人收，那份落盘的报告成了**孤儿**
+  （用户看不到「查看完整报告」的入口）。
+
+- **取消时用户已看到的正文要落盘**（`agent.py` 的正文攒取是**边流边攒**）。
+  `report_body` 原来只从 `result.text` 攒（那一轮的**收尾**），而正文是
+  边收边发的 —— 取消发生在一轮中途时，用户看到的那半截正文既不在
+  `result.text` 里也不在 `report_body` 里，落盘出来是空的。变量要放在
+  **循环外面**（取消分支是循环外的 `except` 块，看不到循环内的局部变量）。
+
 - **`TestClient` 里的 `asyncio.Event` 不能跨循环用**。`TestClient` 把 app
   跑在另一个线程的另一个事件循环里（portal），测试代码跑在 pytest-asyncio
   的循环里——`asyncio.Event` 绑定创建它的那��循环，跨循环 `set()` 不唤醒
@@ -253,4 +309,4 @@ pnpm --filter web exec tsc --noEmit
 - [docs/SPEC-streaming-typewriter.md](SPEC-streaming-typewriter.md) — 流式打字机与滚动跟随的规格
 - [docs/WORKLOG-streaming-typewriter.md](WORKLOG-streaming-typewriter.md) — 那一轮的进展记录与未完成项
 - [docs/SPEC-run-session.md](SPEC-run-session.md) — 研究会话（run）与可重连的流的规格
-- [docs/WORKLOG-run-session.md](WORKLOG-run-session.md) — 那一轮的进展记录与踩过的坑
+- [docs/WORKLOG-run-session.md](WORKLOG-run-session.md) — 那一轮的进展记录与踩过的坑（含「新建会话」与重连修复）
