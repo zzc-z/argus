@@ -756,8 +756,16 @@ export default function ExplorePage() {
     // 无 id 时 hook 会自己问后端「我最近一轮是什么」（用户从别的页面直接
     // 点进 /explore 的情况），有就把 URL 补上再接回。
     session.connect(session.runId)
-    // session.runId 是 URL 上的值——它变了就是「要接另一轮」。
-  }, [session.runId, session])
+    // 依赖里放**整个 session**（不是 runId）—— 但这**安全**，因为
+    // `useRunSession` 把返回值 memo 了，身份只在内容真的变了时才变。
+    //
+    // 这里曾经是 bug 的根源：hook 还没 memo 时，session 每次渲染都是新
+    // 对象 → effect 每次渲染都重跑 → 每次都重连 → 服务端把缓冲里的正文
+    // **一次性回放** → 用户看到「一下全出」，连接被反复重建 → 页面卡。
+    //
+    // 所以真正的前提是「hook 的返回值必须 memo」——那条在 hook 里，
+    // 注释也写在那儿。
+  }, [session])
 
   const reportId = summary?.report_id ?? null
 

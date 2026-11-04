@@ -107,9 +107,21 @@ export function useRunSession({ onEvent, onError }: UseRunSessionOptions): RunSe
   // （`react-hooks/refs` 规则：渲染期间的 ref 值不可靠）。
   const onEventRef = React.useRef(onEvent)
   const onErrorRef = React.useRef(onError)
+  // 「最新 searchParams」的 ref 模式。
+  //
+  // `useSearchParams()` 返回的**每次渲染都是新对象**（Next 不做 memo）。
+  // 把它放进任何 useCallback 的依赖里 → 那个回调每次渲染都变 → 页面上
+  // 依赖它的 effect 每次渲染都重跑 → **连接被反复重建**。
+  //
+  // 症状很具体：服务端把缓冲里的正文一次性回放，用户看到「一下全出」，
+  // 而且连接被反复重建 → 页面卡。
+  //
+  // 所以用 ref 读最新的值，回调的身份保持稳定。
+  const searchParamsRef = React.useRef(searchParams)
   React.useEffect(() => {
     onEventRef.current = onEvent
     onErrorRef.current = onError
+    searchParamsRef.current = searchParams
   })
 
   const disconnect = React.useCallback(() => {
@@ -133,11 +145,11 @@ export function useRunSession({ onEvent, onError }: UseRunSessionOptions): RunSe
    */
   const writeRunIdToUrl = React.useCallback(
     (id: string) => {
-      const params = new URLSearchParams(searchParams.toString())
+      const params = new URLSearchParams(searchParamsRef.current.toString())
       params.set('run', id)
       window.history.replaceState(null, '', `${pathname}?${params.toString()}`)
     },
-    [pathname, searchParams],
+    [pathname],
   )
 
   const findLatest = React.useCallback(async (): Promise<string | null> => {
@@ -272,7 +284,7 @@ export function useRunSession({ onEvent, onError }: UseRunSessionOptions): RunSe
     //
     // `replaceState` 不加历史记录：用户按后退键期待的是离开这个页面，
     // 不是回到刚才那一轮。
-    const params = new URLSearchParams(searchParams.toString())
+    const params = new URLSearchParams(searchParamsRef.current.toString())
     params.delete('run')
     const query = params.toString()
     window.history.replaceState(null, '', query ? `${pathname}?${query}` : pathname)
@@ -282,7 +294,7 @@ export function useRunSession({ onEvent, onError }: UseRunSessionOptions): RunSe
     // 不清的话，下次进 /explore 的回退逻辑会问后端「最近一轮是什么」，
     // 拿到刚才那个已被取消的 run，接回来一个空界面。
     clearActiveRunId()
-  }, [runId, pathname, searchParams])
+  }, [runId, pathname])
 
   // 卸载时断开连接（**不终止生成**——生成在服务端跑着）。
   React.useEffect(
@@ -292,5 +304,14 @@ export function useRunSession({ onEvent, onError }: UseRunSessionOptions): RunSe
     [],
   )
 
-  return { runId, connect, start, disconnect, findLatest, newSession }
+  // 返回的对象**必须 memo**。
+  //
+  // 调用方会把它放进 effect 的依赖里（`[session.runId, session]`）。
+  // 不 memo 的话每次渲染都是新对象 → effect 每次渲染都重跑 → 每次都
+  // 重连 → 服务端把缓冲里的正文**一次性回放** → 用户看到「一下全出」，
+  // 而且连接被反复重建 → 页面卡。
+  return React.useMemo(
+    () => ({ runId, connect, start, disconnect, findLatest, newSession }),
+    [runId, connect, start, disconnect, findLatest, newSession],
+  )
 }
