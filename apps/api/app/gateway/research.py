@@ -216,6 +216,30 @@ async def latest_run(user: CurrentUser) -> dict[str, str]:
     return {"run_id": run.id, "question": run.question}
 
 
+@router.delete("/runs/{run_id}", summary="取消一轮正在进行的研究")
+async def cancel_run(run_id: str, user: CurrentUser) -> dict[str, bool]:
+    """取消一轮正在跑的研究。
+
+    ## 为什么需要
+
+    「新建会话」时，上一轮若还在跑，它会继续烧 token、继续占着并发槽位
+    （闸门只有 4 个）。而生成现在跑在服务端，**客户端断开不会终止它**
+    ——所以必须显式取消。
+
+    ## 取消不是失败
+
+    取消时已生成的那半截正文会**落盘**（标 ``truncated=True``），
+    用户在历史报告里仍能看到它。主流项目也是这个行为（ChatGPT 的停止
+    按钮：停掉的那条消息仍在对话里）。
+
+    200 = 取消了；404 = 那一轮不存在、不是你的、或已经跑完了（没有可停的）。
+    """
+    cancelled = await get_run_registry().cancel_by_id(run_id, user.id)
+    if not cancelled:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "这次研究已结束或不存在")
+    return {"cancelled": True}
+
+
 async def _try_acquire_slot() -> bool:
     """原子地抢一个并发槽位。满则返回 False，**绝不排队等**。
 

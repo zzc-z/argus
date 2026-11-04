@@ -149,6 +149,11 @@
 }
 
 .inspectorToggle {
+  /* inline-flex：按钮里可能有图标 + 文字（「新建会话」）。用 flex 才能让
+     图标与文字对齐，而不是靠 vertical-align 凑。 */
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   padding: 4px 10px;
   border-radius: 8px;
   border: 1px solid var(--token-outline-variant, #cac3d9);
@@ -156,10 +161,29 @@
   color: var(--token-on-surface-variant, #494456);
   font-size: 12px;
   cursor: pointer;
+  /* 键盘可达时的焦点环（CONVENTIONS §12）。 */
+  transition: background 150ms ease-out;
+}
+
+.inspectorToggle:focus-visible {
+  outline: 2px solid var(--token-primary, #5704e1);
+  outline-offset: 2px;
 }
 
 .inspectorToggle:hover {
   background: var(--token-surface-container, #edeeef);
+}
+
+/* 标题栏右侧的动作区。「新建会话」与「显示检查器」并排。 */
+.pageBarActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 「新建会话」按钮里的图标。间距由父按钮的 gap 管。 */
+.newSessionIcon {
+  flex-shrink: 0;
 }
 
 .reportLink {

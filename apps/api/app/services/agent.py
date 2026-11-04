@@ -404,6 +404,17 @@ async def run_agent(
     # 全局变量会让两个用户的搜索结果互相污染。
     tool_results: list[dict[str, Any]] = []
 
+    # **当前这一轮流出的正文**。边收边攒，不是等 result.text ——
+    # 用户已经看到的正文必须能在「中途被取消」时落盘。
+    #
+    # 早先只从 `result.text` 攒，于是「取消发生在一轮中途」时，用户看到
+    # 的那半截正文**不在** report_body 里 —— 落盘出来是空的。那是真 bug：
+    # 用户明明看到了一半的报告，历史里却找不到。
+    #
+    # 放在循环**外面**是因为取消分支（``except asyncio.CancelledError``）
+    # 要读它 —— 那是循环外的 except 块，看不到循环内的局部变量。
+    current_turn_text: list[str] = []
+
     try:
         for turn in range(MAX_TURNS):
             ledger = ledger.begin_turn()
@@ -414,15 +425,19 @@ async def run_agent(
             # **之前**发生，否则前端会先收到一段正文、然后 DAG 才切到
             # writer，顺序反了。
             writer_active = False
+            current_turn_text = []
             async for chunk in _run_turn(client, messages, tools):
                 if chunk.kind == "text":
                     if not writer_active:
                         writer_active = True
                         for event in tracker.switch(Stage.WRITER):
                             yield event
+                    current_turn_text.append(chunk.text)
                     yield DeltaEvent(node_id=Stage.WRITER.value, text=chunk.text)
                 elif chunk.kind == "reset":
                     # 流被掐断后整轮重发：已发的正文作废，前端清零后重收。
+                    # 本轮攒的也要作废 —— 否则重发的那份会跟它叠在一起。
+                    current_turn_text.clear()
                     yield DeltaEvent(node_id=Stage.WRITER.value, text="", reset=True)
                 else:
                     result = chunk.result
@@ -434,8 +449,14 @@ async def run_agent(
             if result is None:
                 raise RuntimeError("模型一轮请求没有返回结果")
             ledger = ledger.record(result)
-            if result.text:
+            if current_turn_text:
+                report_body.append("".join(current_turn_text))
+            elif result.text:
+                # 没有流式片段（理论上不该发生——真流式下 text 一定先于
+                # result 到达）。留着这个回落：**宁可内容重复也不要丢**。
                 report_body.append(result.text)
+            # 本轮已收尾，清空「当前轮」——下一轮会重新填。
+            current_turn_text = []
 
             # thinking block 原样回传——带 signature，改动会被上游拒绝。
             messages.append({"role": "assistant", "content": result.content})
@@ -490,6 +511,47 @@ async def run_agent(
                 if out.text:
                     report_body.append(out.text)
                 break
+    except asyncio.CancelledError:
+        # **被取消**（用户点了「新建会话」，或重问时替换上一轮）。
+        #
+        # `CancelledError` 继承 `BaseException` 而不是 `Exception`——
+        # 所以下面那个 `except Exception` 捕不到它，会直接往上抛。
+        #
+        # ## 为什么这里要落盘
+        #
+        # 用户点了「新建会话」，这一轮已经烧掉的 token 就白烧了 —— 但
+        # **已经生成的那半截正文是有价值的**。主流项目的做法也是
+        # 「停止生成后，那条消息仍然在历史里」（ChatGPT 的停止按钮）。
+        #
+        # 不落盘的话：用户点了「新建会话」，回头在历史报告里找不到这轮
+        # ——他明明看到了一半的报告。
+        #
+        # 落盘时标记 ``truncated=True``：这份报告是**不完整**的（取消时
+        # 正文可能停在半句话上），历史列表要能把它和完整报告区分开。
+        logger.info("研究被取消，落盘已生成的部分")
+        ledger = ledger.mark_truncated()
+        # 把**当前这一轮**已经流出去的正文也算进去 —— 用户看到的就是
+        # 这些内容，它不能因为「取消发生在这一轮中途」而丢。
+        pending = "".join(current_turn_text)
+        content = "\n".join([*report_body, *([pending] if pending else [])])
+        report_id = (
+            await _persist_report(
+                db=db,
+                question=question,
+                content=content,
+                ledger=ledger,
+                refs=collected_refs,
+                persist_timeout=PERSIST_TIMEOUT_CRASH_SECONDS,
+            )
+            if content.strip()
+            else None
+        )
+        # 取消不是失败：发 done（带 report_id），不发 error。
+        # 用户是主动停的，看到红色横幅会以为出错了。
+        yield ledger.with_report_id(report_id).done()
+        # 重新抛出，保持「这个任务确实被取消」的语义 ——
+        # 吞掉它会让 `task.cancel()` 变成「正常结束」。
+        raise
     except Exception as exc:
         logger.warning("agent 循环异常中止（已完成 %d 轮）", ledger.turns, exc_info=exc)
         ledger = ledger.mark_truncated()

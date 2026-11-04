@@ -16,6 +16,13 @@ export interface PromptInputProps {
   onSlashSelect: (cmd: SlashCommand) => void
   /** 一轮研究在跑时禁止再提交。后端并发上限 4，再发就是 503。 */
   disabled?: boolean
+  /**
+   * 聚焦输入框。
+   *
+   * 「新建会话」后要让用户能接着输入 —— 焦点得主动送过去。
+   * 组件内部已经有 input 的 ref，这里只是把它透出去。
+   */
+  inputRef?: React.RefObject<HTMLInputElement | null>
 }
 
 /**
@@ -32,8 +39,12 @@ export function PromptInput({
   slashCommands,
   onSlashSelect,
   disabled = false,
+  inputRef: externalRef,
 }: PromptInputProps) {
-  const inputRef = React.useRef<HTMLInputElement | null>(null)
+  const localRef = React.useRef<HTMLInputElement | null>(null)
+  // 外部 ref 与内部 ref 二选一：外部给了就用外部的（调用方要控制焦点），
+  // 没给就用内部的。
+  const inputRef = externalRef ?? localRef
   // popover 里当前高亮的行。-1 = 没有高亮（还没按过方向键）。
   const [activeIndex, setActiveIndex] = React.useState(-1)
 

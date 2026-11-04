@@ -411,3 +411,161 @@ async def test_latest_run_returns_404_without_any_run(
     await _login(client, api_db)
     resp = client.get("/api/v1/research/runs/latest")
     assert resp.status_code == 404
+
+
+# ── 新建会话：取消 ────────────────────────────────────────────
+
+
+async def test_cancel_endpoint_stops_the_run(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """``DELETE /runs/{id}`` 停掉那一轮。
+
+    「新建会话」时上一轮若还在跑，它会继续烧 token、继续占着并发槽位
+    （闸门只有 4 个）。而生成跑在服务端，**断开连接不会终止它** ——
+    所以必须显式取消。
+    """
+    await _login(client, api_db)
+
+    # 建一个 run（不在跑，但也没收尾——所以「可取消」）。
+    #
+    # 为什么不在这里挂真的后台任务：那条任务属于**测试的**事件循环，
+    # 而 DELETE 请求跑在 TestClient 的另一个循环（portal）里 ——
+    # `cancel()` 里的 `await gather(task)` 会撞「Future attached to a
+    # different loop」。
+    #
+    # 分开测：「任务被打断」由 ``test_runs.py`` 的
+    # ``test_cancel_interrupts_the_background_task`` 守（同循环，无跨循环
+    # 问题）；这里守的是**端点接线** —— 找到 run、取消它、返回 200。
+    run = get_run_registry().create(user_id=1, question="q")
+
+    resp = client.delete(f"/api/v1/research/runs/{run.id}")
+    assert resp.status_code == 200
+    assert resp.json()["cancelled"] is True
+
+    assert run.cancelled, "端点返回了 200，但 run 没被标记为已取消"
+
+
+async def test_cancel_endpoint_rejects_unknown_run(
+    client: TestClient, api_db: AsyncSession
+) -> None:
+    """不存在的 run → 404。"""
+    await _login(client, api_db)
+    resp = client.delete("/api/v1/research/runs/根本不存在的-id")
+    assert resp.status_code == 404
+
+
+async def test_cancel_endpoint_rejects_other_users_run(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """别人的 run 不能被取消 —— 一律不给停。"""
+
+    async def _agent(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
+
+    await _login(client, api_db, tag="owner")
+    monkeypatch.setattr(research_module, "run_agent", _agent)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "q"}) as resp:
+        resp.read()
+    run_id = _only_run_id()
+
+    client.cookies.set(SESSION_COOKIE, "")
+    await _login(client, api_db, tag="intruder")
+
+    resp = client.delete(f"/api/v1/research/runs/{run_id}")
+    assert resp.status_code == 404
+
+    run = get_run_registry().get(run_id)
+    assert run is not None
+    assert not run.cancelled, "别人的 run 被取消了——鉴权漏了"
+
+
+async def test_latest_run_skips_cancelled_runs(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """已取消的 run 不算「最近一轮」。
+
+    用户点了「新建会话」，那一轮被取消。离开再回来时回退逻辑会问
+    「最近一轮是什么」—— 拿到刚被取消的那个，会接回来一个空界面。
+    他明明要的是空白的新会话。
+    """
+
+    async def _agent(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _agent)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "唯一一轮"}) as resp:
+        resp.read()
+    run_id = _only_run_id()
+
+    # 这一轮已经跑完（closed）。取消对已收尾的 run 不生效（没什么可停的），
+    # 但**已取消状态**才是这条要守的性质——所以直接把它标成取消。
+    run = get_run_registry().get(run_id)
+    assert run is not None
+    await run.cancel()
+
+    resp = client.get("/api/v1/research/runs/latest")
+    assert resp.status_code == 404, "已取消的 run 还被当成最近一轮"
+
+
+# ── 取消时落盘：已生成的正文不能丢 ────────────────────────────
+
+
+async def test_cancelled_run_persists_the_partial_report(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """取消时，已生成的那半截正文要**落盘**。
+
+    ## 为什么
+
+    用户点了「新建会话」，这一轮已经烧掉的 token 就白烧了 —— 但
+    **已经生成的那半截正文是有价值的**。主流项目的做法也是「停止生成后，
+    那条消息仍然在历史里」（ChatGPT 的停止按钮）。
+
+    不落盘的话：用户点了「新建会话」，回头在历史报告里找不到这轮 ——
+    他明明看到了一半的报告。
+
+    ## 怎么测
+
+    跑**真的** ``run_agent``（落盘逻辑在它的 ``CancelledError`` 分支里），
+    只把 ``_run_turn`` 换成会卡住的桩 —— 产出一段正文后卡住，等着被取消。
+    """
+    from sqlalchemy import select
+
+    from app.models import Report
+    from app.services import agent as agent_module
+    from app.services.agent import TurnChunk
+
+    release = threading.Event()
+
+    async def _fake_turn(cl: Any, messages: Any, tools: Any) -> AsyncIterator[Any]:
+        yield TurnChunk(kind="text", text="这是取消前已经写好的一段正文。")
+        await asyncio.to_thread(release.wait, 10.0)
+
+    monkeypatch.setattr(agent_module, "_run_turn", _fake_turn)
+    await _login(client, api_db)
+
+    task = asyncio.create_task(
+        _drain(agent_module.run_agent("取消测试", user_id=1, db=api_db, vec_engine=None))
+    )
+    await asyncio.sleep(0.1)  # 让它先产出那段正文
+
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    release.set()
+
+    rows = (await api_db.execute(select(Report))).scalars().all()
+    assert rows, "取消后没有落盘——用户看不到已生成的那半截"
+    assert "取消前已经写好" in rows[0].content
+    # 取消的报告是**不完整**的，历史列表要能把它和完整报告区分开。
+    assert rows[0].truncated is True
+
+
+async def _drain(agen: Any) -> None:
+    """消费一个异步生成器，把事件丢掉（这里只关心落盘）。"""
+    async for _ in agen:
+        pass

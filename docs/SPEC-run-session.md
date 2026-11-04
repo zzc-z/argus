@@ -148,6 +148,39 @@ id 与问题。只给 id 不给内容 —— 内容要走 SSE 重放（那才是
 
 404 = 没有过 run，前端停在空态。
 
+**已取消的 run 不算「最近一轮」** —— 用户点了「新建会话」后离开再回来，
+回退逻辑不该把那个刚被取消的空会话接回来。
+
+### 3.9 「新建会话」
+
+主流页面（ChatGPT / Claude / Perplexity）的基本动作：停掉当前这一轮，
+回到空白状态。
+
+前端流程（`useRunSession.newSession`）：
+
+1. `DELETE /runs/{id}` 停掉那一轮（还在跑的话）
+2. 断开订阅
+3. URL 上的 run 参数去掉（`replaceState`）
+4. 清掉 localStorage 里的线索
+5. 清空界面 + 聚焦输入框
+
+后端两处配套：
+
+- **`DELETE /runs/{id}` 端点**。生成跑在服务端，**断开连接不会终止它**
+  ——必须显式取消，否则它继续烧 token、占并发槽位（闸门只有 4 个）。
+- **取消时落盘已生成的部分**（`agent.run_agent` 的 `CancelledError`
+  分支）。`CancelledError` 继承 `BaseException` 而不是 `Exception`，
+  所以原有的 `except Exception` 捕不到它 —— 要单独一个分支。
+
+  不落盘的话：用户点了「新建会话」，回头在历史报告里找不到这轮 ——
+  他明明看到了一半的报告。落盘时标 `truncated=True`（不完整）。
+
+  主流项目也是这个行为（ChatGPT 的停止按钮：停掉的那条消息仍在对话里）。
+
+- **`cancel()` 要 await 任务结束**。agent 捕到 `CancelledError` 后的落盘
+  是 `await` ——不等的话 `close()` 先发结束标记，随后那个带 `report_id`
+  的 `done` 帧就没人收了，那份落盘的报告成了孤儿。
+
 ## 4. 存哪里
 
 **内存**（用户的决定）。理由：

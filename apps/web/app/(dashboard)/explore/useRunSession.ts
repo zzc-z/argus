@@ -6,6 +6,7 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { API_BASE, ApiError, apiStream, apiStreamGet, type SseEvent } from '@/lib/api/client'
 import { parseEvent } from '@/lib/api/sse'
 import type { RunEventV } from '@/lib/api/sse'
+import { clearActiveRunId } from './activeRun'
 
 /**
  * 一次研究 run 的客户端会话。
@@ -61,6 +62,18 @@ export interface RunSession {
    * 返回 run id（没有就返回 null）。
    */
   findLatest: () => Promise<string | null>
+  /**
+   * 「新建会话」：停掉当前这一轮，回到空白状态。
+   *
+   * 内部会：
+   * 1. 取消当前 run（如果还在跑）——否则它继续烧 token、占并发槽位
+   * 2. 把 URL 上的 run 参数去掉（`replaceState`，不加历史记录）
+   * 3. 断开连接、清掉 localStorage 里的线索
+   *
+   * 取消时已生成的半截报告会**落盘**（服务端行为），用户在历史报告里
+   * 仍能看到 —— 与主流项目一致（ChatGPT 的停止按钮）。
+   */
+  newSession: () => Promise<void>
 }
 
 export interface UseRunSessionOptions {
@@ -232,6 +245,45 @@ export function useRunSession({ onEvent, onError }: UseRunSessionOptions): RunSe
     [writeRunIdToUrl],
   )
 
+  const newSession = React.useCallback(async () => {
+    // 1) 停掉当前这一轮（如果还在跑）。
+    //
+    // 不停的话它会继续烧 token、继续占着并发槽位（闸门只有 4 个）。
+    // 生成跑在服务端，**断开连接不会终止它** —— 必须显式取消。
+    const target = currentRunRef.current ?? runId
+    if (target) {
+      try {
+        await fetch(`${API_BASE}/api/v1/research/runs/${encodeURIComponent(target)}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        })
+      } catch {
+        // 取消失败不该挡住「回到空白会话」——用户要的是新会话，
+        // 那一轮就让它在后台跑完（最多烧一点 token）。
+      }
+    }
+
+    // 2) 断开订阅。**不等于终止生成** —— 第 1 步已经显式取消了。
+    abortRef.current?.abort()
+    abortRef.current = null
+    currentRunRef.current = null
+
+    // 3) 清掉 URL 上的 run 参数。
+    //
+    // `replaceState` 不加历史记录：用户按后退键期待的是离开这个页面，
+    // 不是回到刚才那一轮。
+    const params = new URLSearchParams(searchParams.toString())
+    params.delete('run')
+    const query = params.toString()
+    window.history.replaceState(null, '', query ? `${pathname}?${query}` : pathname)
+
+    // 4) 清掉 localStorage 里的线索。
+    //
+    // 不清的话，下次进 /explore 的回退逻辑会问后端「最近一轮是什么」，
+    // 拿到刚才那个已被取消的 run，接回来一个空界面。
+    clearActiveRunId()
+  }, [runId, pathname, searchParams])
+
   // 卸载时断开连接（**不终止生成**——生成在服务端跑着）。
   React.useEffect(
     () => () => {
@@ -240,5 +292,5 @@ export function useRunSession({ onEvent, onError }: UseRunSessionOptions): RunSe
     [],
   )
 
-  return { runId, connect, start, disconnect, findLatest }
+  return { runId, connect, start, disconnect, findLatest, newSession }
 }

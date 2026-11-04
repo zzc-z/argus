@@ -353,3 +353,43 @@ async def test_cancel_by_id_returns_false_for_finished_run() -> None:
     await run.close()
 
     assert await registry.cancel_by_id(run.id, 1) is False
+
+
+async def test_cancel_waits_for_the_task_to_finish() -> None:
+    """取消要**等后台任务结束**，不能只发 cancel 就走。
+
+    ## 为什么
+
+    agent 捕到 ``CancelledError`` 后会落盘已生成的那半截正文（那是
+    ``await``），然后发一个带 ``report_id`` 的 ``done`` 帧。
+
+    如果不等任务结束就 ``close()``（发结束标记），订阅者以为流结束了；
+    随后那个 ``done`` 帧就没人收了 —— 用户在这一轮里看不到「查看完整
+    报告」的入口，那份落盘的报告成了**孤儿**。
+
+    ## 错误实现也会通过吗
+
+    只 ``task.cancel()`` 不 await 的实现：断言「任务已经结束」会失败
+    （任务还在跑）。
+    """
+    finished = False
+
+    async def _slow() -> None:
+        nonlocal finished
+        try:
+            await asyncio.sleep(30)
+        except asyncio.CancelledError:
+            # 模拟 agent 的取消处理：落盘（await）之后再退出。
+            await asyncio.sleep(0.05)
+            finished = True
+            raise
+
+    run = Run(id="r1", user_id=1, question="q")
+    task = asyncio.create_task(_slow())
+    run.attach_task(task)
+    await asyncio.sleep(0.05)
+
+    await run.cancel()
+
+    assert finished, "取消返回时后台任务还没结束——done 帧会丢"
+    assert task.done()

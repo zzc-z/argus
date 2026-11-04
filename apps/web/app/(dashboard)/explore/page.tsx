@@ -474,6 +474,8 @@ export default function ExplorePage() {
   // 令牌已经拦住了写 state，但带宽还在白跑，一个长文档的 payload 能有
   // 十几 MB）。
   const sourceAbortRef = useRef<AbortController | null>(null)
+  // 输入框的 ref。「新建会话」后要把焦点送过去 —— 用户接着就能输入。
+  const promptInputRef = useRef<HTMLInputElement | null>(null)
   // 当前这一轮的问题原文。**放 ref 而不是直接用 state**：``done`` 事件
   // 到达时要把它写进「上次研究」的本地记录，而那时 state 里的值可能
   // 还没更新（setState 是异步的）。ref 是同步的，读到的一定是最新值。
@@ -652,6 +654,52 @@ export default function ExplorePage() {
     setPromptValue(`${cmd.template} `)
   }, [])
 
+  /**
+   * 「新建会话」：回到空白状态。
+   *
+   * ## 为什么需要
+   *
+   * 主流项目（ChatGPT / Claude）都有这个动作。没有它，用户想换个问题
+   * 就只能「在当前这轮里重问」——旧那轮的正文还挂在页面上，而 URL 里
+   * 的 run id 指向的也是旧那轮。
+   *
+   * ## 做了什么
+   *
+   * 1. 停掉当前这一轮（如果还在跑）—— 它会继续烧 token、占并发槽位
+   * 2. URL 上的 run 参数去掉 → 当前页面变成一个「空白会话」
+   * 3. 界面清空（正文、DAG、引用、统计、错误）
+   * 4. 聚焦输入框 —— 用户接着就能输入下一个问题
+   *
+   * ## 已生成的半截报告会落盘
+   *
+   * 服务端行为：取消时把已生成的正文落盘（标 truncated）。用户能在
+   * 历史报告里看到它 —— 与主流项目一致（ChatGPT 的停止按钮）。
+   */
+  const handleNewSession = useCallback(() => {
+    void (async () => {
+      await session.newSession()
+      // 清界面。**不清的话旧那轮的正文还挂在页面上**，而 URL 已经
+      // 指向一个空白会话 —— 两边不一致。
+      const handlers = buildHandlers()
+      resetForRun(handlers, '')
+      setRunState('idle')
+      setNodes(initialNodes())
+      setQuestion('')
+      setErrorInfo(null)
+      setSummary(null)
+      setFaithfulness({ kind: 'idle' })
+      setCitations([])
+      setToolCalls([])
+      setInspectorPayload(emptyInspectorPayload())
+      clearChunkCache()
+      sourceAbortRef.current?.abort()
+      sourceTextToken.current += 1
+      setSourceText({ kind: 'none' })
+      // 聚焦输入框 —— 用户接着就能输入下一个问题。
+      promptInputRef.current?.focus()
+    })()
+  }, [buildHandlers, session])
+
   const handlePromptSubmit = useCallback(
     (value: string) => {
       const trimmed = value.trim()
@@ -717,14 +765,33 @@ export default function ExplorePage() {
     <div className={styles.shell}>
       <div className={styles.pageBar}>
         <span className={styles.pageTitle}>研究控制台 / Explore</span>
-        <button
-          type="button"
-          onClick={handleToggleInspector}
-          className={styles.inspectorToggle}
-          aria-pressed={inspectorOpen}
-        >
-          {inspectorOpen ? '隐藏检查器' : '显示检查器'}
-        </button>
+        <div className={styles.pageBarActions}>
+          {/* 「新建会话」：主流页面的基本动作（ChatGPT / Claude 都有）。
+              没有它，用户想换个问题就只能在当前这轮里重问 —— 旧那轮的
+              正文还挂在页面上，URL 里的 run id 也指向旧那轮。
+
+              **只有这一轮存在时才显示** —— 空会话上没有「新会话」可建，
+              摆个按钮在那儿是噪声。 */}
+          {session.runId && (
+            <button
+              type="button"
+              onClick={handleNewSession}
+              className={styles.inspectorToggle}
+              title="停掉当前这一轮，回到空白会话"
+            >
+              <IconSpan name="add" size={16} className={styles.newSessionIcon} />
+              <span>新建会话</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleToggleInspector}
+            className={styles.inspectorToggle}
+            aria-pressed={inspectorOpen}
+          >
+            {inspectorOpen ? '隐藏检查器' : '显示检查器'}
+          </button>
+        </div>
       </div>
 
       <div className={styles.main}>
@@ -814,6 +881,7 @@ export default function ExplorePage() {
             slashCommands={SLASH_COMMANDS}
             disabled={runState === 'running'}
             onSlashSelect={handleSlashSelect}
+            inputRef={promptInputRef}
           />
         </div>
       </div>

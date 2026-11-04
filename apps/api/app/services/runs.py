@@ -152,12 +152,28 @@ class Run:
 
         取消要打断后台任务而不只是标记状态：``Task.cancel`` 会在下一个
         await 点抛 ``CancelledError``，agent 的 ``async for`` 随之退出。
+
+        ## 为什么要 await 任务结束
+
+        agent 捕到 ``CancelledError`` 后会**落盘已生成的那半截正文**
+        （见 ``agent.run_agent`` 的取消分支），然后重新抛出。那次落盘
+        是 await —— 所以「任务结束」比「发出 cancel」晚。
+
+        如果不等，``close()`` 会先发结束标记，订阅者以为流结束了；随后
+        agent 落盘完发的 ``done`` 帧（带 report_id）就没人收了——用户
+        在这一轮里看不到「查看完整报告」的入口，那份落盘的报告成了
+        孤儿。
+
+        所以这里等任务真正结束（``gather`` 吞掉 ``CancelledError``，
+        它本来就是预期结果）。
         """
         async with self._lock:
             self._cancelled = True
             task = self._task
         if task is not None and not task.done():
             task.cancel()
+            # 吞掉 CancelledError —— 它是预期结果，不是错误。
+            await asyncio.gather(task, return_exceptions=True)
         await self.close()
 
     async def publish(self, event: AgentEvent) -> None:
@@ -223,20 +239,27 @@ class RunRegistry:
         return self._runs.get(run_id)
 
     def latest_for_user(self, user_id: int) -> Run | None:
-        """取这个用户最近的一个 run。
+        """取这个用户最近的一个**有效**的 run。
 
-        用来在用户提新问题时取消上一轮——见 :meth:`Run.cancel` 的说明。
+        ## 「有效」= 没被取消
 
-        **用插入顺序而不是 ``created_at``**：``created_at`` 是
-        ``time.monotonic()``，两次创建可能落在同一个浮点值上（同一微秒
-        内），取 max 就变成任取一个——可能取消了**新**的那轮而留下旧的
-        继续烧 token。字典保序（Python 3.7+ 语言保证），最后一个就是
-        最近创建的。
+        被取消的 run（用户点了「新建会话」）不算 —— 否则用户新建会话后
+        离开再回来，回退逻辑会问「最近一轮是什么」，拿到那个刚被取消的
+        run，接回来一个空界面。他明明要的是空白的新会话。
+
+        被取消的那一轮已经落盘了（半截报告），用户能在历史报告里看到。
+
+        ## 用插入顺序而不是 ``created_at``
+
+        ``created_at`` 是 ``time.monotonic()``，两次创建可能落在同一个
+        浮点值上（同一微秒内），取 max 就变成任取一个 —— 可能返回了
+        **新**的那轮而留下旧的。字典保序（Python 3.7+ 语言保证），最后
+        一个就是最近创建的。
         """
         self._prune()
         latest: Run | None = None
         for run in self._runs.values():
-            if run.user_id == user_id:
+            if run.user_id == user_id and not run.cancelled:
                 latest = run
         return latest
 

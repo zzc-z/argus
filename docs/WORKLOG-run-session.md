@@ -39,15 +39,17 @@ run 注册表（内存）                     存 run id 到 localStorage
 |---|---|
 | `app/services/runs.py` | **新**。run 注册表：事件缓冲 + 订阅广播 + 按 id 取消 |
 | `app/services/tasks.py` | **新**。后台任务的统一入口（保住强引用） |
-| `app/gateway/research.py` | agent 移到后台任务；新增 `GET /runs/{id}/stream` 与 `GET /runs/latest`；重问按 id 取消上一轮 |
+| `app/gateway/research.py` | agent 移到后台任务；`GET /runs/{id}/stream`、`GET /runs/latest`、`DELETE /runs/{id}`；重问按 id 取消上一轮 |
 | `app/schemas/research.py` | `AskRequest` 加 `replace_run_id` |
+| `app/services/agent.py` | 取消分支落盘已生成的部分；正文边流边攒（供取消时落盘） |
 | `app/services/stream.py` | 新增 `RunEvent`（第一帧带 run id 与问题） |
 | `app/db.py` | 新增 `get_sessionmaker()`（后台任务用，可被 override） |
 | `apps/web/lib/api/client.ts` | 新增 `apiStreamGet`；解析逻辑抽成共用的 `consumeSse` |
 | `apps/web/lib/api/sse.ts` | 新增 `RunEventV` 镜像 |
 | `apps/web/app/(dashboard)/explore/useRunSession.ts` | **新**。连接与 run id 的生命周期；run id 写进 URL |
 | `apps/web/app/(dashboard)/explore/activeRun.ts` | **新**。最近一轮的 run id（只是回退线索） |
-| `apps/web/app/(dashboard)/explore/page.tsx` | 处理 `run` 帧；挂载时接回 |
+| `apps/web/app/(dashboard)/explore/page.tsx` | 处理 `run` 帧；挂载时接回；「新建会话」按钮 |
+| `apps/web/app/(dashboard)/explore/components/PromptInput/index.tsx` | 输入框 ref 透出（「新建会话」后聚焦） |
 | `apps/web/lib/hooks/useStickToBottom.ts` | ref 改由调用方传入（见「踩过的坑」第 6 条） |
 
 **没有动 schema**（用户的决定：存内存）。不用写 Alembic 迁移。
@@ -147,7 +149,22 @@ hook 返回的只有普通值与函数。这也是 React 里更常见的写法�
 那样重连与新开跑走同一条路径，界面状态只有一处来源，而且 effect 里
 一个 setState 都不剩。
 
-### 8. 测试计时踩坑：`hold.wait(5.0)` 让「还在跑」的 run 提前收尾
+### 8. 真 bug：取消时已流出的正文没落盘
+
+用户点「新建会话」，已生成的那半截正文**丢在数据库外**。
+
+根因：`report_body` 只从 `result.text` 攒（那一轮的**收尾**），而正文是
+**边收边发**的 —— 取消发生在一轮中途时，用户看到的那半截正文既不在
+`result.text` 里（那一轮没结束），也不在 `report_body` 里。
+
+修法：边流边攒（`current_turn_text`），取消分支把它并进落盘内容。
+变量要放在**循环外面** —— 取消分支是循环外的 `except` 块，看不到循环内
+的局部变量。
+
+这个 bug 是被新写的测试抓出来的，不是想出来的 —— 我第一版测试让 fake
+turn 只 yield text 不 yield result，落盘就是空的，一看就知道。
+
+### 9. 测试计时踩坑：`hold.wait(5.0)` 让「还在跑」的 run 提前收尾
 
 第一版测「按 id 取消」时，让 agent 卡 5 秒。但**每个请求的 context 退出
 都会等 agent 结束** —— 三个请求跑下来 95 秒，而且第一轮在第三轮发出前
@@ -169,6 +186,9 @@ hook 返回的只有普通值与函数。这也是 React 里更常见的写法�
 | 端点忽略 `replace_run_id`（改回「取消最近一轮」） | `test_asking_again_cancels_only_the_named_run` | 1 条红 |
 | `cancel_by_id` 不校验归属 | `test_cancel_by_id_ignores_other_users_run` | 1 条红 |
 | `latest_for_user` 返回最旧的一轮 | `test_latest_run_returns_the_most_recent_one` | 1 条红 |
+| 取消时不带当前轮的正文（用户看到的半截丢失） | `test_cancelled_run_persists_the_partial_report` | 1 条红 |
+| `latest_for_user` 不过滤已取消的 run | `test_latest_run_skips_cancelled_runs` | 1 条红 |
+| 取消时不 await 任务结束（done 帧丢失、报告成孤儿） | `test_cancel_waits_for_the_task_to_finish` | 1 条红 |
 
 每条都是**先改坏 → 跑测试 → 改回来**，跑完确认工作树无残留
 （`grep -c MUTATION` 为 0，671 pytest 全绿）。
@@ -185,7 +205,7 @@ hook 返回的只有普通值与函数。这也是 React 里更常见的写法�
 
 ## 门禁
 
-- 后端：679 pytest / ruff / mypy 全绿
+- 后端：685 pytest / ruff / mypy 全绿
 - 前端：tsc / eslint 全绿
 
 ## 关键链接
