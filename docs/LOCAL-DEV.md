@@ -308,5 +308,6 @@ pnpm --filter web exec tsc --noEmit
 - [docs/CODE-QUALITY.md](CODE-QUALITY.md) — 代码质量约定
 - [docs/SPEC-streaming-typewriter.md](SPEC-streaming-typewriter.md) — 流式打字机与滚动跟随的规格
 - [docs/WORKLOG-streaming-typewriter.md](WORKLOG-streaming-typewriter.md) — 那一轮的进展记录与未完成项
+- [docs/HANDOFF-explore-session.md](HANDOFF-explore-session.md) — **explore 会话化的交接记录（新会话先读）**
 - [docs/SPEC-run-session.md](SPEC-run-session.md) — 研究会话（run）与可重连的流的规格
 - [docs/WORKLOG-run-session.md](WORKLOG-run-session.md) — 那一轮的进展记录与踩过的坑（含「新建会话」与重连修复）
