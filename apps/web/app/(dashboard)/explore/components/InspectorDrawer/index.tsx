@@ -269,6 +269,9 @@ export function buildNodePayload(node: AgentNode): InspectorPayload {
         node_id: node.id,
         lifecycle_state: node.lifecycle,
         role_description: node.detail || node.role,
+        // 产出摘要。空字符串也列出——让看 JSON 的人知道「这个节点
+        // 有产出摘要这个字段，只是这次没有」。
+        production_note: node.note,
         latency: node.latency,
       },
       null,
@@ -282,7 +285,7 @@ export function buildNodePayload(node: AgentNode): InspectorPayload {
 export function buildCitationPayload(citation: Citation): InspectorPayload {
   return {
     title: `数据源引用 [${citation.n}] 溯源核验`,
-    meta: `召回方式 ${citation.recall}`,
+    meta: citation.url ? `召回方式 ${citation.recall} · 公开来源` : `召回方式 ${citation.recall}`,
     dotState: 'active',
     jsonText: JSON.stringify(
       {
@@ -296,6 +299,9 @@ export function buildCitationPayload(citation: Citation): InspectorPayload {
         page: citation.page,
         source_title: citation.title,
         recall: citation.recall,
+        // 公开来源（联网搜索）的 URL——用户要知道「这个数字是哪来的」。
+        // 用户上传的资料没有 URL，空串。
+        source_url: citation.url ?? '',
         excerpt: citation.excerpt,
       },
       null,

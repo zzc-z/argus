@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
 from app.models.report import Report, ReportSource
 from app.services import agent as agent_mod
+from app.services import persistence as persistence_mod
 from app.services.citation import Reference
 from app.services.stream import DoneEvent
 from tests.conftest import turn_chunks
@@ -195,7 +196,21 @@ async def test_report_persisted_with_citations(
             yield  # 让函数成为 async generator
 
     monkeypatch.setattr(agent_mod, "_run_turn", _two_turns)
-    monkeypatch.setattr(agent_mod, "_build_context", lambda *_a, **_k: object())
+
+    # 桩成一个真实的 ToolContext——agent 会读它的 ``vec_engine`` 字段
+    # 判断能不能本地检索（``object()`` 上没这个属性）。
+    def _fake_context(*_a, **_k):
+        from app.services.citation import ReferenceTable
+        from app.services.tools import ToolContext
+
+        return ToolContext(
+            db=db_session,
+            vec_engine=None,
+            user_id=1,
+            citations=ReferenceTable(),
+        )
+
+    monkeypatch.setattr(agent_mod, "_build_context", _fake_context)
     monkeypatch.setattr(agent_mod, "_run_tools", _fake_tools)
     # critic 的 judge 调用**必须单独挡**。``_run_turn`` 只拦主循环，
     # ``_settle`` 里 verify_citations 是直接 ``client.messages.stream``，
@@ -259,8 +274,8 @@ async def test_uncited_chunk_gets_no_row_at_all(
     去凑「3 个切片进表、只引用 2 个」很难稳定复现；直接调被测函数，
     把「refs 含 3 条、正文只提 [1][3]」这个不变量直接摆出来。
     """
-    from app.services.agent import _record_citations
     from app.services.citation import Reference
+    from app.services.persistence import _record_citations
 
     user = await _user(db_session, "uncited@report.test")
     source = await _source(db_session, user.id)
@@ -324,7 +339,7 @@ async def test_same_chunk_twice_writes_one_row_and_cite_count_comes_from_text(
     所以这个用例刻意让 **refs 里出现两次、内容里只写一次**：
     两种错误实现都会得到 2，而正确答案必须是 1。
     """
-    from app.services.agent import _record_citations
+    from app.services.persistence import _record_citations
 
     user = await _user(db_session, "u2@report.test")
     source = await _source(db_session, user.id)
@@ -454,7 +469,21 @@ async def test_finalize_text_is_persisted_without_slicer_newlines(
             yield  # async generator：调用点是 `async for`
 
     monkeypatch.setattr(agent_mod, "_run_turn", _all_tool_turns)
-    monkeypatch.setattr(agent_mod, "_build_context", lambda *_a, **_k: object())
+
+    # 桩成一个真实的 ToolContext——agent 会读它的 ``vec_engine`` 字段
+    # 判断能不能本地检索（``object()`` 上没这个属性）。
+    def _fake_context(*_a, **_k):
+        from app.services.citation import ReferenceTable
+        from app.services.tools import ToolContext
+
+        return ToolContext(
+            db=db_session,
+            vec_engine=None,
+            user_id=1,
+            citations=ReferenceTable(),
+        )
+
+    monkeypatch.setattr(agent_mod, "_build_context", _fake_context)
     monkeypatch.setattr(agent_mod, "_run_tools", _empty_tools)
     monkeypatch.setattr(agent_mod, "verify_citations", _fake_verify)
 
@@ -704,11 +733,7 @@ async def test_delete_report_cascades_citation_rows(
     assert client.delete(f"/api/v1/reports/{report.id}").status_code == 204
 
     rows = (
-        (
-            await db_session.execute(
-                select(ReportSource).where(ReportSource.report_id == report.id)
-            )
-        )
+        (await db_session.execute(select(ReportSource).where(ReportSource.report_id == report.id)))
         .scalars()
         .all()
     )
@@ -895,7 +920,7 @@ async def test_crash_still_persists_partial_report(
 
     ## 要防的回归
 
-    崩溃路径原来在 ``_persist_report`` **之前**就 ``return`` 了。于是：
+    崩溃路径原来在 ``persist_report`` **之前**就 ``return`` 了。于是：
     用户拿到一句红横幅，正文一个字节都没有，历史报告里也没有这份——
     而那几轮已经烧掉了真实 token（实测一次崩溃烧掉 29548 输入 token）。
     最贵的一次失败变成最没有产出的失败。
@@ -1033,7 +1058,7 @@ async def test_crash_path_persist_timeout_is_shorter(
         if False:
             yield
 
-    original = agent_mod._persist_report
+    original = agent_mod.persist_report
 
     async def _spy(**kwargs: Any) -> int | None:
         seen.append(kwargs.get("persist_timeout", -1.0))
@@ -1041,13 +1066,16 @@ async def test_crash_path_persist_timeout_is_shorter(
 
     monkeypatch.setattr(agent_mod, "_run_turn", _boom)
     monkeypatch.setattr(agent_mod, "_run_tools", _no_tools)
-    monkeypatch.setattr(agent_mod, "_persist_report", _spy)
+    # persist_report 现在住在 agent_failures 模块里（那条路径被拆出去了）
+    monkeypatch.setattr(
+        "app.services.agent_failures.persist_report", _spy
+    )
 
     _ = [e async for e in agent_mod.run_agent("问题", user_id=user.id, db=db_session)]
 
-    assert seen, "崩溃路径应该调过 _persist_report"
-    assert seen[0] == agent_mod.PERSIST_TIMEOUT_CRASH_SECONDS
-    assert seen[0] < agent_mod.PERSIST_TIMEOUT_SECONDS, (
+    assert seen, "崩溃路径应该调过 persist_report"
+    assert seen[0] == persistence_mod.PERSIST_TIMEOUT_CRASH_SECONDS
+    assert seen[0] < persistence_mod.PERSIST_TIMEOUT_SECONDS, (
         "崩溃路径的落盘超时必须短于正常路径——用户正在等错误提示"
     )
 
@@ -1066,7 +1094,7 @@ async def test_persist_timeout_after_commit_still_returns_report_id(
     """
     user = await _user(db_session, "persist-orphan@report.test")
 
-    original_write = agent_mod._write
+    original_write = persistence_mod._write
     committed = False
 
     async def _write_then_hang(db: Any, report: Any, refs: Any, content: Any) -> None:
@@ -1076,7 +1104,7 @@ async def test_persist_timeout_after_commit_still_returns_report_id(
         # 行已入库，之后卡住直到超时。
         await asyncio.sleep(10)
 
-    monkeypatch.setattr(agent_mod, "_write", _write_then_hang)
+    monkeypatch.setattr(persistence_mod, "_write", _write_then_hang)
 
     ledger = agent_mod.TurnLedger(
         session_id="s-orphan",
@@ -1086,7 +1114,7 @@ async def test_persist_timeout_after_commit_still_returns_report_id(
         started_at=time.monotonic(),
         turns=1,
     )
-    report_id = await agent_mod._persist_report(
+    report_id = await persistence_mod.persist_report(
         db=db_session,
         question="问题",
         content="正文",
@@ -1110,7 +1138,7 @@ async def test_persist_failure_cleanup_is_bounded_by_timeout(
     **再等一次**，而那两次 await 原本**没有上限**。
 
     而 ``yield ledger.done()`` / ``yield error_event_for(exc)`` 都在
-    ``_persist_report`` **之后**——用户永远等不到失败横幅，界面一直转圈，
+    ``persist_report`` **之后**——用户永远等不到失败横幅，界面一直转圈，
     SSE 流挂死。
 
     ## 反例实现
@@ -1127,7 +1155,7 @@ async def test_persist_failure_cleanup_is_bounded_by_timeout(
         # 回滚也卡住——模拟「DB 真挂了」的场景
         await asyncio.sleep(10)
 
-    monkeypatch.setattr(agent_mod, "_write", _hang_write)
+    monkeypatch.setattr(persistence_mod, "_write", _hang_write)
     monkeypatch.setattr(db_session, "rollback", _hang_rollback)
 
     ledger = agent_mod.TurnLedger(
@@ -1140,7 +1168,7 @@ async def test_persist_failure_cleanup_is_bounded_by_timeout(
     )
 
     started = time.monotonic()
-    report_id = await agent_mod._persist_report(
+    report_id = await persistence_mod.persist_report(
         db=db_session,
         question="问题",
         content="正文",
@@ -1197,10 +1225,7 @@ async def test_crash_persisted_report_is_marked_truncated(
     monkeypatch.setattr(agent_mod, "_run_turn", _run)
     monkeypatch.setattr(agent_mod, "_run_tools", _no_tools)
 
-    events = [
-        e
-        async for e in agent_mod.run_agent("问题", user_id=user.id, db=db_session)
-    ]
+    events = [e async for e in agent_mod.run_agent("问题", user_id=user.id, db=db_session)]
     done = next(e for e in events if isinstance(e, DoneEvent))
     assert done.report_id is not None, "崩溃前有正文，应该落盘"
     assert done.truncated is True

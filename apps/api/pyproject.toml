@@ -23,6 +23,11 @@ dependencies = [
     # 一次升级就可能让整个 API import 失败。BSD-3-Clause，pydantic 官方维护。
     "httpx2>=2.0.0,<3",
     "anthropic>=0.84",
+    # 代码里直接 import jiter 解析模型返回的 JSON（见 app/services/
+    # stages.py 与 faithfulness.py）。**显式声明**：靠 anthropic 的传递
+    # 依赖等于赌它不换依赖树——一次升级就可能让整个 API import 失败。
+    # 与上面 httpx2 同一个理由。MIT，pydantic 官方维护。
+    "jiter>=0.4",
     "langgraph>=1.2.11",
     "langgraph-checkpoint>=4.0",
     "langchain-core>=0.3",

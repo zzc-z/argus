@@ -178,6 +178,52 @@ class ReferenceTable:
         """因引用表已满而没进证据块的切片总数。"""
         return self._dropped
 
+    def count_dropped(self) -> None:
+        """记一条「因引用表已满而没进表」的。
+
+        与 :meth:`add` 的丢弃计数合并成同一个数——用户看到的
+        「还有 N 条没展示」应该是同一个口径。
+        """
+        self._dropped += 1
+
+    def add(self, reference: Reference) -> bool:
+        """登记一条**已在表外**造好的引用。返回是否登记成功。
+
+        ## 为什么要这个方法
+
+        :meth:`register` 走的是「检索结果 → 编号」的路径，它要求每条
+        都带一个 ``Retrieved``（含完整的 chunk 与 source 对象）。
+
+        公开来源不走检索——它是自己造出来的 ``Source`` + ``DocumentChunk``。
+        但它**必须占一个角标号**：正文里的 ``[n]`` 要唯一，公开来源与
+        用户资料共用同一个编号空间。
+
+        两条路径共用一个编号表，正是「角标唯一」的保证。
+
+        ## 表满时怎么办
+
+        返回 False，不登记——与 :meth:`register` 的丢弃语义一致。
+        调用方要把这件事告诉模型（见 ``render_saturated_notice``）。
+        """
+        if reference.chunk_id in self._numbers:
+            # 同一个切片重复登记：复用原号，不新增。
+            return False
+        if self._is_full():
+            self._dropped += 1
+            return False
+        self._numbers[reference.chunk_id] = reference.n
+        self._references[reference.n] = reference
+        return True
+
+    def is_full(self) -> bool:
+        """引用表是否已满。
+
+        公开来源在**写库之前**要问它——表满时若先写 source/chunk 行，
+        那两行就成了孤儿：有行、没编号、用户点不到，还进了概览的计数
+        （CR 实测，2026-11-08）。
+        """
+        return len(self._references) >= MAX_REFERENCES
+
     def _is_full(self) -> bool:
         return len(self._references) >= MAX_REFERENCES
 
@@ -244,8 +290,10 @@ def render_saturated_notice(dropped: int) -> str:
     """
     if dropped <= 0:
         return ""
+    # **说明是累计数**——``table.dropped`` 跨轮累加，每轮都会加。
+    # 写成「本批」会让模型以为这一批就有这么多。
     return (
-        f"（本批检索到的 {dropped} 条素材因引用表已满未展示；"
+        f"（另有 {dropped} 条素材因引用表已满未展示（累计）；"
         "此前已收录的证据仍按原编号可用，请只引用那些编号。）"
     )
 
@@ -268,8 +316,9 @@ def citation_rules(table: ReferenceTable) -> str:
             f"\n- 资料里还有 {table.dropped} 条相关内容没有展示，不要据此认为资料库只有上面这些。"
         )
     return (
-        f"你有一批来自用户私有资料的证据，编号 [1] 到 [{upper}]，"
-        f"每条已标注标题与页码。\n"
+        f"你有一批证据，编号 [1] 到 [{upper}]，每条已标注标题与页码。"
+        f"证据可能来自用户私有资料，也可能来自联网搜索（标题里标了"
+        f"「（公开来源）」）——两类都是合法引用。\n"
         f"写作规则：\n"
         f"- 凡是基于这批证据的陈述，必须在句末标上对应编号，如 [1] 或 [1][2]。\n"
         f"- 只能引用 [1]~[{upper}]，**严禁编造不存在的编号**。\n"

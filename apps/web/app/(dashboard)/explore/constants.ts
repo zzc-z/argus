@@ -32,9 +32,35 @@ export interface AgentNode {
    * 显示静态 role——「正在检索与取证」配着完成勾是错的。
    */
   detail: string
+  /**
+   * 这个节点的产出摘要，来自 node 事件的 `note`。
+   *
+   * 「做完了什么」：「核对 12 条引用，10 条有据支撑」。与 detail 相反的
+   * 生命周期——detail 在 active 时有值、完成后清空；note 在 active 时为空、
+   * 完成后才有值。
+   */
+  note: string
   lifecycle: NodeLifecycle
   /** 格式化好的耗时文案（"1.2s" / "排队中"）。 */
   latency: string
+  /**
+   * 本段开始前的**累计**耗时（毫秒）。active 时有效。
+   *
+   * 前端用它当实时秒数的基线：researcher 分多段跑时，用户看到的应该是
+   * 「11.0s → 12.0s → 16.2s」这样连续增长的数字，而不是每段都从 0
+   * 开始跳（0 → 10 → 0 → 1 → 0 → 5）。
+   *
+   * 值来自后端 active 帧的 `elapsed_ms`——只有后端知道这个节点之前
+   * 累计跑了多久。
+   */
+  elapsedBaseMs: number
+  /**
+   * **本段**开始的时刻（毫秒时间戳）。active 时有效。
+   *
+   * 与 `elapsedBaseMs` 配对使用：实时秒数 = 基线 + (现在 - 本段开始)。
+   * 只记基线不行——不知道这一段是什么时候开始的，就算不出它跑了多久。
+   */
+  segmentStartedAt: number | null
 }
 
 export interface ToolCall {
@@ -87,8 +113,11 @@ export function initialNodes(): AgentNode[] {
     name: s.name,
     role: s.role,
     detail: '',
+    note: '',
     lifecycle: 'pending' as NodeLifecycle,
     latency: '排队中',
+    elapsedBaseMs: 0,
+    segmentStartedAt: null,
   }))
 }
 

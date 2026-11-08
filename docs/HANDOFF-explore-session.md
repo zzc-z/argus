@@ -60,7 +60,10 @@ run id 进了 URL（可分享、可收藏、多标签页隔离），加了「新
 | `apps/api/app/services/runs.py` | run 注册表：事件缓冲 + 订阅广播 + 按 id 取消 |
 | `apps/api/app/services/tasks.py` | 后台任务入口（保住强引用） |
 | `apps/api/app/gateway/research.py` | 4 个端点（见下） |
-| `apps/api/app/services/agent.py` | 取消分支落盘 + 正文边流边攒 |
+| `apps/api/app/services/agent.py` | 主循环（2026-11-08 拆分后只剩这一层） |
+| `apps/api/app/services/agent_*.py` | 拆出来的五块：`agent_nodes`（节点生命周期）/ `agent_ledger`（用量记账）/ `agent_turn`（单轮请求）/ `agent_tools`（工具执行）/ `agent_failures`（取消与崩溃的收尾） |
+| `apps/api/app/services/stages.py` | Supervisor 拆解 + Analyst 证据核对 |
+| `apps/api/app/services/web_sources.py` | 联网搜索结果落成可引用的来源 |
 | `apps/web/app/(dashboard)/explore/useRunSession.ts` | 连接与 run id 的生命周期 |
 | `apps/web/app/(dashboard)/explore/activeRun.ts` | localStorage 线索（**只是回退**） |
 

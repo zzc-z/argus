@@ -9,6 +9,7 @@
 API 前缀统一 /api/v1（2026-10-06 决策），由各router 自己声明 prefix。
 """
 
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -28,6 +29,47 @@ from app.gateway import (
 from app.security import SecurityHeadersMiddleware, build_security_headers
 
 _settings = get_settings()
+
+
+def _configure_logging() -> None:
+    """配置 root logger，让应用自己的 ``logger.info`` 能输出。
+
+    ## 为什么必须配
+
+    uvicorn 只配置它自己的 ``uvicorn.*`` logger，**root logger 留在
+    WARNING**（Python 默认）。于是全仓 9 处 ``logger.info`` 全部被
+    静默丢弃——包括「研究被取消，落盘已生成的部分」这种关键事件。
+
+    症状极隐蔽：代码明明写了日志，日志里就是没有。排查时会以为是
+    那段代码没执行。
+
+    ## 为什么只配 app 命名空间
+
+    root logger 一旦设成 INFO，第三方库的 INFO 也会涌进来（httpx、
+    asyncio 之类），把真正的日志淹掉。所以只把 ``app.*`` 设成 INFO，
+    其它保持 WARNING。
+
+    uvicorn 自己的日志级别由 ``--log-level`` 控制，不受这里影响。
+
+    ## 依赖 uvicorn 的加载顺序（实测确认）
+
+    uvicorn 的 ``Config.load()`` 会 import 应用模块——所以本函数运行时，
+    uvicorn 已经先用 ``dictConfig`` 配好了它的 logger（root 置成
+    「无 handler + WARNING」）。于是 ``basicConfig`` 能装上 root 的
+    handler。
+
+    **若把本函数挪进 lifespan，root 会变成 INFO**，第三方库（httpx、
+    asyncio 之类）的 INFO 全涌进来。改这里之前先读一遍
+    ``uvicorn/config.py`` 的 ``configure_logging``。
+    """
+    logging.basicConfig(
+        level=logging.WARNING,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+    logging.getLogger("app").setLevel(logging.INFO)
+
+
+_configure_logging()
 
 
 @asynccontextmanager

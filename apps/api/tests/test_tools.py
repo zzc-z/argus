@@ -381,3 +381,84 @@ def test_tavily_search_schema_survives_without_key(
     assert schema["input_schema"]["required"] == ["query"]
     assert "max_results" in props
     assert "max_results" in props
+
+
+# ── 联网证据（给 Analyst 核对用）──────────────────────────────
+
+
+async def test_search_produces_evidence_for_the_analyst(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
+    """联网搜索的结果要产出**待核对证据**。
+
+    ## 为什么
+
+    Analyst 节点要核对「这几条证据是不是同一件事、有没有互相矛盾」。
+    之前它的输入只有 ``local_search`` 的产物（用户上传资料里的切片），
+    于是没有上传资料的用户看到的永远是「没有检索证据可核对」——
+    而跨来源核对矛盾恰恰是它最该干的活。
+
+    ## 怎么测
+
+    桩掉 ``_search`` 返回两条结果，断言 outcome 带上了 evidence。
+    """
+
+    async def _fake(client: Any, query: str, max_results: int) -> Any:
+        return {
+            "results": [
+                {"title": "报道一", "url": "https://a.com", "content": "销量 100 万"},
+                {"title": "报道二", "url": "https://b.com", "content": "销量 90 万"},
+            ]
+        }
+
+    monkeypatch.setattr(tools_module, "_search", _fake)
+    outcome = await execute_tool("tavily_search", {"query": "x"})
+
+    assert len(outcome.evidence) == 2
+    assert outcome.evidence[0].title == "报道一"
+    assert outcome.evidence[0].excerpt == "销量 100 万"
+    assert outcome.evidence[0].url == "https://a.com"
+
+
+async def test_evidence_excludes_results_dropped_by_the_char_budget(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
+    """证据只取**实际进了 content 的那几条**。
+
+    被字符预算丢掉的内容模型都没看到，拿去核对就是核对模型没读过
+    的东西——它会报出「矛盾」，而正文里根本没有那条。
+    """
+
+    async def _fake(client: Any, query: str, max_results: int) -> Any:
+        return {
+            "results": [
+                {"title": f"标题{i}", "url": f"https://a.com/{i}", "content": "内容" * 790}
+                for i in range(8)
+            ]
+        }
+
+    monkeypatch.setattr(tools_module, "_search", _fake)
+    outcome = await execute_tool("tavily_search", {"query": "x", "max_results": 5})
+
+    # content 里实际放了几条，证据就该有几条
+    shown = outcome.content.count("URL: https://a.com/")
+    assert shown >= 1
+    assert len(outcome.evidence) == shown, (
+        f"证据 {len(outcome.evidence)} 条与正文里的 {shown} 条对不上"
+    )
+
+
+async def test_evidence_excerpt_is_shorter_than_the_tool_content(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
+    """证据摘要比 tool_result 里的短——核对只需要结论层面的内容。"""
+    long_text = "啊" * 3000
+
+    async def _fake(client: Any, query: str, max_results: int) -> Any:
+        return {"results": [{"title": "长文", "url": "https://a.com", "content": long_text}]}
+
+    monkeypatch.setattr(tools_module, "_search", _fake)
+    outcome = await execute_tool("tavily_search", {"query": "x"})
+
+    assert len(outcome.evidence[0].excerpt) == tools_module.EVIDENCE_EXCERPT_CHARS
+    assert len(outcome.evidence[0].excerpt) < len(outcome.content)

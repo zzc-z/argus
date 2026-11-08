@@ -301,6 +301,62 @@ pnpm --filter web exec tsc --noEmit
   等待者，测试**永久挂住**。用 `threading.Event`，agent 侧
   `await asyncio.to_thread(ev.wait, timeout)` 等它。
 
+- **flush 失败后 session 会进入「已回滚」状态**（2026-11-08）。实测
+  （SQLite + 开启 FK）：第一次 `flush()` 抛 `IntegrityError`，之后任何
+  `db.add()` / `flush()` 都抛 `PendingRollbackError`。所以失败处理里
+  **必须回滚**，否则一次写入失败会连累后面所有写入。
+
+  用 `await db.begin_nested()`（SAVEPOINT）而不是 `await db.rollback()`：
+  后者回滚**整个**事务，把这一轮里已写入的其它内容一起丢掉；
+  SAVEPOINT 只回滚那一段。两者都能让 session 继续用，**「session 还能
+  用」这个断言分不出它们**——要分开就得验「本轮之前写的东西还在不在」。
+
+- **root logger 默认是 WARNING，应用自己的 `logger.info` 不会输出**
+  （2026-11-08）。uvicorn 只配自己的 `uvicorn.*` logger，root 留在
+  Python 默认的 WARNING。全仓曾有 9 处 `logger.info` 从没输出过——包括
+  「研究被取消，落盘已生成的部分」这种关键事件。症状极隐蔽：代码明明
+  写了日志，日志里就是没有，像是那段代码没执行。
+
+  现在 `app/main.py` 的 `_configure_logging()` 把 `app.*` 设成 INFO
+  （root 仍留 WARNING，免得第三方库的 INFO 涌进来）。
+
+- **SQLite 的写锁是库级的，且 `flush` 不 commit 就会一直持有**
+  （2026-11-08）。研究流跑 30-60 秒，主 session 在这期间如果有过写入
+  （`flush` 了但没 `commit`），那个写锁就持有整轮研究——期间别的研究、
+  用户的资料上传全被阻塞。
+
+  实测：主 session `flush` 未 commit → 另一个 session 写 **5.3 秒后**报
+  `OperationalError: database is locked`（SQLite 默认 busy_timeout 5 秒），
+  而且那个 session 被毒化（`PendingRollbackError`）。
+
+  两个结论：
+  - 公开来源（`web_sources.py`）用**独立 session** 落库，写完立刻
+    `commit` ——见 `ToolContext.session_maker`
+  - `async with session_maker() as db:` 的**退出时**才提交。所以块内
+    不显式 commit 的话，锁会持有到块结束
+
+- **SAVEPOINT 不持有写锁，裸 flush 持有**（2026-11-08 实测）。同样两个
+  session，A 用 `begin_nested()` + flush + `savepoint.commit()`，B 立刻能
+  写；A 直接 flush 不 commit，B 5.3 秒后报锁超时。
+
+  差别在于 SQLite 的事务层级：SAVEPOINT 是主事务里的嵌套事务，主事务
+  没有写就不持锁。
+
+- **pysqlite 下「RELEASE SAVEPOINT == COMMIT」**（2026-11-08 实测）。
+  `begin_nested()`（SAVEPOINT）+ `savepoint.commit()` 会**真的提交**数据
+  ——外层事务的 `rollback()` 救不回来。
+
+  后果：任何「用 SAVEPOINT 隔离一段写入」的设计，在 SQLite 上都**不是**
+  真正的隔离——它顺手提交了外层事务。切到 Postgres 更是立刻失效
+  （那里 SAVEPOINT 不等于 COMMIT）。
+
+  所以本仓里凡是要写库又不能影响主事务的地方，一律用**独立 session +
+  立即 commit**（见 `ToolContext.session_maker`）。
+
+- **SQLite 默认不查外键**。`app/db.py` 的 `_enable_sqlite_foreign_keys`
+  要显式开。测试里用内存 SQLite 时**必须**开——不然 FK 违规不会报错，
+  「造一个会失败的写入来验证降级路径」这类测试会静悄悄通过。
+
 ## 链接
 - [AGENTS.md（仓库根）](../AGENTS.md) — 硬配置、收尾流程
 - [apps/api/CONTRIBUTING.md](../apps/api/CONTRIBUTING.md) — 后端贡献指南

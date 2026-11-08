@@ -14,11 +14,10 @@
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Any, cast
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.services import citation
 from app.services.citation import Reference, ReferenceTable
@@ -26,6 +25,13 @@ from app.services.embedder import EmbeddingError
 from app.services.errors import Classified, classify_embedding_error, classify_tool_error
 from app.services.errors_base import RetrievalNoMatchError
 from app.services.llm import LLMNotConfiguredError, get_tavily_client
+from app.services.urls import canonicalize_url
+from app.services.web_sources import (
+    ToolEvidence,
+    register_web_sources,
+    render_web_evidence,
+    web_citation_rules,
+)
 
 # ── 常量 ──────────────────────────────────────────────────────
 
@@ -40,6 +46,12 @@ RESULT_CONTENT_CHARS = 800
 # 搜索只有这几条，编出「没有更多资料」的结论。
 RESULT_TOTAL_CHARS = 4000
 
+# 单条搜索结果作为「待核对证据」时的摘要长度。
+#
+# 比 ``RESULT_CONTENT_CHARS`` 短：核对要判断的是「这条说的是不是同一
+# 件事、有没有互相矛盾」，那个判断只需要看到结论层面的内容。
+EVIDENCE_EXCERPT_CHARS = 200
+
 # 本地检索取几条切片。与 citation.MAX_REFERENCES 对齐：引用表 10 条封顶，
 # 检索取更多只会让超出的部分被**静默丢弃**——第一次调用就把表灌满的话，
 # 第二次调用注册的全是新切片、整段被丢，证据块是空字符串（模型只拿到
@@ -51,11 +63,6 @@ TAVILY_TIMEOUT_SECONDS = 10.0
 
 # 外层兜底。SDK 的 timeout 管不到 DNS 解析慢、建连挂起这类情况。
 TAVILY_HARD_TIMEOUT_SECONDS = 15.0
-
-# URL 里这些跟踪参数不参与身份判定——同一篇文章带不同 utm 就是同一条。
-TRACKING_PARAMS = frozenset(
-    {"utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "fbclid"}
-)
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +99,45 @@ class ToolContext:
     """
 
     db: AsyncSession
-    vec_engine: AsyncEngine
     user_id: int
     citations: ReferenceTable
+    vec_engine: AsyncEngine | None = None
+    """向量引擎。**只有 ``local_search`` 需要它**。
+
+    可选的原因：联网搜索结果落成可引用来源只需要 ``db``（见
+    ``app/services/web_sources.py``）。而把 ``vec_engine`` 设成必填的话，
+    「没有向量引擎」会连累「联网来源不占角标号」——那两件事没关系。
+
+    ``local_search`` 在缺它时自己报「没有检索上下文」而不是崩掉。
+    """
+    session_maker: async_sessionmaker[AsyncSession] | None = None
+    """后台任务用的 session 工厂。
+
+    ## 为什么公开来源要**另开一个 session**
+
+    研究流跑 30-60 秒，而 SQLite 是默认数据库（写锁是库级的）。如果
+    公开来源用主 session 落库（``flush`` 但不 ``commit``），那个写锁
+    会**持有整轮研究**——期间：
+
+    - 别的研究一 ``flush`` 就 ``database is locked``（默认超时 5 秒）
+    - 用户的资料上传同样被阻塞
+
+    实测（2026-11-08）：两个并发研究，第二个 5.3 秒后报
+    ``OperationalError: database is locked``，而且它的 session 被毒化
+    （SAVEPOINT 回滚救不了——那不是约束失败）。
+
+    所以公开来源用**独立的短事务**：写完立刻 ``commit``，锁立刻释放。
+    """
+    seen_web_urls: set[str] = field(default_factory=set)
+    """已登记过的公开来源 URL（**归一化后**）。
+
+    跨轮累积——同一个 URL 在多轮搜索里会被搜到多次（实测 2026-11-08：
+    SEC 的 nvda-20250126 在两轮里各出现一次）。不去重的话同一篇资料
+    占两个角标号，而模型会把它们当成「两个独立来源互相印证」。
+
+    这是个**可变**的 set（虽然 dataclass 本身 frozen）——它要在多轮之间
+    累积，而 ``ToolContext`` 是每次请求新建、跨轮持有的。
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +154,16 @@ class ToolOutcome:
     ``error_code`` 是这一档的错误码（空串 = 没有）。「本地资料与问题无关」
     这一档要挂码：用户必须知道自己的私有资料被跳过了，否则他以为报告里
     没有引用是因为资料库里确实没有。模型看不到这个字段。
+
+    ``evidence`` 是本次调用拿到的**搜索结果**（联网搜索专用）。
+
+    它的用途是**中转**：``_format_search_results`` 把 Tavily 的原始结果
+    转成这个形状，``_run_tavily_search`` 再把它们落成正经引用
+    （``Source`` + ``DocumentChunk`` + 角标号）。
+
+    落成引用之后它们就在 ``references`` 里了——``evidence`` 只是那份
+    中转数据，不会再单独流向模型或 Analyst（那会造成同一条证据被算两遍：
+    一遍带角标号、一遍不带）。
     """
 
     ok: bool
@@ -118,6 +171,17 @@ class ToolOutcome:
     preview: str = ""
     references: tuple[Reference, ...] = ()
     error_code: str = ""
+    evidence: tuple[ToolEvidence, ...] = ()
+    """这次调用拿到的**搜索结果**（联网搜索专用）。
+
+    它的用途是**中转**：``_format_search_results`` 把 Tavily 的原始结果
+    转成这个形状，``_run_tavily_search`` 再把它们落成正经引用
+    （``Source`` + ``DocumentChunk`` + 角标号）。
+
+    落成引用之后它们就在 ``references`` 里了——``evidence`` 只是那份
+    中转数据，不会再单独流向模型或 Analyst（那会造成同一条证据被算两遍：
+    一遍带角标号、一遍不带）。
+    """
 
 
 # ── 工具 schema ───────────────────────────────────────────────
@@ -251,7 +315,7 @@ async def execute_tool(
     """
     try:
         if name == TAVILY_SEARCH_SPEC.name:
-            return await _run_tavily_search(tool_input)
+            return await _run_tavily_search(tool_input, context)
         if name == LOCAL_SEARCH_SPEC.name:
             if context is None:
                 return ToolOutcome(
@@ -332,7 +396,10 @@ def _classify_tool_failure(name: str, exc: BaseException) -> Classified:
 # ── tavily_search 实现 ────────────────────────────────────────
 
 
-async def _run_tavily_search(tool_input: dict[str, Any]) -> ToolOutcome:
+async def _run_tavily_search(
+    tool_input: dict[str, Any],
+    context: ToolContext | None = None,
+) -> ToolOutcome:
     """调 Tavily 搜索并压成模型能读的紧凑文本。
 
     双重超时：SDK 的 ``TAVILY_TIMEOUT_SECONDS`` 只管 HTTP 连接，外层
@@ -354,7 +421,66 @@ async def _run_tavily_search(tool_input: dict[str, Any]) -> ToolOutcome:
         _search(client, query, max_results),
         timeout=TAVILY_HARD_TIMEOUT_SECONDS,
     )
-    return _format_search_results(cast(dict[str, Any], raw), max_results)
+    outcome = _format_search_results(cast(dict[str, Any], raw), max_results)
+
+    if context is None or not outcome.evidence:
+        return outcome
+
+    # 落成可引用来源。失败不阻断——搜索结果本身仍是有效证据。
+    try:
+        entries = await register_web_sources(
+            context.db,
+            context.user_id,
+            context.citations,
+            outcome.evidence,
+            seen_urls=context.seen_web_urls,
+            # **必须传**——公开来源要用独立 session 落库（见
+            # ``ToolContext.session_maker`` 的说明）。漏传的话生产会走
+            # SAVEPOINT 路径，而那条路径在 pysqlite 下
+            # 「RELEASE SAVEPOINT == COMMIT」，会**偷偷提交主 session 的
+            # 事务**，破坏主循环的事务边界。
+            session_maker=context.session_maker,
+        )
+        references = [reference for _n, _item, reference in entries]
+    except Exception:
+        logger.warning("公开来源登记失败，本次不产生角标", exc_info=True)
+        return outcome
+
+    if not references:
+        return outcome
+
+    # **重新渲染成带角标号的证据块**。
+    #
+    # 原先 Tavily 的结果用它自己的 ``[1] [2]`` 序号，与角标编号是两套
+    # 编号——模型在正文里写 ``[3]`` 时可能指 Tavily 的第 3 条，而引用表
+    # 里的 3 号是用户资料的某个切片。角标指错，且没有任何报错。
+    # **用实际登记成功的那些条目渲染**——编号直接取引用表里的值。
+    #
+    # 早先渲染的是全量 ``outcome.evidence``、编号从 ``references[0].n``
+    # 起算：登记时跳过的条目（去重命中、摘要空白、表满）造成整体错位，
+    # 模型写 ``[3]`` 而引用表里 3 号是另一条——角标指错。
+    blocks = render_web_evidence(entries)
+    rules = web_citation_rules(entries[0][0], entries[-1][0])
+    # **表满了要告诉模型**。
+    #
+    # 引用表封顶 ``MAX_REFERENCES``（10）。超出的搜索结果没有编号——
+    # 而模型看到的证据块里没有它们，它却已经付了这次调用的钱。不说
+    # 的话，模型会以为「就这些资料」，在结论里下「没有更多数据」的判断。
+    saturated = citation.render_saturated_notice(context.citations.dropped)
+    content = "\n\n".join(part for part in (blocks, rules, saturated) if part)
+    # **发全量引用表**，不是本次新增的那些。
+    #
+    # 前端是**整体替换**（``h.setCitations(event.references)``）。发增量
+    # 的话，前一次 local_search 的引用会被这次的结果覆盖掉——正文里
+    # ``[1]``（本地资料）变成裸字符，点不动。
+    #
+    # 实测：一轮里先 local_search 再 tavily_search，前端最终只剩
+    # tavily 那一条，1、2 号全没了。而这正是本次改动鼓励的组合。
+    return replace(
+        outcome,
+        content=content,
+        references=tuple(context.citations.all),
+    )
 
 
 async def _search(client: Any, query: str, max_results: int) -> Any:
@@ -394,7 +520,15 @@ def _format_search_results(data: dict[str, Any], requested: int) -> ToolOutcome:
         if len(content) > RESULT_CONTENT_CHARS:
             content = content[:RESULT_CONTENT_CHARS] + "…（本条已截断）"
 
-        block = f"[{idx}] {title}\nURL: {url}\n{content}"
+        # **不用方括号编号**。
+        #
+        # 方括号是角标的语法（``[1]`` = 引用表里的第 1 条）。用方括号
+        # 编号却不在引用表里，模型会在正文里写 ``[1]``，而引用表里
+        # 没有 1 号——角标指错，且没有任何报错。
+        #
+        # 没有 context 时（无 db 的路径）搜索结果进不了引用表，所以用
+        # 「结果 N」这种不会与角标混淆的写法。
+        block = f"结果 {idx}. {title}\nURL: {url}\n{content}"
         if total + len(block) > RESULT_TOTAL_CHARS:
             over_budget = len(candidates) - (idx - 1)
             break
@@ -415,12 +549,33 @@ def _format_search_results(data: dict[str, Any], requested: int) -> ToolOutcome:
         text += "\n\n" + "".join(notes)
 
     found = len(lines)
+    # 同时产出**待核对证据**——给 Analyst 节点用。
+    #
+    # 证据取的是**实际进了 content 的那几条**（``candidates[:found]``），
+    # 不是全部 results：被字符预算丢掉的内容模型都没看到，拿去核对
+    # 就是核对模型没读过的东西。
+    #
+    # excerpt 用未截断的 content（按 EVIDENCE 的上限再截一次）——
+    # content 里那份已经按 RESULT_CONTENT_CHARS 截过了，正好是核对
+    # 需要的粒度。
+    evidence = tuple(
+        ToolEvidence(
+            title=str(item.get("title") or "（无标题）"),
+            excerpt=str(item.get("content") or "")[:EVIDENCE_EXCERPT_CHARS],
+            # 完整内容——给落库与 critic 校验用（见 ToolEvidence 的说明）。
+            content=str(item.get("content") or "")[:RESULT_CONTENT_CHARS],
+            url=str(item.get("url") or ""),
+        )
+        for item in candidates[:found]
+    )
+
     return ToolOutcome(
         ok=True,
         content=text,
         preview=f"共 {found} 条结果"
         + (f"，超长丢弃 {over_budget} 条" if over_budget else "")
         + (f"，按上限裁掉 {dropped_by_request} 条" if dropped_by_request else ""),
+        evidence=evidence,
     )
 
 
@@ -438,6 +593,17 @@ async def _run_local_search(context: ToolContext, tool_input: dict[str, Any]) ->
     query = str(tool_input.get("query", "")).strip()
     if not query:
         return ToolOutcome(ok=False, content="检索关键词不能为空。", preview="参数错误")
+
+    # 没有向量引擎 → 本地检索跑不了。
+    #
+    # 它与「联网来源能不能占角标号」无关（那个只要 db），所以这里是
+    # **局部**降级，不是整个 context 都不给。
+    if context.vec_engine is None:
+        return ToolOutcome(
+            ok=False,
+            content="本地检索不可用（没有向量索引），请改用联网搜索。",
+            preview="缺少检索上下文",
+        )
 
     # 查询向量**在这里算一次**，两处复用：
     # 1. 传给 retrieve（它内部不再重复算）
@@ -502,6 +668,10 @@ async def _empty_retrieval_outcome(
     三种都是 ``ok=True``：检索本身没失败，模型应该继续用联网搜索作答。
     """
     from app.services import retriever  # 顶层 import 会成环：retriever → citation
+
+    # 向量引擎在 ``_run_local_search`` 开头已经验过不为 None——到这里
+    # 必然有值。断言而不是静默兜底：真缺了就是 bug，应该响。
+    assert context.vec_engine is not None
 
     reason = await retriever.explain_no_result(
         context.db,
@@ -584,20 +754,3 @@ def _run_dedup(tool_input: dict[str, Any]) -> ToolOutcome:
         preview=f"保留 {len(kept)} 条，去掉重复 {dropped} 条"
         + (f"，忽略 {skipped} 条" if skipped else ""),
     )
-
-
-def canonicalize_url(url: str) -> str:
-    """把 URL 归一化成「同一篇文章」的判定依据。
-
-    去掉 utm/gclid 等跟踪参数、去掉 fragment（#anchor 不影响页面内容）、
-    统一 host 小写、去掉 www. 前缀与路径尾斜杠，并按字母序重排剩余 query
-    ——参数顺序不同但内容相同的 URL 也应该判为同一条。
-    """
-    parts = urlsplit(url)
-    netloc = parts.netloc.lower()
-    if netloc.startswith("www."):
-        netloc = netloc[4:]
-
-    kept = sorted((k, v) for k, v in parse_qsl(parts.query) if k.lower() not in TRACKING_PARAMS)
-    path = parts.path.rstrip("/") or "/"
-    return urlunsplit((parts.scheme.lower(), netloc, path, urlencode(kept), ""))

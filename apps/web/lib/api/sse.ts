@@ -40,6 +40,16 @@ export interface NodeEventV {
   lifecycle: string
   detail: string
   elapsed_ms: number | null
+  /**
+   * 这个节点的产出摘要（完成时才有）。
+   *
+   * 与 `detail` 互补：`detail` 是**进行时**的描述（「正在校验引用」），
+   * 节点完成后后端发 completed 且 detail 为空串，此时前端回落到静态
+   * `role`；`note` 则是**做完了什么**（「核对 12 条引用，10 条有据支撑」）。
+   *
+   * 没有它，DAG 上只有角色的静态说明——用户看不到执行的实际产出。
+   */
+  note?: string
 }
 
 /** `type: "delta"` —— 正文增量。前端 `streamedText += text`。 */
@@ -99,8 +109,15 @@ export interface ReferenceV {
   title: string
   /** 原文前缀，后端截到 120 字，给角标 tooltip 用。 */
   excerpt: string
-  /** 召回来源：'向量+BM25' | '向量' | 'BM25'。 */
+  /** 召回来源：'向量+BM25' | '向量' | 'BM25' | '网页搜索'。 */
   recall: string
+  /**
+   * 来源的 URL。**只有联网搜索来的公开来源有**；用户上传的资料没有
+   * （那是文件，不是链接）。
+   *
+   * 空串 = 没有 URL（不是「查不到」——后端查不到时也返回空串）。
+   */
+  url?: string
 }
 
 /**

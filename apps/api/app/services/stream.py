@@ -32,6 +32,23 @@ class NodeEvent:
     lifecycle: str  # "active" | "completed" | "failed"
     detail: str = ""
     elapsed_ms: int | None = None
+    note: str = ""
+    """这个节点的产出摘要（完成时才有）。
+
+    ``detail`` 是**进行时**的描述（「正在校验引用」），节点跑完后后端发
+    completed 且 detail 为空串，此时前端回落到静态 role。
+
+    ``note`` 补上第三种信息：**这个节点干了什么、结果如何**。例如
+    Supervisor 的「拆解出 3 个子任务」、Analyst 的「核对 12 条证据，
+    发现 2 处矛盾」。
+
+    没有它，前端只能显示角色的静态说明（「拆解问题意图」）——用户
+    看不到节点的实际产出，那张 DAG 就只是一张流程图。
+
+    刻意与 ``detail`` 分开：``detail`` 在 active 时有值、完成后清空；
+    ``note`` 在 active 时为空、完成后才有值。两者的生命周期相反，
+    塞进同一个字段必然有一边显示错。
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -378,12 +395,7 @@ def _splits_a_token(text: str, cut: int) -> bool:
         return False
     before = text[cut - 1]
     after = text[cut + 1]
-    return (
-        before.isascii()
-        and after.isascii()
-        and before.isalnum()
-        and after.isalnum()
-    )
+    return before.isascii() and after.isascii() and before.isalnum() and after.isalnum()
 
 
 class Typewriter:

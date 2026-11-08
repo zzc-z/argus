@@ -54,7 +54,10 @@ async def read_dashboard(user: CurrentUser, db: DbSession) -> DashboardResponse:
         await db.scalar(select(func.count()).select_from(Report).where(Report.user_id == user.id))
     ) or 0
     source_count = (
-        await db.scalar(select(func.count()).select_from(Source).where(Source.user_id == user.id))
+        # **排除公开来源**（``source_type="web"``）——它们是联网搜索的
+        # 结果，不是用户上传的资料。用户看到「我的资料 6 份」而实际只
+        # 上传过 1 份，那个数是假的。
+        await db.scalar(select(func.count()).select_from(Source).where(Source.owned_clause(user.id)))
     ) or 0
 
     # 切片数**直接 count(document_chunks)**，不用 sources.chunk_count 求和。
@@ -67,7 +70,7 @@ async def read_dashboard(user: CurrentUser, db: DbSession) -> DashboardResponse:
             select(func.count())
             .select_from(DocumentChunk)
             .join(Source, Source.id == DocumentChunk.source_id)
-            .where(Source.user_id == user.id)
+            .where(Source.owned_clause(user.id))
         )
     ) or 0
 
@@ -115,14 +118,17 @@ async def read_settings_status(user: CurrentUser, db: DbSession) -> SettingsStat
     就不再拆了。
     """
     source_count = (
-        await db.scalar(select(func.count()).select_from(Source).where(Source.user_id == user.id))
+        # **排除公开来源**（``source_type="web"``）——它们是联网搜索的
+        # 结果，不是用户上传的资料。用户看到「我的资料 6 份」而实际只
+        # 上传过 1 份，那个数是假的。
+        await db.scalar(select(func.count()).select_from(Source).where(Source.owned_clause(user.id)))
     ) or 0
     chunk_count = (
         await db.scalar(
             select(func.count())
             .select_from(DocumentChunk)
             .join(Source, Source.id == DocumentChunk.source_id)
-            .where(Source.user_id == user.id)
+            .where(Source.owned_clause(user.id))
         )
     ) or 0
 

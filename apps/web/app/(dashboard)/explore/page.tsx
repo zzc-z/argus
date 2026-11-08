@@ -91,6 +91,7 @@ import {
 } from './lastRun'
 import { writeActiveRunId } from './activeRun'
 import { useRunSession } from './useRunSession'
+import { formatElapsed } from './formatElapsed'
 import styles from './page.module.css'
 
 /**
@@ -141,18 +142,30 @@ function toToolCall(v: ToolCallEventV): ToolCall {
  *
  * `detail` 存进行时的描述，节点跑完后后端发 completed 且 detail 为空串，
  * 此时回落到静态 `role`——「正在检索与取证」配着完成勾是错的。
+ *
+ * `note` 存节点的产出摘要，只在完成帧里有值。
  */
-function applyNode(node: AgentNode, nv: NodeEventV): AgentNode {
+function applyNode(node: AgentNode, nv: NodeEventV, receivedAt: number): AgentNode {
+  const isActive = nv.lifecycle === 'active'
   return {
     ...node,
     detail: nv.detail,
+    note: nv.note ?? node.note,
     lifecycle: nv.lifecycle as NodeLifecycle,
-    latency:
-      nv.lifecycle === 'active'
-        ? '运行中'
-        : nv.elapsed_ms != null
-          ? `${(nv.elapsed_ms / 1000).toFixed(1)}s`
-          : node.latency,
+    // **耗时只在完成时用后端的权威值**。运行中显示固定的「运行中」——
+    // 实时秒数由 AgentDAG 自己按 elapsedBaseMs 算，不走这里（避免每秒
+    // setState 整个 nodes 数组）。
+    latency: isActive
+      ? '运行中'
+      : nv.elapsed_ms != null
+        ? formatElapsed(nv.elapsed_ms)
+        : node.latency,
+    // **本段开始前的累计耗时**。实时秒数的基线——researcher 分多段跑时，
+    // 用户看到的秒数要连续增长，而不是每段从 0 开始跳。
+    elapsedBaseMs: isActive ? (nv.elapsed_ms ?? 0) : node.elapsedBaseMs,
+    // 本段的起点。收到 active 帧的时刻 ≈ 后端激活该节点的时刻
+    // （差一个网络往返，对秒级显示无影响）。
+    segmentStartedAt: isActive ? receivedAt : node.segmentStartedAt,
   }
 }
 
@@ -221,7 +234,7 @@ function mergeToolCall(prev: ToolCall[], tv: ToolCallEventV): ToolCall[] {
     ...existing,
     name: tv.name,
     duration:
-      tv.phase === 'end' ? `${(tv.elapsed_ms / 1000).toFixed(1)}s` : existing.duration,
+      tv.phase === 'end' ? formatElapsed(tv.elapsed_ms) : existing.duration,
     // ok / preview 只在 end 帧有值。失败必须显出来——一次失败的
     // local_search 与一次成功的，在轨迹表里长得一模一样（只有耗时不同），
     // 用户会以为资料真的查过了，而其实那一路整个断掉了。
@@ -292,8 +305,13 @@ function applyEventInner(event: SseEvent, h: RunHandlers): void {
       // 先把字段取出来再进 state updater。updater 是 React 在**渲染
       // 阶段**执行的，跑在 applyEvent 的 try 之外——在里面读
       // ``nv.node_id`` 遇到畸形帧就是白屏，而不是一条错误提示。
+      //
+      // ``receivedAt`` 同理：``Date.now()`` 是 impure 调用，在渲染期
+      // 调用会被 React Compiler 的 purity 规则判错。所以在这里
+      // （事件处理期，不是渲染期）取好时刻再传进去。
       const nodeId = nv.node_id
-      h.setNodes((prev) => prev.map((n) => (n.id === nodeId ? applyNode(n, nv) : n)))
+      const receivedAt = Date.now()
+      h.setNodes((prev) => prev.map((n) => (n.id === nodeId ? applyNode(n, nv, receivedAt) : n)))
       break
     }
     case 'delta': {

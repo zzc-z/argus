@@ -25,11 +25,13 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    and_,
     func,
     select,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.models.base import Base, UtcDateTime
 
@@ -41,6 +43,19 @@ class SourceType(StrEnum):
     HTML = "html"
     TEXT = "text"
     DOCX = "docx"
+
+
+WEB_SOURCE_TYPE = "web"
+"""联网搜索结果落成的来源类型。
+
+与用户上传的资料区分开的唯一标记。**刻意不新增一列**——``sources``
+表加列要写 Alembic 迁移，按项目规范（AGENTS.md）得单独审。
+
+它的用法：
+- :meth:`Source.list_owned` 排除它——不进资料列表、不进本地检索
+- 它**不走摄取管线**（没有原始文件要解析），所以
+  ``ingest.parser_for`` 遇到它会报错，但那条路径永远碰不到
+"""
 
 
 class SourceStatus(StrEnum):
@@ -126,9 +141,45 @@ class Source(Base):
         return await session.scalar(stmt)
 
     @classmethod
+    def owned_clause(cls, user_id: int) -> ColumnElement[bool]:
+        """「用户自己上传的资料」这个条件。
+
+        ## 为什么要有这个
+
+        联网搜索结果也落成 ``Source`` 行（``source_type="web"``，见
+        ``app/services/web_sources.py``），但它们**不是**用户上传的资料。
+        凡是统计「用户有多少资料」的地方都要排除它们，否则：
+
+        - 概览页显示「我的资料 6 份」而用户只上传过 1 份
+        - 本地检索的候选集里混进网页摘要
+
+        所以做成一个共用的条件，三处（``list_owned`` / dashboard 的两个
+        计数）都用它——三处各写一遍的话，漏一处那个数就是错的。
+        """
+        return and_(cls.user_id == user_id, cls.source_type != WEB_SOURCE_TYPE)
+
+    @classmethod
     async def list_owned(cls, session: AsyncSession, user_id: int) -> list[Self]:
-        """列出某用户全部资料，按创建时间倒序。"""
-        stmt = select(cls).where(cls.user_id == user_id).order_by(cls.created_at.desc())
+        """列出某用户**上传的资料**，按创建时间倒序。
+
+        ## 为什么排除 ``source_type="web"``
+
+        联网搜索结果会落成 ``Source`` 行（见
+        ``app/services/web_sources.py``），它们不是用户上传的资料：
+
+        - 出现在「我的资料」列表里是误导——用户没上传过它们
+        - 本地检索按 ``list_owned`` 的结果收窄 source_ids
+          （``retriever._user_source_ids``），混进去会让「我的资料里
+          有没有说过 X」检索到网上搜来的片段
+
+        排除靠 ``source_type`` 而**不是新增一列**——加列要写 Alembic
+        迁移，按项目规范得单独审。
+
+        要拿到公开来源（角标点开看原文）走
+        ``GET /sources/{id}/chunks``，那个端点按 source_id 直查，
+        不经过本方法。
+        """
+        stmt = select(cls).where(cls.owned_clause(user_id)).order_by(cls.created_at.desc())
         return list((await session.scalars(stmt)).all())
 
 

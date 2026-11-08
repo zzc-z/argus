@@ -302,7 +302,14 @@ async def _drive_run(
         async with session_maker() as bg_db:
             try:
                 async for event in run_agent(
-                    question, user_id=user_id, db=bg_db, vec_engine=vec_engine
+                    question,
+                    user_id=user_id,
+                    db=bg_db,
+                    vec_engine=vec_engine,
+                    # 公开来源要另开短事务落库——主事务的 SQLite 写锁
+                    # 不能持有整轮研究（30-60 秒），期间会阻塞并发研究与
+                    # 用户的资料上传。
+                    session_maker=session_maker,
                 ):
                     await run.publish(event)
             except Exception as exc:

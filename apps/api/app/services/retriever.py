@@ -212,11 +212,17 @@ async def library_has_material(db: AsyncSession, user_id: int) -> bool:
     切片数**直接 count(document_chunks)**，不用 ``sources.chunk_count`` 求和：
     那是摄取时写进去的缓存字段，摄取中途失败留下半截数据时它对不上。
     """
+    # **排除公开来源**（``source_type="web"``）——联网搜索结果不是用户
+    # 上传的资料。混进来会让「没上传任何资料、只搜过一次网」的用户
+    # 被判成「资料库非空」，于是 ``explain_no_result`` 返回
+    # ``not_evaluated`` 而不是 ``no_material``——模型于是收到「无法评估
+    # 你的私有资料与这个问题是否相关（资料索引尚未就绪）」，而真相是
+    # 「用户压根没有资料」。那是对模型的事实性错误陈述。
     count = await db.scalar(
         select(func.count())
         .select_from(DocumentChunk)
         .join(Source, Source.id == DocumentChunk.source_id)
-        .where(Source.user_id == user_id)
+        .where(Source.owned_clause(user_id))
     )
     return bool(count)
 

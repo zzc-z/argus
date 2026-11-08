@@ -154,6 +154,71 @@ def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_stage_nodes(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest) -> None:
+    """把 Supervisor / Analyst 两个节点的模型调用桩掉。
+
+    ## 为什么必须桩
+
+    ``agent.run_agent`` 现在会调两次**主循环之外**的模型：Supervisor
+    的拆解（``stages.plan_subtasks``）与 Analyst 的核对
+    （``stages.analyze_evidence``）。这两个函数走
+    ``client.messages.create``——**不经过** ``_run_turn``，所以
+    ``test_agent_loop`` 里的 `_stub_turns` 拦不住它们。
+
+    不桩的后果是测试真的联网：症状是 ``done.input_tokens`` 变成 337
+    （100 + 真实调用烧的），而断言还写着 100。更糟的是它让整个测试套件
+    依赖中转站的可用性与额度——上游一抖动就有一片用例红。
+
+    ## 桩的行为
+
+    返回**空的**结果（无子任务、无矛盾）。这样：
+
+    - 账本不受影响（桩不烧 token）——已有断言（``input_tokens == 100``）
+      继续成立
+    - agent 主循环的路径与真实一致（拆解失败 → 降级 → 照常检索）
+
+    ## 要测这两个节点自己的用例
+
+    ``tests/test_stages.py`` 测的正是这两个函数的**真实行为**，所以那里
+    必须跳过本桩——否则「桩返回空结果」会让那些用例测不到真东西。
+
+    跳过的方式是看测试模块名：``request.node.module`` 是
+    ``tests.test_stages``。用模块名而不是标记，是因为标记要在每个用例
+    上写 ``@pytest.mark.real_stage_nodes``，漏一个就静悄悄测了桩。
+    """
+    from app.services import stages
+
+    module = getattr(request.node.module, "__name__", "")
+    # **精确相等**，不是后缀匹配。
+    #
+    # 后缀匹配（``endswith("test_stages")``）对未来新增的
+    # ``test_web_stages.py`` / ``test_new_stages.py`` 也会命中——那里
+    # 的 ``run_agent`` 集成测试会**真的联网调模型**
+    # （``plan_subtasks`` / ``analyze_evidence`` 走
+    # ``client.messages.create``，不走 ``_run_turn``，``_stub_turns``
+    # 拦不住）。症状是测试依赖中转站的可用性与额度。
+    #
+    # 失效方向与「用标记」方案完全对称（标记漏写一个 → 静悄悄测了桩），
+    # 但精确相等不会误伤新文件。
+    if module == "tests.test_stages":
+        return
+
+    async def _no_plan(*args: Any, **kwargs: Any) -> stages.Plan:
+        return stages.Plan()
+
+    async def _no_analysis(*args: Any, **kwargs: Any) -> stages.Analysis:
+        # **标 degraded**——桩本身没做核对，返回一个「成功且无矛盾」的
+        # Analysis 会让 DAG 上的 note 说「核对 N 条证据，未发现矛盾」。
+        #
+        # 桩掉整个节点调用的场景（本文件要挡的就是「别真调模型」），
+        # 没有任何核对发生——如实标降级。
+        return stages.Analysis(degraded=True, skipped_reason="测试桩，未做核对")
+
+    monkeypatch.setattr("app.services.agent.plan_subtasks", _no_plan)
+    monkeypatch.setattr("app.services.stages.analyze_evidence", _no_analysis)
+
+
 @pytest_asyncio.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     """内存 SQLite + 完整 schema，测试结束即销毁。"""
