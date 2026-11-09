@@ -56,6 +56,24 @@ header ≤ 100 字符。
 - 命名：组件 `PascalCase.tsx` / 函数 `camelCase.ts` / 常量 `UPPER_SNAKE_CASE.ts` / 路由 `kebab-case` / 数据库表 `snake_case`
 - 严禁：复制粘贴 > 3 次（DRY）、写将来才用的功能（YAGNI）、用 3 个指头能做的事用 2 个指头（KISS）
 
+### 2.3.1 审查速查：规则 → 条款出处
+
+审查时引用具体条款编号用这张表（全局 `reviewer-fresh` agent 审 argus 代码时
+需要它定位依据）：
+
+| # | 规则 | 出处 |
+|---|---|---|
+| 1 | **不可变 mutation**：禁止原地改数组/对象；spread / map / filter 返回新引用 | CONVENTIONS §3 |
+| 2 | **嵌套 ≤ 4 层**：超出必须抽子组件 | CONVENTIONS §3 |
+| 3 | **函数 ≤ 50 行 / 文件 ≤ 800 行** | CONVENTIONS §3 |
+| 4 | **命名严格**：PascalCase=组件/类、camelCase=工具/变量、UPPER_SNAKE_CASE=常量、kebab-case=路由、snake_case=数据库表/LangGraph node | CONVENTIONS §2 |
+| 5 | **设计 token 禁偏离**：禁止 `bg-[#XXX]` / `bg-oklch(...)` 任意值；必须用 `tailwind.config.ts` 的 color token | CONVENTIONS §8 |
+| 6 | **a11y**：`<button>` 必有 aria-label 或可见文字；`<img>` 必有 alt；`<input>` 必关联 `<label htmlFor>`；焦点环 `focus-visible:ring-2` | CONVENTIONS §12 |
+| 7 | **状态管理边界**：本地 `useState` / 跨路由 searchParams / 服务端 `fetch + useState`（项目**未装** Zustand / SWR / React Query，import 它们会构建失败） | CONVENTIONS §4 |
+| 8 | **TypeScript strict**：禁止 `any`；pre-commit 跑 `tsc --noEmit` | CODE-QUALITY §2.1-2.2 |
+| 9 | **错误路径必有**：async/await 必有 catch；API route 必返回错误状态；不可静默吞错 | CONVENTIONS §3 + AGENTS §10 |
+| 10 | **shadcn 优先**：禁止装 MUI/Chakra/Mantine/Ant Design；禁止手改 `components/ui/` 下文件；新功能复用 shadcn 组件 | CONVENTIONS §7 |
+
 ### 2.4 设计稿还原 4 步（AGENTS.md §14）
 
 触发：还原 `argus设计稿/argus_*/code.html` 到 React 组件

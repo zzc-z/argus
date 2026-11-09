@@ -141,7 +141,12 @@ pnpm --filter web lint && pnpm --filter web exec tsc --noEmit
 uv run pytest tests/ -q --no-header -p no:cacheprovider
 ```
 
-两步都过 → **起 CR 审查**：`reviewer-fresh` 代理，独立上下文只读审查。
+两步都过 → **起 CR 审查**：`reviewer-fresh` 代理（全局 `~/.claude/agents/`），
+独立上下文只读审查，四个维度：并发/事务/边界、**静默失败**、错误路径与用户反馈、
+跨模块语义一致性。
+
+**它只报置信度 ≥80 的问题**——低于门槛的直接说「无」。所以「CR 没报问题」
+是真结论，不要自己再加一轮「保险审查」。
 
 **编辑期跑相关测试，不要跑全量**（改一处 → 跑全量是本项目最大的一笔浪费，实测
 一轮 116 次全量 = 61 分钟纯等待）。相关测试按模块名匹配：改
