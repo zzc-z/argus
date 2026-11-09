@@ -36,9 +36,12 @@ argus/
 
 **禁止 commit 不合规代码**。三层硬拦截：
 
-1. **Pre-commit hook**（`.husky/pre-commit`）—— 跑 `pnpm run lint`（eslint）
-2. **Commit-msg hook**（`.husky/commit-msg`）—— 跑 `commitlint` 验 Conventional Commits
-3. **CI**（未来加 GitHub Actions）—— 跑完整 `lint + typecheck + test`
+1. **Pre-commit hook**（`apps/web/.husky/pre-commit`，`core.hooksPath` 指向它）
+   —— 跑前端 `eslint` + `tsc`，**有后端文件改动时**再跑后端 `ruff` + `mypy`
+   （只跑快的，十秒级；全量测试留给 CI）
+2. **Commit-msg hook**（同目录）—— 跑 `commitlint` 验 Conventional Commits
+3. **CI**（`.github/workflows/ci.yml`）—— 后端 `ruff + mypy + pytest`（并行）
+   与前端 `eslint + tsc`，每次 push 自动跑
 
 **Conventional Commits 11 个 type**：
 `feat / fix / perf / refactor / style / test / build / chore / ci / docs / revert`
@@ -121,6 +124,9 @@ uv run pre-commit install                 # 装 pre-commit hooks
 
 ### 2. 三步流程
 
+**流程骨架见 `~/.claude/rules/dev-flow.md`（全局，全项目通用）**。下面是
+本项目的具体命令。
+
 ```bash
 # 1. 质量门（apps/api）
 uv run ruff check app/ tests/ alembic/
@@ -130,10 +136,21 @@ uv run mypy app/
 pnpm --filter web lint && pnpm --filter web exec tsc --noEmit
 
 # 2. 测试
+#   并行配置在 pyproject.toml 的 addopts 里（-n 4 --dist=worksteal），
+#   所以直接跑就是并行的（全量 32.5s → 12.9s）。
+#   --maxfail=1：首个失败就停，已经坏了的分支不用跑完。
 uv run pytest tests/ -q --no-header -p no:cacheprovider
 ```
 
 两步都过 → **起 CR 审查**：`reviewer-fresh` 代理，独立上下文只读审查。
+
+**编辑期跑相关测试，不要跑全量**（改一处 → 跑全量是本项目最大的一笔
+浪费，实测一轮 116 次全量 = 61 分钟纯等待）。相关的测试文件按模块名匹配：
+改 `app/services/stages.py` → `tests/test_stages.py`、
+`tests/test_agent_stages.py`。全局有个 PostToolUse hook 会提示。
+
+**推送到远端后 CI 会自动跑全量**（`.github/workflows/ci.yml`）——所以
+「提交前跑一次全量」是安全的，漏跑会被 CI 拦下。
 
 给代理的 prompt 必须包含（缺一项它就审不出东西）：
 
@@ -225,7 +242,12 @@ CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类
    别只读源码**——而且**实测的结论必须覆盖到 docstring 和 commit message**，
    凭印象写下的技术事实会变成错误指引
 
-本项目已用变异测试验证过测试的有效性（故意改坏代码，测试是否会失败）：
+本项目已用变异测试验证过测试的有效性（故意改坏代码，测试是否会失败）。
+
+**2026-11-09 起工具化**：清单在 `apps/api/tests/mutations.yaml`，跑
+`uv run python -m tests.mutation`（可加 id 只跑指定几条）。它会区分
+「测试跑了但全绿」（测试是废的）与「测试根本没跑」（变异太粗暴，把代码
+改到无法导入）——混为一谈会给出假阳性。
 
 | 变异 | 失败数 | 说明 |
 |---|---|---|
@@ -235,6 +257,14 @@ CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类
 | 补偿不复位 chunk_count | 1 | 2026-10-13 补 |
 | 补偿越界清空他人索引 | 1 | 2026-10-13 补 |
 | 两 source 隔离 | 1 | 2026-10-13 补 |
+| 节点耗时不算累计 | 1 | 2026-11-09 加 |
+| 节点完成帧不带产出摘要 | 1 | 2026-11-09 加 |
+| Analyst 降级时说「未发现矛盾」 | 1 | 2026-11-09 加 |
+| Supervisor 取消时不发 done | 1 | 2026-11-09 加 |
+| 公开来源漏传 session_maker | 1 | 2026-11-09 加 |
+| 畸形 URL 让整批失败 | 1 | 2026-11-09 加 |
+| 证据块丢掉 URL | 1 | 2026-11-09 加 |
+| 落库用短摘要而非原文 | 1 | 2026-11-09 加 |
 
 **测不出来就别硬凑**：`test_compensation_rolls_back_before_touching_db` 写了又删——
 它断言「rollback 被调用过」，而把 rollback 挪进 try 里同样会被调用，测试通过却

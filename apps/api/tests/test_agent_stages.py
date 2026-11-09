@@ -601,6 +601,57 @@ async def test_analyst_note_reports_the_total_when_some_are_not_checked(
     assert "共 15 条" in analyst.note, analyst.note
 
 
+async def test_cancel_during_supervisor_emits_done(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """在 Supervisor 阶段取消时**必须发 done**。
+
+    ## 要防的回归（CR 实测，2026-11-08）
+
+    ``plan_subtasks`` 是第一次真正的模型调用，而它在主循环的 ``try``
+    **之外**——那个 ``except asyncio.CancelledError`` 捕不到它。
+
+    实测：产出是「只有一个 supervisor active 帧」——**没有 done、没有
+    error、没有落盘**。前端 runState 停在 running，用户看到转圈不结束。
+
+    改动前 Supervisor 是本地拼 prompt（毫秒级），取消窗口几乎为零，
+    这个洞是新开出来的。
+
+    ## 怎么测
+
+    起一个真任务跑 ``run_agent``，等它进到 ``plan_subtasks`` 里（用
+    事件探针），然后 ``task.cancel()``，断言 done 帧到了消费者手里。
+    """
+    _stub_turns(monkeypatch, [_turn(text="答案")])
+
+    entered = asyncio.Event()
+
+    async def _hanging_plan(client: Any, question: str, *, has_local: bool) -> stages.Plan:
+        entered.set()
+        await asyncio.sleep(30)
+        return stages.Plan()
+
+    monkeypatch.setattr(agent_module, "plan_subtasks", _hanging_plan)
+
+    events: list[Any] = []
+
+    async def _drive() -> None:
+        async for event in agent_module.run_agent("问题", user_id=1):
+            events.append(event)
+
+    task = asyncio.create_task(_drive())
+    await asyncio.wait_for(entered.wait(), timeout=5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    from app.services.stream import DoneEvent
+
+    assert any(isinstance(e, DoneEvent) for e in events), (
+        f"取消时必须发 done——否则前端一直转圈。实际产出：{events}"
+    )
+
+
 async def test_analyst_does_not_rerun_without_new_evidence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

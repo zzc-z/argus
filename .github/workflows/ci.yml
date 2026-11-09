@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+# 同一分支的多次 push 只跑最后一次——省 runner 分钟。
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: 后端门禁 + 测试
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 装依赖
+        run: uv sync --extra dev
+
+      # 静态检查最快，放最前面——失败就早停，省 runner 分钟。
+      - name: ruff
+        run: uv run ruff check app/ tests/ alembic/
+
+      - name: mypy
+        run: uv run mypy app/
+
+      # 全量测试并行跑（-n 4 配在 pyproject.toml 的 addopts 里）。
+      # 单进程跑要 32 秒，并行 14 秒。
+      - name: pytest
+        run: uv run pytest tests/ -q --no-header -p no:cacheprovider
+
+      - name: ruff format 检查（只查本次改动的文件）
+        # 全库 format --check 现状是红的（ruff 版本差异导致，见
+        # docs/LOCAL-DEV.md §5），所以只查改动的文件。
+        run: |
+          git diff --name-only origin/master...HEAD -- 'apps/api/*.py' \
+            | sed 's|apps/api/||' \
+            | xargs -r uv run ruff format --check
+
+  web:
+    name: 前端门禁
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: 装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: eslint
+        run: pnpm run lint
+
+      - name: tsc
+        run: pnpm exec tsc --noEmit

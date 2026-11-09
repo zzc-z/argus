@@ -156,6 +156,35 @@ pnpm --filter web exec tsc --noEmit
 `ruff format --check` 在全库目前是红的（ruff 版本差异导致的既有状态，
 改动前就红）。只保证**你改动的文件**干净，别去格式化别人的代码。
 
+### 5.1 测试是并行的（2026-11-09 起）
+
+`pyproject.toml` 的 `addopts` 里配了 `-n 4 --dist=worksteal --maxfail=1`，
+所以 `uv run pytest tests/` **直接跑就是并行的**（全量 32.5s → 12.9s）。
+
+- **不要用 `-n auto`**：容器里 `os.cpu_count()` 报的是宿主核数，会过度订阅
+- **`--dist=worksteal` 不要改回 `loadscope`**：loadscope 按「模块/类」分组，
+  我们的测试是函数级的（没类），会退化成按文件分 → 负载不均 → **间歇性失败**
+  （实测 3 次里 2 次有测试红）
+- **`--maxfail=1`**：首个失败就停。看到「681 passed」不是测试丢了，是它停了
+  其余 worker
+
+**编辑期跑相关的测试**（改一处 → 跑全量是最大的一笔浪费，实测一轮 116 次
+全量 = 61 分钟纯等待）。相关文件按模块名匹配：改 `app/services/stages.py`
+→ `tests/test_stages.py` + `tests/test_agent_stages.py`。全局有个
+PostToolUse hook 会提示。
+
+### 5.2 变异测试（验证测试真的有效）
+
+```bash
+cd apps/api
+uv run python -m tests.mutation          # 全跑
+uv run python -m tests.mutation M1 M3   # 只跑指定几条
+```
+
+清单在 `apps/api/tests/mutations.yaml`。它会区分「测试跑了但全绿」
+（测试是废的）与「测试根本没跑」（变异太粗暴把代码改到无法导入）——
+混为一谈会给出假阳性。
+
 ## 6. 已知的环境事实
 
 - **数据库是 SQLite**（`apps/api/argus.db`），不是 Postgres。

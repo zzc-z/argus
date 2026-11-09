@@ -1,0 +1,98 @@
+# 变异测试清单
+#
+# 用途：验证「每个新测试都真的能抓到它要防的 bug」（项目规则要求）。
+#
+# 跑法：
+#   uv run python -m tests.mutation          # 全跑
+#   uv run python -m tests.mutation M1 M3   # 只跑指定几条
+#
+# **每条变异都必须让指定测试变红**。没变红说明那条测试是废的，或者变异
+# 根本没生效（from 字符串没匹配上）——后者更危险：你会以为验过了。
+#
+# 加新条目时：
+#   1. 写一条新测试（先确认它**能**抓住这个变异）
+#   2. 在这里加一条
+#   3. 跑一遍确认绿
+
+mutations:
+  # ── 节点耗时的累计 ──
+  - id: M1
+    desc: 节点耗时不算累计（只算最后一段）
+    file: app/services/agent_nodes.py
+    from: 'total = self._accumulated_ms.get(stage, 0) + segment'
+    to: 'total = segment'
+    expect_fail: test_agent_stages.py
+
+  # ── 节点的产出摘要 ──
+  - id: M2
+    desc: 节点完成帧不带产出摘要
+    file: app/services/agent_nodes.py
+    from: 'note=self._notes.pop(self._active, ""),'
+    to: 'note="",'
+    expect_fail: test_agent_stages.py
+
+  # ── Analyst 降级时说假话 ──
+  - id: M3
+    desc: Analyst 降级时仍写「未发现矛盾」
+    file: app/services/stages.py
+    from: 'if analysis.degraded:'
+    to: 'if False:'
+    expect_fail: test_agent_stages.py
+
+  # ── Analyst 的「有没有新证据」判据 ──
+  - id: M4
+    desc: seen 记录全部引用（而非实际送进模型的那些）
+    file: app/services/stages.py
+    from: 'seen.update({("ref", ref.chunk_id) for ref in selected})'
+    to: 'seen.update({("ref", ref.chunk_id) for ref in unique})'
+    expect_fail: test_agent_stages.py
+
+  # ── Supervisor 阶段取消 ──
+  - id: M5
+    desc: Supervisor 阶段取消时不发 done（前端会一直转圈）
+    file: app/services/agent.py
+    # 换成 error 而不是删掉 yield——删掉会让 run_agent 不再是生成器，
+    # 整个模块 import 失败（pytest 收集不到测试），那不叫「测试有效」。
+    from: "        yield ledger.done()"
+    to: "        yield ErrorEvent(code=\"wrong_event\", message=\"x\")"
+    expect_fail: test_agent_stages.py
+
+  # ── 公开来源：session_maker 接线 ──
+  - id: M6
+    desc: 生产调用点漏传 session_maker（公开来源走 SAVEPOINT 路径）
+    file: app/services/tools.py
+    from: '            session_maker=context.session_maker,'
+    to: '            # 漏传'
+    expect_fail: test_web_sources.py
+
+  # ── 公开来源：畸形 URL 不能让整批失败 ──
+  - id: M7
+    desc: 畸形 URL 不捕获 ValueError（整批搜索结果失去角标）
+    file: app/services/web_sources.py
+    from: "        except ValueError:\n            logger.warning(\"搜索结果的 URL 无法归一化，按无 URL 处理\", exc_info=True)\n            canonical = \"\""
+    to: "        except ValueError:\n            raise"
+    expect_fail: test_web_sources.py
+
+  # ── 公开来源：证据块要带 URL ──
+  - id: M8
+    desc: 证据块丢掉 URL（模型没法执行 dedup 指令）
+    file: app/services/web_sources.py
+    from: 'url_line = f"URL: {item.url}\n" if item.url else ""'
+    to: 'url_line = ""'
+    expect_fail: test_web_sources.py
+
+  # ── 公开来源：落库要用长内容（不是 Analyst 的短摘要）──
+  - id: M9
+    desc: 落库用短摘要（critic 校验的是摘要而不是原文）
+    file: app/services/web_sources.py
+    from: 'content = (item.content or item.excerpt)[:WEB_CHUNK_CHARS]'
+    to: 'content = item.excerpt[:WEB_CHUNK_CHARS]'
+    expect_fail: test_web_sources.py
+
+  # ── 打字机：节奏必须精确 ──
+  - id: M10
+    desc: 打字机不控速（正文一下全出）
+    file: app/services/stream.py
+    from: 'self._credit -= len(piece)'
+    to: 'self._credit = 0'
+    expect_fail: test_text_slicer.py

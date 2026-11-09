@@ -1,4 +1,40 @@
 #!/usr/bin/env sh
-# hook 在仓库根执行（core.hooksPath 指向这里），lint 装在 apps/web。
-cd "$(dirname "$0")/.." || exit 1
+# 提交前的**快速**门禁。只跑快的——全量测试留给 CI。
+#
+# 为什么不全量 pytest：759 个用例跑一次 14 秒（xdist -n 4），每次提交都等
+# 14 秒会让人开始绕过它。快的门禁（ruff + mypy + 前端 lint ≈ 6 秒）才是
+# 「每次提交都跑得动」的那一档。
+#
+# 为什么只改后端文件时才跑后端门禁：前端改动不该被后端的 mypy 拖慢。
+#
+# 门禁分层（见 docs/DEV-FLOW-ANALYSIS.md）：
+#   pre-commit  → ruff + mypy + 前端 lint      （~6 秒，每次提交）
+#   CI          → 全量 pytest + 全部门禁       （每次 push）
+#   提交前自检  → 相关测试（pytest tests/xxx.py）（~2 秒，改完就跑）
+set -e
+
+# 仓库根。
+#
+# git 执行 hook 时的工作目录是**仓库根**，而 $0 是**相对仓库根**的路径
+# （实测：$0=apps/web/.husky/pre-commit，pwd=<仓库根>）。
+#
+# 所以 dirname "$0" = apps/web/.husky —— 从那里退**三级**才是仓库根
+# （.husky → web → apps → 仓库根）。
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+
+# ── 前端：总是跑 ──
+cd "$ROOT/apps/web" || exit 1
 pnpm run lint
+pnpm exec tsc --noEmit
+
+# ── 后端：有后端文件改动时才跑 ──
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR)
+case "$STAGED" in
+  *apps/api/*)
+    cd "$ROOT/apps/api" || exit 1
+    uv run ruff check app/ tests/
+    uv run mypy app/
+    ;;
+esac
+
+exit 0
