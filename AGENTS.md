@@ -1,14 +1,22 @@
 # AGENTS.md — Argus 项目 AI Agent 协作指南
 
 > 适用于在 argus 项目上工作的所有 AI 编程助手（Claude Code / Cursor / Cline 等）。
+>
+> **本文件只放项目特有的事实与硬约束。** 通用的编码规范、流程骨架、回复风格
+> 见全局 `~/.claude/rules/`（`coding.md` / `dev-flow.md` / `core.md`），不在此重复。
 
 ## 1. 项目快速画像
 
 - **项目**：Argus — 多智能体深度研报平台
-- **栈**：pnpm + Turborepo（monorepo）+ Next.js 16.3.7 + React 19.3 + Tailwind v3.4.19 + shadcn/ui（new-york 风格）+ Geist / GeistSans 字体 + Material Symbols Outlined
-- **后端（W2 启动）**：Python 3.12 + uv + FastAPI + LangGraph + Supabase + pgvector
-- **设计 token**：47 个 color + 11 个 fontFamily + 11 个 fontSize（precision_technical_light 集）
-- **代码图谱**：CodeGraph（`@colbymchenry/codegraph`，项目级 MCP server；索引 140 文件 / 1153 节点 / 2296 边；agent 优先用 `mcp__codegraph__codegraph_explore` 而不是 grep/find）
+- **前端**：pnpm + Turborepo（monorepo）+ Next.js 16.3.7 + React 19.3 + Tailwind v3.4.19 + shadcn/ui（new-york 风格）+ Geist / GeistSans 字体
+- **后端**：Python ≥3.12 + uv + FastAPI + SQLite（`sqlite+aiosqlite`）+ sqlite-vec
+  - **不是** Supabase / pgvector——dev 环境没有 Postgres，向量层用 sqlite-vec 扩展。
+    换 pgvector 只改 `app/services/vectorstore.py`，调用方不动。
+- **设计 token**：50 个 color + 11 个 fontFamily + 11 个 fontSize（precision_technical_light 集）
+- **图标字体**：Google Material Symbols Outlined，**本地 woff2**
+  （`apps/web/public/fonts/material-symbols-outlined.woff2`，在 `globals.css` 里 `@font-face`）
+- **代码图谱**：CodeGraph（项目级 MCP server，索引 258 文件）。agent 优先用
+  `mcp__codegraph__codegraph_explore` 而不是 grep/find
 
 ## 2. 项目结构
 
@@ -18,11 +26,12 @@ argus/
 │   ├── web/                # Next.js 前端
 │   │   ├── app/           # App Router
 │   │   ├── components/
-│   │   │   └── ui/        # shadcn CLI 装包自动生成（`pnpm dlx shadcn@latest add ...`）
+│   │   │   ├── ui/        # shadcn CLI 装包自动生成（`pnpm dlx shadcn@latest add ...`）
+│   │   │   └── common/    # 自建公共组件，一个组件一个文件夹
 │   │   ├── lib/
 │   │   │   └── utils.ts   # shadcn CLI init 自动生成（cn = twMerge(clsx(...))）
 │   │   └── ...
-│   └── api/               # FastAPI 后端（W2 启动）
+│   └── api/               # FastAPI 后端
 ├── packages/
 │   └── shared/            # 前后端共享类型
 ├── prd/                   # PRD 13 份文档（只读）
@@ -40,14 +49,13 @@ argus/
    —— 跑前端 `eslint` + `tsc`，**有后端文件改动时**再跑后端 `ruff` + `mypy`
    （只跑快的，十秒级；全量测试留给 CI）
 2. **Commit-msg hook**（同目录）—— 跑 `commitlint` 验 Conventional Commits
+   （配置在 `apps/web/commitlint.config.mjs`）
 3. **CI**（`.github/workflows/ci.yml`）—— 后端 `ruff + mypy + pytest`（并行）
-   与前端 `eslint + tsc`，每次 push 自动跑
+   与前端 `eslint + tsc`，master push 与 PR 自动跑
 
-**Conventional Commits 11 个 type**：
-`feat / fix / perf / refactor / style / test / build / chore / ci / docs / revert`
+**Conventional Commits**：type 取 `feat / fix / perf / refactor / style / test / build / chore / ci / docs / revert`。
 
-**Argus scope 自动发现**（commitlint-plugin-workspace-scopes）：
-`apps/web / apps/api / packages / docs / prd / root` —— 必须在 commit 行写明
+**scope 可选**——`scope-enum` 规则关掉了，`feat: xxx` 这种不带 scope 的写法合法。
 
 ## 7. 项目命令速查
 
@@ -60,7 +68,7 @@ pnpm --filter web lint                    # 跑 lint
 pnpm --filter web lint:fix                # 自动修复
 pnpm --filter web format                  # prettier 格式化
 pnpm --filter web format:check            # 验格式化
-pnpm --filter web exec tsc --noEmit      # 类型检查（必须带 exec，见下）
+pnpm --filter web exec tsc --noEmit       # 类型检查（必须带 exec，见下）
 
 # 前端 husky
 pnpm --filter web prepare                 # 安装 git hooks
@@ -69,14 +77,13 @@ pnpm --filter web prepare                 # 安装 git hooks
 pnpm --filter web dlx shadcn@latest init  # 初始化（自动建 components.json + lib/utils.ts）
 pnpm --filter web dlx shadcn@latest add button card input label  # 装组件
 
-# 后端（W2 启用）
+# 后端
 cd apps/api
 uv sync                                   # 装 Python 依赖
-uv run ruff check .                       # 验 ruff 规则
+uv run ruff check app/ tests/ alembic/    # 验 ruff 规则
 uv run ruff format --check .              # 验 format
-uv run mypy --strict .                    # 验类型
-uv run pytest -m smoke                    # 跑烟测
-uv run pre-commit install                 # 装 pre-commit hooks
+uv run mypy app/                          # 验类型（strict）
+uv run pytest tests/ -q --no-header -p no:cacheprovider  # 跑测试（并行配在 addopts）
 ```
 
 ### 7.1 本地环境：启动、重启、迁移
@@ -96,6 +103,9 @@ uv run pre-commit install                 # 装 pre-commit hooks
 
 **每写完一批代码，必须依次走「质量门 → 测试 → CR」，缺一不可。CR 不是可选项。**
 
+流程骨架（分层反馈环、并行测试、审查分工、变异测试、范围纪律）见全局
+`~/.claude/rules/dev-flow.md`。下面是本项目的具体命令与判定。
+
 ### 0. 唯一的豁免（先读这条）
 
 只有以下情况可以不起 CR，其余一律必起：
@@ -103,29 +113,19 @@ uv run pre-commit install                 # 装 pre-commit hooks
 - **纯文档 / 注释 / WORKLOG 改动**，且没有一行代码或配置变化。
 - **纯格式化改动**（ruff format 之类，语义零变化）——用 `git diff -w` 确认没有非空白差异。
 
-**「改动文件少」「改动小」「看起来很简单」都不是豁免理由。**
-本次修订的直接原因就是：旧版本写着「单批改动 ≤3 个文件不必起 CR」，
-于是 4 个 commit 里有 3 个被这条口子跳过，全部未审。CR 报出 2 个严重
-（其中一条会导致照文档操作损坏生产数据）、9 个重要。
+**「改动文件少」「改动小」「看起来很简单」都不是豁免理由。** 旧版本写着
+「单批改动 ≤3 个文件不必起 CR」，于是 4 个 commit 里有 3 个被这条口子跳过，
+全部未审——CR 事后报出 2 个严重、9 个重要。
 
 ### 1. 什么算「一批」
 
-由 Claude 按工作量自行划定，判据是**改动可以独立验证**。默认粒度：
-
-| 场景 | 一批 = |
-|---|---|
-| 单个功能 / 单个 commit 的功能 | 该功能的全部改动 |
-| 一个 sprint day | 一天的工作量 |
-| 一份 plan | plan 的一个阶段 |
+由 Claude 按工作量自行划定，判据是**改动可以独立验证**。默认粒度：单个功能 /
+单个 commit / 一个 sprint day / 一份 plan 的一个阶段。
 
 **必须拆批的情况**：改动跨越 schema / migration / 鉴权 / 并发控制 / 事务边界。
-这类改动**不允许**和普通逻辑混在一个 commit 里审——审的人（和我）会漏掉藏在
-大 diff 里的那部分。
+这类改动**不允许**和普通逻辑混在一个 commit 里审——审的人会漏掉藏在大 diff 里的那部分。
 
 ### 2. 三步流程
-
-**流程骨架见 `~/.claude/rules/dev-flow.md`（全局，全项目通用）**。下面是
-本项目的具体命令。
 
 ```bash
 # 1. 质量门（apps/api）
@@ -138,19 +138,16 @@ pnpm --filter web lint && pnpm --filter web exec tsc --noEmit
 # 2. 测试
 #   并行配置在 pyproject.toml 的 addopts 里（-n 4 --dist=worksteal），
 #   所以直接跑就是并行的（全量 32.5s → 12.9s）。
-#   --maxfail=1：首个失败就停，已经坏了的分支不用跑完。
 uv run pytest tests/ -q --no-header -p no:cacheprovider
 ```
 
 两步都过 → **起 CR 审查**：`reviewer-fresh` 代理，独立上下文只读审查。
 
-**编辑期跑相关测试，不要跑全量**（改一处 → 跑全量是本项目最大的一笔
-浪费，实测一轮 116 次全量 = 61 分钟纯等待）。相关的测试文件按模块名匹配：
-改 `app/services/stages.py` → `tests/test_stages.py`、
-`tests/test_agent_stages.py`。全局有个 PostToolUse hook 会提示。
+**编辑期跑相关测试，不要跑全量**（改一处 → 跑全量是本项目最大的一笔浪费，实测
+一轮 116 次全量 = 61 分钟纯等待）。相关测试按模块名匹配：改
+`app/services/stages.py` → `tests/test_stages.py`、`tests/test_agent_stages.py`。
 
-**推送到远端后 CI 会自动跑全量**（`.github/workflows/ci.yml`）——所以
-「提交前跑一次全量」是安全的，漏跑会被 CI 拦下。
+**推送到远端后 CI 会自动跑全量**，所以「提交前跑一次全量」是安全的，漏跑会被 CI 拦下。
 
 给代理的 prompt 必须包含（缺一项它就审不出东西）：
 
@@ -167,82 +164,43 @@ CR 发现问题时：**修完重跑质量门 + 测试**，再复审一轮。CR �
 
 - [ ] 本批代码走完了「质量门 → 测试 → CR」三步，CR 结论已写进 commit message
 - [ ] commit message 里写的每条理由，都能在代码或实测里找到支撑
-      （**写文档时引用的每个技术事实都要实测过**——见下节）
 - [ ] 新加的每个测试都**注入过回归验证过它真的会红**
-
-第 2 条不是形式主义。本次 CR 实测发现 `UtcDateTime` 的 docstring 写着
-「SQLite 存的是本机时区，历史数据需 UPDATE 修正」——实测 SQLite 的
-`CURRENT_TIMESTAMP` **就是 UTC**。照那条补救指引操作，会把所有历史时间戳
-平移一个时区偏移，把正确的数据改坏。一个错误的技术断言留在文档里，
-比没有文档更危险。
 
 ### 4. 为什么 CR 不省
 
 Claude 自己改完的代码，自己检查等于用同一套假设验同一套假设——盲区完全重合。
 CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类自检答案的盲区。
 
-**实证一（2026-10-13，W2 Day 11）**：CR 报出 2 个严重 + 6 个重要问题，其中
-两个是我「以为验证过了」的：
+**实证（2026-10-13 ~ 10-15，四轮）**：CR 累计报出 5 个严重 + 20 多个重要问题。
+其中最典型的一类，是「**声称解决了某个问题，但实现只覆盖了一部分**」：
 
-1. **绕过 `dependency_overrides`**——我自己开的 session 让测试静悄悄地连上
-   开发库 `argus.db`，而 conftest 的首要约定就是测试绝不碰开发库。症状是
-   「测试全绿」，没有任何报错。
-2. **读错 FastAPI 源码**——我看到 `function_stack` 在 `await response(...)`
-   之前出栈，就断定「依赖提前关闭」，于是自己开 session 并写了段 docstring
-   论证设计合理性。**而那个前提是错的**：`Depends()` 默认 `scope="request"`，
-   依赖挂的是**外层** stack，要等响应发完才关。FastAPI 0.118.0 专门把这个
-   行为 revert 过。
+- 补偿写了正文、FTS、向量三处，漏了 `chunk_count`（用户可见字段）
+- 竞态令牌加在「连点角标」，漏了「点 DAG 节点」和「收到新 reference 帧」
+- `_clear_stored` 的 `db.rollback()` 放错位置——session 在 commit 失败后不可用，
+  rollback 放在 try 内它自己也抛，整个补偿一行不跑
+- 第二轮修复自己引入严重问题：把 rollback 从 try 内挪到 try 外，理由是「它自己
+  也会抛」。查 SQLAlchemy 源码确认 `Session._rollback_impl` 末尾
+  `if rollback_err and rollback_err[1]: raise`——DB 真挂时 rollback 照样抛，
+  补偿一行不跑、裸 `raise` 拿不到原始异常，source 卡在 `chunking`。
+  **修复在它唯一有意义的场景下静默失效。** 正确解法是包住而不是挪出去
 
-**实证二（2026-10-13，W2 Day 14）**：4 个 commit 全部跳过 CR。补审报出
-2 个严重 + 9 个重要 + 6 个细节，其中：
-
-1. **补救指引会损坏生产数据**（同上 docstring 问题）
-2. **`_clear_stored` 里的 `db.rollback()` 放错位置**——session 在 commit
-   失败后不可用，rollback 放在 try 内它自己也抛，整个补偿一行不跑
-3. **补偿漏了 `chunk_count`**——「补了三处漏了一处」，用户可见字段自相矛盾
-4. **我把 PDF 真实页码改叫「第 N 段」**——实测 `parser.py:77` 取
-   `index+1`，是货真价实的 PDF 页码，改动让用户拿报告找页码时找不到
-5. **竞态令牌漏了两个入口**——点 DAG 节点、收到新 `reference` 帧时都没自增，
-   正是我声称要防的「A 的原文画到 B 的编号下面」
-
-第 3、5 条尤其说明问题：**它们都是「我自己声称解决了某个问题，但实现只覆盖了
-一部分」**。变异测试也抓不到这两个——测试本身也没覆盖全。
-
-第 2 条说明另一件事：**读源码看到「某行之前出栈」就下结论，是把「内层 stack 早关」
-和「依赖挂在内层」混成了一件事**。改这类东西之前先写个 10 行的实测脚本验一遍，
-比读源码推断可靠。
-
-**实证三（2026-10-15）**：修完前两轮后起复审，1 严重 + 5 重要 + 3 细节，
-其中严重级是**第二轮修复自己引入的**——把 `_clear_stored` 的 `db.rollback()`
-从 try 内挪到 try 外，理由是「它自己也会抛，必须先做完再进 try」。查 SQLAlchemy
-源码确认：`Session._rollback_impl` 末尾 `if rollback_err and rollback_err[1]: raise`
-——DB 真挂时 rollback 照样抛，于是补偿一行不跑、裸 `raise` 拿不到原始异常、
-`mark_failed` 也不跑，source 卡在 `chunking` 且 `error_message` 为空。
-**修复在它唯一有意义的场景下静默失效。** 正确解法是包住而不是挪出去
-（`_rollback_quietly`）。
+**变异测试也抓不到前两个**——测试本身也没覆盖全。
 
 **修 A 引入 B、修 B 引入 C 是这类改动的固有风险**：每一步都有充分的理由，
 合起来是一条错的路。所以 CR 的产出不能只看「问题修了吗」，还要问
 「这个修复引入了什么新的前提」。连续三轮在同一片代码上打转时就该停——
 边际产出已经变成「写看起来很有道理的注释」。
 
-**实证四（2026-10-15）**：审计 WORKLOG 的「已知问题」表，四条里**三条是假的**——
-一条引用了「logging 归 gateway」这个 AGENTS.md 里**根本不存在**的约定，
-一条把有 docstring 和测试覆盖的有意设计当成缺陷，一条描述的问题三周前就
-修好并验证过了。它们能待这么久，是因为**「写下来」被当成了「做过核对」**。
-
-详见 §7.6。
+完整复盘见 [docs/DEV-FLOW-ANALYSIS.md](docs/DEV-FLOW-ANALYSIS.md)。
 
 ### 5. 自检三连（CR 之前必做）
 
 1. 删掉一个未引用的 import / 走不到的 if 分支 / 三元死分支
 2. 「这里删一行会报错吗？不能 → 删得还不够」
 3. 同时存在的新旧两条路径 → 先删旧的
-4. **改动依赖外部行为时（框架版本、数据库语义、第三方 API），写实测脚本验一遍，
-   别只读源码**——而且**实测的结论必须覆盖到 docstring 和 commit message**，
-   凭印象写下的技术事实会变成错误指引
 
-本项目已用变异测试验证过测试的有效性（故意改坏代码，测试是否会失败）。
+**改动依赖外部行为时（框架版本、数据库语义、第三方 API），写实测脚本验一遍，
+别只读源码**——而且**实测的结论必须覆盖到 docstring 和 commit message**。
 
 **2026-11-09 起工具化**：清单在 `apps/api/tests/mutations.yaml`，跑
 `uv run python -m tests.mutation`（可加 id 只跑指定几条）。它会区分
@@ -279,52 +237,22 @@ CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类
 
 **2026-10-15 立。** 起因是审计 WORKLOG 的「已知问题」表，四条里三条是假的。
 
-### 三个反复发生的失败模式
+**三个反复发生的失败模式**：
 
-**1. 为了解释「为什么这样写」而编造理由**
+1. **为了解释「为什么这样写」而编造理由**——判据：注释里的每个「因为 X 所以 Y」，
+   X 是否**这次**验证过？没有就写 `[未核实]`，或者干脆不写理由。
+2. **修复覆盖了「声称解决的问题」的一部分**——判据：动手前把「要解决的问题」
+   列成条目清单，修完逐条打勾。清单本身就是测试要断言的东西。
+3. **写了「已知问题」就没人再回头看**——判据：往「已知问题」表里写一条，
+   必须能回答「谁核实过、什么时候」。拿不出答案的，要么当场核实，要么别写。
 
-写 `# 用 lax 不用 strict，因为 strict 会让跨站导航不带 cookie`——查下来
-session cookie 只被 `/me`、`/research/ask`、`/sources` 读，这些都不是跨站
-导航到达的。理由是编的。
-
-**判据**：注释里的每个「因为 X 所以 Y」，X 是否**这次**验证过？没有就写
-`[未核实]`，或者干脆不写理由——代码本身不需要理由来证明合理。
-
-**2. 修复覆盖了「声称解决的问题」的一部分**
-
-- 补偿写了正文、FTS、向量三处，漏了 `chunk_count`（用户可见字段）
-- 竞态令牌加在「连点角标」，漏了「点 DAG 节点」和「收到新 reference 帧」
-
-**判据**：动手前把「要解决的问题」列成条目清单，修完逐条打勾。清单本身
-就是测试要断言的东西。
-
-**3. 写了「已知问题」就没人再回头看**
-
-WORKLOG 那三条假条目能待三周，是因为填表那一刻没人核对，之后也没人核对。
-
-**判据**：往「已知问题」表里写一条，必须能回答「谁核实过、什么时候」。
-拿不出答案的，要么当场核实，要么别写。
-
-### 怎么核实一条技术断言
-
-按成本从低到高：
-
-1. **读被引用的一手来源**——规范编号先确认它真实存在（本项目写过一次
-   不存在的 "RFC 9701"，正确是 RFC 9700 + RFC 10017）
-2. **跑 10 行实测脚本**——比读源码推断可靠得多
-3. **注入回归**——故意改坏，确认测试真的会红
-
-### 什么时候**不要**写理由
-
-- 「不然为什么这么写？」答不上来 → 别写
-- 从记忆里想当然的技术事实 → 标记 `[未核实]` 或删掉
-- 引用规范编号 → 先确认编号真实且内容确实这么说
-
----
+**怎么核实一条技术断言**（成本从低到高）：读被引用的一手来源 → 跑 10 行实测脚本
+→ 注入回归。具体判据与「什么时候不要写理由」见全局
+`~/.claude/rules/coding.md`「注释里的技术断言要么实测过，要么不写」。
 
 ## 8. 设计 token 使用
 
-完整 token 速查表见 [apps/web/CONTRIBUTING.md § 设计 token](./apps/web/CONTRIBUTING.md)。
+完整 token 速查表见 [apps/web/CONTRIBUTING.md §7 设计 token](./apps/web/CONTRIBUTING.md)。
 
 **关键速记**：
 
@@ -336,11 +264,11 @@ WORKLOG 那三条假条目能待三周，是因为填表那一刻没人核对，
 
 ## 10. 协作约定
 
-- 每个新文件必须满足：函数 ≤50 行 / 文件 ≤800 行 / 嵌套 ≤4 层 / 不可变 mutation / 命名一致
-- 提交前自检：删除走不到的 if 分支、未引用的 import、同时存在的旧路径
-- Token 预算：单任务 ≤4k，会话 ≤30k；接近红线主动总结
+项目特有的部分：
+
+- **shadcn/ui 组件**通过 `pnpm dlx shadcn@latest add button card ...` 装包到
+  `apps/web/components/ui/`——所有新功能优先用这些组件，不要重新发明
 - **调研不超过 5 个回合**——超过就停下来问用户
-- **shadcn/ui 组件**通过 `pnpm dlx shadcn@latest add button card ...` 装包到 `apps/web/components/ui/`——所有新功能优先用这些组件，不要重新发明
 
 ## 11. 文档自动更新机制
 
@@ -368,57 +296,69 @@ WORKLOG 那三条假条目能待三周，是因为填表那一刻没人核对，
 
 详见：
 
-- [`apps/web/CONTRIBUTING.md §14`](./apps/web/CONTRIBUTING.md) — 前端 9 个配置文件作用
+- [`apps/web/CONTRIBUTING.md §15`](./apps/web/CONTRIBUTING.md) — 前端配置文件作用
 - [`apps/api/CONTRIBUTING.md §12`](./apps/api/CONTRIBUTING.md) — 后端 6 个配置文件作用
-
-## 链接
-
-- [CLAUDE.md 根配置](../../CLAUDE.md)
 
 ## 13. 图标来源规则（design 一致性）
 
-1. **图标源**：Google 字体 `Material Symbols Outlined`（已在 `app/layout.tsx` L29 引入，0 新依赖）。
-2. **优先用 design/code.html 里的**——每个 icon name 必须能在 `argus设计稿/argus_*/code.html` 找到，不允许自己写 SVG / 字符 emoji / lucide-react icon 替代。
-3. **用法**：
+1. **图标源**：Google `Material Symbols Outlined`，**本地 woff2**
+   （`apps/web/public/fonts/material-symbols-outlined.woff2`，在 `globals.css` 里
+   `@font-face` 声明为 `Material Symbols Outlined Local`）——0 新依赖，无 CDN 请求。
+2. **优先用 design/code.html 里的**——每个 icon name 必须能在
+   `argus设计稿/argus_*/code.html` 找到，不允许自己写 SVG / 字符 emoji /
+   lucide-react / react-icons 替代。
+3. **唯一封装组件**：`components/common/IconSpan`
    ```tsx
-   <span className="material-symbols-outlined text-[16px] leading-none">
-     icon_name
-   </span>
+   <IconSpan name="icon_name" size={16} />
    ```
-4. **size 档位**：`text-[13px]` `text-[14px]` `text-[15px]` `text-[16px]` `text-[18px]` `text-[20px]` `text-[22px]` —— 大厂主流 5 档。
-5. **禁止**：自定义 SVG icon / emoji / lucide-react / react-icons（与 precision_technical_light token 不兼容）。
-
----
+   **强制 inline `style={{ fontSize }}`** —— Tailwind v3 的 `text-[Npx]` arbitrary
+   value 在 route group 路径下不可靠，会落回 24px。
+4. **size 档位**：`13 / 14 / 15 / 16 / 18 / 20 / 22 / 24` 像素
+   （`IconSpan` 的 `IconSize` 类型已约束）
+5. **禁止**：自定义 SVG icon / emoji / lucide-react / react-icons（与
+   precision_technical_light token 不兼容）。
 
 ## 14. 设计稿还原工作流（html → React）
 
-**触发场景**：还原 `argus设计稿/argus_*/code.html` 到 React 组件（登录页 / dashboard / 设置页等任意页面）。
+**触发场景**：还原 `argus设计稿/argus_*/code.html` 到 React 组件（登录页 /
+dashboard / 设置页等任意页面）。
 
-**核心原则**：把 design code.html 当成**视觉契约**——布局 / 文案 / 颜色 / 间距 / 字号 / icon 都要 1:1 对齐；但**实现方式用 Next.js + Tailwind build-time**，不是 design 的 CDN tailwindcss。
+**核心原则**：把 design code.html 当成**视觉契约**——布局 / 文案 / 颜色 / 间距 /
+字号 / icon 都要 1:1 对齐；但**实现方式用 Next.js + Tailwind build-time**，
+不是 design 的 CDN tailwindcss。
+
+> 设计稿源文件**不在仓内**（`design-argus-3.html` / `design_argus_3_code.html` 已删）。
 
 ### 流程（4 步）
 
-1. **定位设计稿**：`argus设计稿/argus_*/code.html`（每个 `argus_*` 子目录对应一个页面 / 状态变体）。
-   - 找法：`title` / `<h1>` / 唯一关键词（"登录" / "Dashboard" 等）匹配到具体子目录。
-   - 验证：`code.html` + `screen.png` + `code.html` 末尾 `<script>` 三件套齐全才算完整设计稿。
-
-2. **读 code.html 全量**：用 Read 工具分批读（90-130 行 / 批），避免单次 Read 爆 context。
-   - 不要用 python regex 抽——HTML 结构复杂，regex 容易挂；直接 Read + grep 关键 token 即可。
-
+1. **定位设计稿**：`argus设计稿/argus_*/code.html`（每个 `argus_*` 子目录对应一个
+   页面 / 状态变体）。找法：`title` / `<h1>` / 唯一关键词（"登录" / "Dashboard" 等）
+   匹配到具体子目录。验证：`code.html` + `screen.png` + `code.html` 末尾 `<script>`
+   三件套齐全才算完整设计稿。
+2. **读 code.html 全量**：用 Read 工具分批读（90-130 行 / 批），避免单次 Read 爆
+   context。不要用 python regex 抽——HTML 结构复杂，regex 容易挂；直接 Read +
+   grep 关键 token 即可。
 3. **写 React 组件**：
-   - **token**：用 `tailwind.config.ts` 的 47 color + 9 fontFamily，不要复制 design 的 inline `tailwind.config` JS。
-   - **shadcn 组件**：复用 `apps/web/components/ui/{button,card,input,label}`（已重写干净，0 oklch 残留）。
-   - **暗色硬编码**（`#0e1017` / `#16191f` 等）：保留 inline `style={{ background: "#0e1017" }}`（W1 spec "must stay inline"）。
-   - **placeholder / 文案**：必须 1:1 对齐 design（`name@company.com` / `acme-corp` / `.argus.internal` 等）。
-   - **icon**：用 `<span className="material-symbols-outlined">{icon_name}</span>`（参见 §13）。
-
-4. **人工验证**：代码改完即返回，**统一人工浏览器目测**（不走 playwright / curl / screenshot / console 检查 / lint / tsc）。设计稿还原流程以用户的浏览器判断为唯一标准。
+   - **token**：用 `tailwind.config.ts` 的 50 color + 11 fontFamily，不要复制 design
+     的 inline `tailwind.config` JS。
+   - **shadcn 组件**：复用 `apps/web/components/ui/{button,card,input,label}`
+     （已重写干净，0 oklch 残留）。
+   - **暗色硬编码**（`#0e1017` / `#16191f` 等）：保留 inline
+     `style={{ background: "#0e1017" }}`（W1 spec "must stay inline"）。
+   - **placeholder / 文案**：必须 1:1 对齐 design（`name@company.com` /
+     `acme-corp` / `.argus.internal` 等）。
+   - **icon**：用 `<IconSpan name="..." />`（参见 §13）。
+4. **人工验证**：代码改完即返回，**统一人工浏览器目测**（不走 playwright / curl /
+   screenshot / console 检查 / lint / tsc）。设计稿还原流程以用户的浏览器判断为
+   唯一标准。
 
 ### 反模式（不要做）
 
-- 复制 design 的 `<script src="cdn.tailwindcss.com">` → Next.js 用 build-time tailwind，不支持 CDN 模式
-- 用 design 的 inline `tailwind.config = {...}` → 47 token 已在 `tailwind.config.ts`，不要重复定义
-- 用 `bg-oklch(...)` 等任意值类名 → Tailwind v3 不解析，必须用 47 token
+- 复制 design 的 `<script src="cdn.tailwindcss.com">` → Next.js 用 build-time
+  tailwind，不支持 CDN 模式
+- 用 design 的 inline `tailwind.config = {...}` → 设计 token 已在
+  `tailwind.config.ts`，不要重复定义
+- 用 `bg-oklch(...)` 等任意值类名 → Tailwind v3 不解析，必须用设计 token
 - 跳过 placeholder / 文案 1:1 对齐 → user 会立刻发现"和设计稿不一样"
 - 改后自己起 playwright / curl / screenshot 验证 → 项目统一人工验证，agent 不要自动跑
 
@@ -428,21 +368,20 @@ WORKLOG 那三条假条目能待三周，是因为填表那一刻没人核对，
 | ------------------------------------------- | ----------------------------------------------- | -------------------------------------------- |
 | `bg-[#16191f]`                              | `bg-[#16191f]` 或 `bg-on-surface`               | inline 颜色允许；或用 token                  |
 | `font-family: Geist` (CDN)                  | `font-headline-md` 等                           | tailwind.config.ts 已映射                    |
-| `font-mono`                                 | `font-code`                                     | 47 token 的 fontFamily 命名                  |
+| `font-mono`                                 | `font-code`                                     | 设计 token 的 fontFamily 命名                  |
 | `<details open>` 折叠                       | React `useState` + `cn(..., !open && "hidden")` | 设计稿用 vanilla JS，React 用 state          |
 | vanilla `keydown` 监听器                    | `useEffect` + `window.addEventListener`         | 同上                                         |
 | `document.getElementById(...)` 直接操作 DOM | 保留——快捷键反馈是合法的 DOM 操作场景           | keydown listener 200ms add/remove class 反馈 |
-
----
 
 ## 16. 组件开发规范与设计还原
 
 ### 16.1 文件夹形式封装组件（强制）
 
-每个组件一个文件夹，**PascalCase**（B 必须大写：`Button.tsx` 不是 `button.tsx`），文件夹内固定两文件：
+每个组件一个文件夹，**PascalCase**（B 必须大写：`Button.tsx` 不是 `button.tsx`），
+文件夹内固定两文件：
 
 - `index.tsx`（组件实现）
-- `index.module.less`（Less 模块样式并且样式代码嵌套编写方式）
+- `index.module.css`（CSS Modules，样式代码**不嵌套**——见 §16.2）
 
 按用途分三类落位：
 
@@ -450,65 +389,64 @@ WORKLOG 那三条假条目能待三周，是因为填表那一刻没人核对，
 | ---------------------- | ---------------------------------------------------------- | ------------------------------------ |
 | 公共组件（跨页复用）   | `apps/web/components/common/<Name>/`                       | `common/ArgusMark/`                  |
 | 页面组件（仅本页面用） | `apps/web/app/(auth)/<page>/components/<Name>/`            | `(auth)/login/components/LoginForm/` |
-| shadcn UI              | `apps/web/components/ui/<Name>.tsx`（**单文件，无 less**） | `ui/Button.tsx`                      |
+| shadcn UI              | `apps/web/components/ui/<Name>.tsx`（**单文件，无 css**） | `ui/Button.tsx`                      |
 
 ### 16.2 CSS Modules 样式策略
 
 - **项目用 `.module.css` 而非 `.module.less`**（Next.js 15 改用方案，2026-09-22 落地）
-- 原因：Next.js 15 不内置 .module.less（Vercel 官方支持矩阵：Less 标 "Planned via plugins / Not yet supported by default"），手动配 `less-loader` + `css-loader` + fix-loader 仍存在 css 文本丢失、className 注入等问题；改用 `.module.css` 是 next 内置方案，零配置
+- 原因：Next.js 15 不内置 `.module.less`（Vercel 官方支持矩阵：Less 标
+  "Planned via plugins / Not yet supported by default"），手动配 `less-loader` +
+  `css-loader` + fix-loader 仍存在 css 文本丢失、className 注入等问题；改用
+  `.module.css` 是 next 内置方案，零配置
 - 文件命名：`index.module.css`（与原 `.module.less` 同位置，命名仅改扩展名）
-- 写法：纯 CSS 标准语法（**不支持** Less 的 `&` 父选择器嵌套；嵌套规则必须展开为完整 css selector）
-- 颜色统一用 CSS 变量 `var(--token-xxx, #fallback)`，fallback 取 `tailwind.config.ts` 的 47 token 原色
-- `globals.css` 只放全局 token（@font-face / Material Symbols base / .tech-grid-pattern / .tech-dot-pattern），**不放任何组件样式**
-- 全局类型声明见 `apps/web/globals.d.ts`：`declare module "*.module.css"` 用 `export default classes`
-- 组件 import：`import styles from "./X.module.css"`（默认导入，next 内置 css-loader 自动支持）
+- 写法：纯 CSS 标准语法（**不支持** Less 的 `&` 父选择器嵌套；嵌套规则必须展开为
+  完整 css selector）
+- 颜色统一用 CSS 变量 `var(--token-xxx, #fallback)`，fallback 取
+  `tailwind.config.ts` 的 token 原色
+- `globals.css` 只放全局 token（@font-face / Material Symbols base /
+  `.tech-grid-pattern` / `.tech-dot-pattern`），**不放任何组件样式**
+- 全局类型声明见 `apps/web/globals.d.ts`：`declare module "*.module.css"` 用
+  `export default classes`
+- 组件 import：`import styles from "./X.module.css"`（默认导入，next 内置 css-loader
+  自动支持）
 - `apps/web/next.config.js` 无需任何 webpack rule，base 版本即可
-- 历史背景：2026-09-21/22 一天内从 `.module.less` 路径迁到 `.module.css`，迁移期间删除 less-loader / css-loader / fix-loader 等附加依赖
 
-### 16.3 shadcn 优先（§10 固化）
+### 16.3 shadcn 优先
 
 - 新功能优先用 `apps/web/components/ui/{Button, Card, Input, Label, Badge, Separator}`
 - 不要重新发明已有 shadcn 组件
-- shadcn 默认 OKLCH 配色 → 必须在 `components.json` 设 `baseColor: "custom"` + `cssVariables: true`，替换为项目 47 token
+- shadcn 默认 OKLCH 配色 → 必须在 `components.json` 设 `baseColor: "custom"` +
+  `cssVariables: true`，替换为项目设计 token
 
 ### 16.4 图标规则（§13 固化）
 
-- 唯一来源：Google `Material Symbols Outlined`，走 CDN `<link>`（在 `app/layout.tsx` 合并引入）
+- 唯一来源：Google `Material Symbols Outlined`（本地 woff2，见 §13）
 - 唯一封装组件：`components/common/IconSpan`
-- **强制 inline `style={{ fontSize }}`** —— Tailwind v3 的 `text-[Npx]` arbitrary value 在 route group 路径下不可靠
+- **强制 inline `style={{ fontSize }}`** —— Tailwind v3 的 `text-[Npx]` arbitrary
+  value 在 route group 路径下不可靠，会落回 24px
 - size 档位：`13 / 14 / 15 / 16 / 18 / 20 / 22 / 24` 像素
 - 禁止：自定义 SVG / emoji / lucide-react / react-icons
-
-### 16.5 设计稿还原流程（§15 固化）
-
-触发：还原 `~/Desktop/argus设计稿/argus_*/code.html` 到 React 组件。
-
-四步走：定位 → 读 → 写 → 人工验证
-
-1. 定位 design 文件夹下对应的 `argus_*` 子目录
-2. 读 `code.html` 提取结构与样式意图（**不复制 CDN 链接与 inline tailwind.config**）
-3. 写 Next.js 组件 + `.module.less`，用项目 47 token 替换颜色，shadcn 替换交互元素
-4. **人工浏览器目测** —— 不起 playwright / curl / screenshot / console 检查 / lint / tsc
-
-设计稿源文件 **不保存在仓内**（`design-argus-3.html` / `design_argus_3_code.html` 已删）。
 
 ### 16.6 主题色（dual theme）
 
 - 项目支持亮色 + 深色两主题
-- `argus_2` 是深色（`<html class="dark">`），`argus_1` / `argus_3` / `argus_dashboard` 等为亮色
+- `argus_2` 是深色（`<html class="dark">`），`argus_1` / `argus_3` /
+  `argus_dashboard` 等为亮色
 - 缺失的对应主题可在 design 模式二次设计补全
 - 当前登录页（`argus_3`）只实现亮色 Material 3 风
 
-### 16.7 反模式（追加）
+### 16.7 反模式
 
 - ❌ 复制 design 的 `<script src="cdn.tailwindcss.com">`
 - ❌ 复制 design 的 inline `tailwind.config = {...}`
-- ❌ 改用 `bg-oklch(...)` → 与 47 token 不兼容
-- ❌ `material-symbols-outlined` 只用 `text-[Npx]` className，没有 inline `style={{ fontSize }}` → 落回 24px
+- ❌ 改用 `bg-oklch(...)` → 与项目设计 token 不兼容
+- ❌ `material-symbols-outlined` 只用 `text-[Npx]` className，没有 inline
+  `style={{ fontSize }}` → 落回 24px（走 `IconSpan` 组件）
 - ❌ 改多处重复 className 时不先 grep 计数 → 用 `replace_all: true` 或更具体上下文
 - ❌ 压扁 template-string `<span className={\`...\`}>` 成单行 → JSX 闭合错乱，build error
 - ❌ 自己起 playwright / curl / screenshot **验证设计稿还原程度** → 那是人类美学判断
-- 🔧 修复运行 bug 时 agent 可以用浏览器 MCP（chrome-devtools / playwright）介入——抓 console error、看页面渲染异常、对照 network panel 排查请求失败
+- 🔧 修复运行 bug 时 agent 可以用浏览器 MCP（chrome-devtools / playwright）介入——抓
+  console error、看页面渲染异常、对照 network panel 排查请求失败
 - ❌ 把 shadcn 组件文件名改成小写（`button.tsx`）→ PascalCase 强制
 - ❌ 预防性地包 `useCallback` / `useMemo` → 见 §16.8「Hook 使用规则」
 
@@ -558,45 +496,25 @@ const handleSubmit = useCallback(() => onSubmit(emails), [emails, onSubmit])
 
 #### 机器强制（eslint.config.mjs）
 
-规则光写文档会烂。`apps/web/eslint.config.mjs` 已配好 `react-hooks/exhaustive-deps: error`，
-`npm run lint` 会真实拦截。**改动后必须跑一遍。**
+规则光写文档会烂。`apps/web/eslint.config.mjs` 已配好
+`react-hooks/exhaustive-deps: error`，`pnpm --filter web lint` 会真实拦截。
+**改动后必须跑一遍。**
 
-配置踩过的坑，别重复踩：
-
-| 坑 | 症状 | 正确做法 |
-|---|---|---|
-| 用 `next lint` | Next 16 已废弃该命令，它把 `lint` 当目录名 → lint 从未真正跑过 | 用 `eslint` CLI 直接跑 |
-| 用 ESLint 内置 `no-unused-vars` | 不认 TS 语法，误报 84 处，信号全淹 | 必须配 `typescript-eslint`，并关掉内置那两条 |
-| `eslint .` | 在 pnpm workspace 里 `.` 解析到仓库根，把 `apps/api/.venv` 的第三方 JS 全扫进来（7 万条噪音） | 显式写目录：`eslint app components lib` |
-| ignores 不独立成块 | `.next/` 构建产物被扫进去 | ignore 必须是数组首个、只含 `ignores` 键的对象 |
+配置踩过的坑别重复踩：Next 16 已废弃 `next lint`（它把 `lint` 当目录名 → lint
+从未真正跑过），必须用 `eslint` CLI 直接跑；`eslint .` 在 pnpm workspace 里会把
+`apps/api/.venv` 的第三方 JS 全扫进来（7 万条噪音），要显式写目录
+`eslint app components lib`。
 
 #### React Compiler 一旦启用，本节作废
 
 Compiler 会自动做记忆化，届时 `useCallback` / `useMemo` 大部分不再需要。
 启用 Compiler 的同时必须回改本节，否则规则会误导。
 
-#### 当前债务（2026-10-10 盘点）
-
-`useCallback` 59 处，其中 `settings/page.tsx` 12 处、`explore/page.tsx` 6 处、
-`notifications/page.tsx` 5 处 大多属「预防性包裹」。
-**不要一次性全改**——逐个文件碰到时顺手清理，改一处测一处。
-
-lint 首次跑通后暴露的**真实 bug**（依赖缺失，闭包读到过期值）：
-
-| 位置 | 问题 |
-|---|---|
-| `topics/components/TopicTable/index.tsx:156` | `useMemo` 缺 `toggleSelectAll` |
-| `components/common/DataTable/index.tsx:31` | `useEffect` 缺 `sel` |
-| `components/common/PlainTable/index.tsx:30` | `useEffect` 缺 `selection` |
-
-另有 4 处 `react-hooks/set-state-in-effect`（ThemeContext / ThemeToggle 等在 effect 里
-同步 setState）——这个先不动，属于架构问题，改动面大，等单独排期。
-
----
 ---
 
 - [apps/web/CONTRIBUTING.md](./apps/web/CONTRIBUTING.md)
 - [apps/api/CONTRIBUTING.md](./apps/api/CONTRIBUTING.md)
 - [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)
 - [docs/CODE-QUALITY.md](./docs/CODE-QUALITY.md)
+- [docs/DEV-FLOW-ANALYSIS.md](./docs/DEV-FLOW-ANALYSIS.md)
 - [prd/PRD 总览](./prd/README.md)

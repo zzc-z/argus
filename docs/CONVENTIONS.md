@@ -33,11 +33,14 @@
 ## 4. 状态管理边界
 
 - 本地状态：React `useState`（仅组件内部）
-- 跨组件：`Context API`（轻量场景）
 - 跨路由：URL params（Next.js searchParams）
-- 服务端状态：SWR / React Query（**禁止**直接 fetch + useState）
-- 全局状态：Zustand（**禁止** Redux / MobX——与本项目栈不兼容）
+- 服务端状态：`fetch` + `useState`（**当前项目的实际做法**——`lib/api/*.ts` 封装请求，
+  页面用 `useState` 存结果，见 `app/(dashboard)/reports/page.tsx`）
 - 服务端会话：JWT access（15min） + refresh（30day）
+
+**项目没有装 Zustand / SWR / React Query / Redux / MobX。** 写新代码时不要 import
+它们——没有依赖，import 会直接构建失败。真需要全局状态时用 `Context API`
+（当前无先例，属新增模式，需先说明理由）。
 
 ## 5. Material Symbols 图标
 
@@ -90,17 +93,17 @@ button / card / input / label / badge / sheet / dialog / select / switch / tabs 
 
 ## 8. 颜色 token
 
-`tailwind.config.ts` `theme.extend.colors` 共 **47 个**：
+`tailwind.config.ts` `theme.extend.colors` 共 **50 个**：
 
-- 主色：`primary` / `primary-container` / `on-primary` / `on-primary-container` / `primary-fixed` / `on-primary-fixed` / `primary-fixed-variant`
-- 第二色：`secondary` / `secondary-container` / `on-secondary-container` / `secondary-fixed` / `secondary-fixed-variant`
-- 第三色：`tertiary` / `tertiary-container` / `on-tertiary-container` / `tertiary-fixed` / `tertiary-fixed-variant`
-- 错误色：`error` / `error-container` / `on-error-container`
-- 表面色：`surface` / `surface-container-lowest` / `surface-container-low` / `surface-container` / `surface-container-high` / `surface-container-highest` / `on-surface` / `on-surface-variant`
+- 主色：`primary` / `primary-container` / `on-primary` / `on-primary-container` / `primary-fixed` / `on-primary-fixed` / `on-primary-fixed-variant` / `primary-fixed-dim`
+- 第二色：`secondary` / `secondary-container` / `on-secondary` / `on-secondary-container` / `secondary-fixed` / `on-secondary-fixed` / `on-secondary-fixed-variant` / `secondary-fixed-dim`
+- 第三色：`tertiary` / `tertiary-container` / `on-tertiary` / `on-tertiary-container` / `tertiary-fixed` / `on-tertiary-fixed` / `on-tertiary-fixed-variant` / `tertiary-fixed-dim`
+- 错误色：`error` / `error-container` / `on-error` / `on-error-container`
+- 成功色：`success-container` / `on-success-container`
+- 表面色：`surface` / `surface-bright` / `surface-dim` / `surface-tint` / `surface-variant` / `surface-container-lowest` / `surface-container-low` / `surface-container` / `surface-container-high` / `surface-container-highest` / `on-surface` / `on-surface-variant` / `background` / `on-background`
 - 描边：`outline` / `outline-variant`
 - 反色：`inverse-surface` / `inverse-primary` / `inverse-on-surface`
-- 静态色：`surface-container-low` 等同 surface 5 层
-- 反差 / 阴影：暗色模式下的 inverse-* token
+- 项目自加：`brand`（含 `brand-hover` / `brand-ring` / `brand-subtle` 子键）
 
 **禁止**用 `bg-[#XXXXXX]` hardcode 颜色——全部用 token。
 

@@ -17,51 +17,58 @@
 | 工具 | 版本 | 配置 | 作用 |
 |---|---|---|---|
 | ESLint | 9.x（flat config） | `eslint.config.mjs` | 代码静态检查 |
-| @typescript-eslint | 8.x | 同上 | TypeScript 类型感知规则 |
-| eslint-plugin-react-hooks | 5.x | 同上 | hooks 守则 |
-| eslint-plugin-jsx-a11y | 6.x | 同上 | a11y 校验 |
-| eslint-plugin-import | 2.x | 同上 | import 排序/循环 |
-| eslint-plugin-tailwindcss | 3.x | 同上 | Tailwind class 校验 |
-| eslint-config-prettier | 9.x | extends 末尾 | 与 Prettier 桥接 |
-| Prettier | 3.x | `.prettierrc.json` | 格式化 |
-| Husky | 9.x | `.husky/` | git hook |
-| lint-staged | 15.x | `.lintstagedrc.json` | 暂存文件过滤 |
-| commitlint | 19.x | `commitlint.config.js` | commit message 校验 |
+| eslint-config-next | 16.3.7 | 同上 | Next.js 规则（含 react-hooks） |
+| typescript-eslint | 8.71.1 | 同上 | TypeScript 类型感知规则 |
+| Prettier | 3.3 | 无配置文件（用默认值；只有 `.prettierignore`） | 格式化 |
+| prettier-plugin-tailwindcss | 0.6 | — | class 排序（未在配置中启用） |
+| Husky | 9.1.7 | `.husky/` | git hook |
+| lint-staged | 17.6.0 | 无配置 | **未启用**——`.lintstagedrc.json` 已删（它一直是死配置：没有任何 hook 调用它）。依赖仍留在 package.json 里备用 |
+| commitlint | 21.2.3 | `commitlint.config.mjs` | commit message 校验 |
+| TypeScript | 5.6 | `tsconfig.json` | 类型检查 |
 
 ### 2.2 提交前拦截链路
 
 ```
 $ git commit
-→ .husky/pre-commit 跑 lint-staged（仅 staged 文件 <5s）
-   ├─ *.{ts,tsx} → eslint --fix --max-warnings=0 + prettier --write
-   └─ *.{json,md,yml,yaml} → prettier --write
-→ .husky/pre-commit 跑 tsc --noEmit（类型检查全工程）
+→ .husky/pre-commit
+   ├─ 前端（总是跑）：pnpm run lint + pnpm exec tsc --noEmit
+   └─ 后端（仅当 staged 里有 apps/api/*）：ruff check app/ tests/ + mypy app/
 → .husky/commit-msg 跑 commitlint --edit "$1"
    不通过 → commit 拒绝
 ```
+
+**没有 lint-staged**——pre-commit 直接对全工程跑 eslint + tsc。
+`.lintstagedrc.json` 已删（它是死配置：没有任何 hook 调用它）。
 
 ### 2.3 npm scripts（package.json）
 
 | 命令 | 作用 |
 |---|---|
-| `pnpm dev` | 起 Next.js dev server |
+| `pnpm dev` | 起 Next.js dev server（`--webpack`） |
+| `pnpm dev:turbopack` | 起 dev server（Turbopack） |
 | `pnpm build` | production 构建 |
 | `pnpm start` | 跑 production 服务 |
-| `pnpm lint` | next lint（ESLint wrapper） |
-| `pnpm lint:fix` | eslint . --fix --max-warnings=0 |
+| `pnpm lint` | `eslint app components lib` |
 | `pnpm format` | prettier --write |
 | `pnpm format:check` | prettier --check（CI 用） |
-| `pnpm typecheck` | tsc --noEmit |
+| `pnpm clean` | 删 `.next` / `.turbo` |
 | `pnpm prepare` | husky install（自动） |
+
+**没有** `lint:fix`、**没有** `typecheck`。类型检查要写
+`pnpm exec tsc --noEmit`——`pnpm tsc --noEmit` 是空命令（package.json 里没有
+`tsc` script），它会打印「None of the selected packages has a "tsc" script」
+然后**退出码 0**，什么都没跑。
+
+`pnpm lint` 里也**没有** `--max-warnings=0`。
 
 ### 2.4 本机安装
 
 ```bash
-cd /Users/ext.zhangjianpeng11/Desktop/argus
-pnpm install                    # 装 12 个 devDeps
+cd /Users/zjp/Desktop/argus
+pnpm install                    # 装 devDeps
 pnpm dlx shadcn@latest init     # 建 components.json + lib/utils.ts
-pnpm dlx shadcn@latest add button card input label  # 装首批 19 组件
-pnpm tsc --noEmit               # 验类型
+pnpm dlx shadcn@latest add button card input label  # 装首批组件
+pnpm exec tsc --noEmit          # 验类型（必须带 exec）
 pnpm lint                       # 验 ESLint
 ```
 
@@ -204,7 +211,7 @@ $ git commit
 ### 3.6 本机安装
 
 ```bash
-cd /Users/ext.zhangjianpeng11/Desktop/argus/apps/api
+cd /Users/zjp/Desktop/argus/apps/api
 uv sync                # 装所有 deps（含 dev）
 uv run pre-commit install   # 装 pre-commit
 uv run pytest         # 跑烟测
@@ -240,13 +247,19 @@ uv run ruff check .   # lint
 | chore | 其他 |
 | revert | 回滚 |
 
-### 4.3 scope-enum（commitlint-plugin-workspace-scopes 自动从 monorepo 检测）
+### 4.3 scope（可选）
 
-`apps/web` / `apps/api` / `packages/shared` / `docs` / `prd` / `agent` / `worktree`
+`scope-enum` 规则**已关闭**（`apps/web/commitlint.config.mjs` 里 `'scope-enum': [0]`），
+所以 `feat: xxx` 这种不带 scope 的写法合法。
+
+项目实际用法是 `api` / `web` / `api,web`（如 `feat(api,web): ...`）。
+`commitlint-plugin-workspace-scopes` **没有安装**——不要按
+`apps/web` / `packages/shared` 那种枚举去校验。
 
 ### 4.4 header-max-length
 
-72 字符。body / footer 100 字符/行。
+**100 字符**（`commitlint.config.mjs` 实配 `header-max-length: [2, 'always', 100]`）。
+body / footer 100 字符/行（`body-max-line-length` 已关闭为 `[0]`，不强制）。
 
 ### 4.5 breaking change 标记
 

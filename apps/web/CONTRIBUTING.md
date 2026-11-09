@@ -9,7 +9,7 @@
 ## 2. 安装
 
 ```bash
-cd /Users/ext.zhangjianpeng11/Desktop/argus
+cd /Users/zjp/Desktop/argus
 pnpm install
 
 # 只装 web
@@ -26,21 +26,20 @@ apps/web/
 │   └── (auth)/
 │       └── login/
 │           └── page.tsx              # 登录页（拆分前是单文件，拆后是 7 个子组件）
-├── public/                           # 静态资源（远程字体方案下无需 woff2）
-├── eslint.config.mjs                 # ESLint flat config + FlatCompat
-├── commitlint.config.js              # commitlint + workspace-scopes
-├── .lintstagedrc.json                # lint-staged 配置
-├── .prettierrc.json                  # Prettier 格式
-├── .prettierignore                   # Prettier 忽略
+├── public/                           # 静态资源
+│   └── fonts/material-symbols-outlined.woff2   # Material Symbols 本地字体
+├── eslint.config.mjs                 # ESLint flat config
+├── commitlint.config.mjs             # commitlint 规则
+├── .prettierignore                   # Prettier 忽略（**没有 prettier 配置文件，用默认值**）
 ├── .husky/                           # git hooks
-│   ├── pre-commit                    # 跑 lint-staged + tsc --noEmit
+│   ├── pre-commit                    # 跑 pnpm run lint + tsc --noEmit（后端门禁仅在改了 apps/api/* 时跑）
 │   └── commit-msg                    # 跑 commitlint
 ├── package.json                      # deps + devDeps + scripts
 ├── tsconfig.json                     # TypeScript 配置
 ├── next.config.js                    # Next.js 配置
-├── tailwind.config.ts                # Tailwind v3.4.19 配置（47 color + 11 font + 11 size token）
+├── tailwind.config.ts                # Tailwind v3.4.19 配置（50 color + 11 font + 11 size token）
 ├── postcss.config.js                 # PostCSS + tailwindcss + autoprefixer
-├── components.json                   # shadcn CLI 配置（new-york + cssVariables:false）
+├── components.json                   # shadcn CLI 配置（new-york + baseColor:custom + cssVariables:true）
 ├── lib/                              # 工具函数
 │   └── utils.ts                      # cn = twMerge(clsx(...))
 └── components/                       # 业务组件
@@ -52,16 +51,20 @@ apps/web/
 ## 4. 开发命令
 
 ```bash
-pnpm dev                              # 起 Next.js dev server
+pnpm dev                              # 起 Next.js dev server（--webpack）
+pnpm dev:turbopack                    # 起 dev server（Turbopack）
 pnpm build                            # production build
 pnpm start                            # 跑 production server
-pnpm lint                             # next lint
-pnpm lint:fix                         # eslint . --fix --max-warnings=0
+pnpm lint                             # eslint app components lib
 pnpm format                           # prettier --write
 pnpm format:check                     # prettier --check（CI 用）
-pnpm typecheck                        # tsc --noEmit
+pnpm exec tsc --noEmit                # 类型检查（**必须带 exec**，见下）
 pnpm dlx shadcn@latest add <name>     # 加新 shadcn 组件到 components/ui/（自动装 peer deps）
 ```
+
+**没有 `lint:fix` / `typecheck` script。** `pnpm tsc --noEmit` 是**空命令**——
+package.json 里没有 `tsc` script，它会打印「None of the selected packages has a
+"tsc" script」然后退出码 0，什么都没跑。类型检查必须写 `pnpm exec tsc --noEmit`。
 
 ## 5. 提交前自检 (CLAUDE.md §1.2)
 
@@ -151,17 +154,17 @@ CLI 自动做的事：
 
 ## 15. 特殊配置文件作用
 
-| 文件                   | 作用                                                                                                                                                                    | 谁维护               |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `eslint.config.mjs`    | ESLint 9 flat config + FlatCompat 桥接 `next/core-web-vitals` + typescript-eslint strict-type-checked + react-hooks + jsx-a11y + import + tailwindcss + prettier bridge | 改 lint 规则时       |
-| `.prettierrc.json`     | Prettier 3.x 配置：printWidth 100 / semi true / singleQuote false / trailingComma all / arrowParens always / plugins 含 `prettier-plugin-tailwindcss`                   | 改 format 规则时     |
-| `.prettierignore`      | Prettier 忽略：`.next` / `node_modules` / `out` / `dist` / `coverage` / 锁文件                                                                                          | 加新忽略项时         |
-| `commitlint.config.js` | commitlint + 11 type + workspace-scopes 自动 monorepo scope                                                                                                             | 改 commit 规范时     |
-| `.lintstagedrc.json`   | lint-staged 配置：TS/TSX 跑 `eslint --fix + prettier --write`；JSON/MD 跑 `prettier --write`                                                                            | 改 staged hooks 时   |
-| `.husky/pre-commit`    | husky git hook：跑 `pnpm exec lint-staged` + `pnpm exec tsc --noEmit`                                                                                                   | 改 pre-commit 行为时 |
-| `.husky/commit-msg`    | husky git hook：跑 `pnpm exec commitlint --edit "$1"`                                                                                                                   | 改 commit msg 行为时 |
-| `components.json`      | shadcn/ui 配置：new-york 风格 / RSC / TSX / tailwind 路径 / aliases（由 `pnpm dlx shadcn@latest init` 自动生成）                                                        | 改 shadcn 风格时     |
-| `lib/utils.ts`         | `cn = twMerge(clsx(...))` helper（由 shadcn CLI 自动生成）                                                                                                              | 改 cn helper 时      |
+| 文件                   | 作用                                                                                                              | 谁维护               |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------- |
+| `eslint.config.mjs`    | ESLint 9 flat config：@eslint/js + eslint-config-next + typescript-eslint（含 `react-hooks/exhaustive-deps: error`） | 改 lint 规则时       |
+| `.prettierignore`      | Prettier 忽略：`.next` / `node_modules` / `out` / `dist` / `coverage` / 锁文件                                  | 加新忽略项时         |
+| `commitlint.config.mjs` | commitlint 规则：Conventional Commits；`scope-enum` 已关闭（scope 可选），header 上限 100 字符                  | 改 commit 规范时     |
+| `.husky/pre-commit`    | husky git hook：前端 `pnpm run lint` + `pnpm exec tsc --noEmit`；后端仅在 staged 含 `apps/api/*` 时跑 ruff + mypy | 改 pre-commit 行为时 |
+| `.husky/commit-msg`    | husky git hook：跑 `pnpm exec commitlint --edit "$1"`                                                             | 改 commit msg 行为时 |
+| `components.json`      | shadcn/ui 配置：new-york 风格 / RSC / TSX / `baseColor: custom` / `cssVariables: true` / aliases              | 改 shadcn 风格时     |
+| `lib/utils.ts`         | `cn = twMerge(clsx(...))` helper（由 shadcn CLI 自动生成）                                                        | 改 cn helper 时      |
+
+**Prettier 没有配置文件**——只有 `.prettierignore`，其余走 Prettier 默认值。
 
 ## 16. 链接
 
