@@ -120,7 +120,8 @@ if _has_truncated_column():
 ```
 
 理由：`alembic stamp` 之后手工改过表、或从别的分支 merge 过来时，
-schema 状态和版本号可能对不上。上一条迁移（`d4e8f1a29b73`）就踩过这个。
+schema 状态和版本号可能对不上。加 `truncated` 列那条迁移
+（`e5f2a8c41b09`）就踩过这个。
 
 ## 4. 改了前端类型 → 两边都要改
 
@@ -195,7 +196,7 @@ uv run python -m tests.mutation M1 M3   # 只跑指定几条
   返回 1536 就是正常。
 - **模型服务走中转站** `llmapi.pro`（`ANTHROPIC_BASE_URL`）。它会在 SSE
   流消费途中随机断连，报 `RemoteProtocolError`。代码里有整轮重发兜底
-  （`app/services/agent.py` 的 `_run_turn`），但重发 3 次全失败就会
+  （`app/services/agent_turn.py` 的 `_run_turn`），但重发 3 次全失败就会
   看到「模型连接在生成途中被中断」。**这是上游问题，不是代码 bug。**
 - **中转站的 key 有多套，额度各算各的**。`apps/api/.env` 的
   `ANTHROPIC_API_KEY` 与 `~/.claude/settings.json` 的
@@ -251,7 +252,7 @@ uv run python -m tests.mutation M1 M3   # 只跑指定几条
   少了它用户会看到同一段正文出现两遍。
 - **重发的退避必须是指数的**。固定 1 秒间隔会让所有重试落在同一个网络
   坏窗口里（实测 2026-11-01：3 次重发挤在同一秒全挂）。现在按
-  `基数 * 2**(n-1)`（1s → 2s），见 `app/services/agent.py` 的
+  `基数 * 2**(n-1)`（1s → 2s），见 `app/services/agent_turn.py` 的
   `_run_turn`。
 - **研究流现在是「服务端持有」的**（2026-11-01）。agent 跑在**后台任务**
   里，事件先进 `app/services/runs.py` 的进程内注册表，HTTP 连接只是

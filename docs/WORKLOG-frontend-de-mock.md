@@ -1,6 +1,12 @@
 # 前端去 mock —— 交接（2026-10-19）
 
 > 新会话从这份文档接手。**最新章节在最上面**，往下是历史。
+>
+> ⚠️ **这是 2026-10-19 的历史快照，不是现状。** 下面标了「516 passed」的测试数、
+> 「42 files」的 mypy 文件数、以及「页面 mock」清单里的条目都已过时——
+> 那些 mock 后来清掉了，`dashboard/` `topics/` `reports/` `notifications/`
+> `settings/` 现在都接真接口了。**唯一仍未清的是 I13 搜索框**（§「没清」一节）。
+> 需要当前状态请看 `apps/api/WORKLOG.md` 与代码本身。
 
 ## 一句话状态
 
@@ -23,7 +29,7 @@ Word (.docx) 支持 + add-sources 修复 + 登录态改造 + CR 技术债**全�
 
 ```bash
 cd /Users/zjp/Desktop/argus && git pull        # 拿最新 master
-cd apps/api && .venv/bin/python -m pytest tests -q   # 应 516 passed
+cd apps/api && uv run pytest tests/ -q --no-header -p no:cacheprovider   # 并行跑的（-n 4 在 addopts 里）
 cd apps/web && pnpm exec tsc --noEmit && pnpm build  # 应全绿
 ```
 
@@ -198,10 +204,15 @@ CR 报的后端 4 严重 + 前端 13 重要，**本轮全清**（用户明确说
 
 ### 页面 mock（范围外，用户明确不改）
 
-- `explore/mock.ts` 残留：`DAG_STATS.pipeline`、`HARDWARE_METRICS`、`ANALYST_RAW_STATE`
-- `AgentNode.tokens` 永不被后端更新（`NodeEventV` 没有 per-node token 字段）
-- `report/[id]` 页仍是 mock（但有真接口 `GET /reports/{id}`）
-- `dashboard/` `topics/` `reports/` `notifications/` `settings/` 全部 mock
+> **历史记录，已过时。** 下面这几项后来都清了：`explore/mock.ts` 已删；
+> `dashboard/` `topics/` `reports/` `notifications/` `settings/` 都接了真接口。
+> 现存的两个 `mock.ts`（`notifications/mock.ts`、`error-404/mock.ts`）只剩
+> **类型定义与常量**，没有假数据。
+
+- ~~`explore/mock.ts` 残留：`DAG_STATS.pipeline`、`HARDWARE_METRICS`、`ANALYST_RAW_STATE`~~ ✅ 已清
+- ~~`AgentNode.tokens` 永不被后端更新~~ ✅ 已清
+- ~~`report/[id]` 页仍是 mock~~ ✅ 已清
+- ~~`dashboard/` `topics/` `reports/` `notifications/` `settings/` 全部 mock~~ ✅ 已清
 
 ---
 

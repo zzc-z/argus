@@ -180,7 +180,7 @@ L2 ≈ 0.95。
 现在的 `LLM_CONTENT_FILTERED` 文案是「请求被上游内容安全策略拦截，请调整问题措辞后重试」。
 这个诊断**是错的**（上游没拦），而且**处置建议是错的**（改措辞没用——问题在资料库与问题的错配）。
 
-`app/services/errors.py` 里现有相关代码：
+`app/services/errors.py` 里现有相关代码（**改动前的状态**，已按 §3.3 改掉）：
 
 ```python
 LLM_CONTENT_FILTERED = "llm_content_filtered"
@@ -302,6 +302,9 @@ def _bad_request_classified(exc: BaseException) -> Classified:
 - 不处理 `MAX_TURNS` / 轮次上限
 
 ## 实现后的验证结果（2026-10-25）
+
+> **以下是当天的快照，不是现状。** 测试数、mypy 文件数、切片数等都会随项目增长，
+> 不要拿这里当「当前应该有多少」的判据。
 
 ### 离线端到端（生产库 argus.db，真实向量，不调外部服务）
 
