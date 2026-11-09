@@ -11,11 +11,16 @@ run id 进了 URL（可分享、可收藏、多标签页隔离），加了「新
 
 ## 状态
 
+> **2026-11-09 核对：下面的 commit 号与「与 origin/master 同步」已过期**
+> （本轮 5 个 commit 之后又有 20+ 个）。服务是否在跑要自己查
+> （`lsof -ti:8000` / `lsof -ti:3000`）。其余内容（做过的改动、踩过的坑）
+> 仍然有效。
+
 | | |
 |---|---|
 | 仓库 | `~/Desktop/argus`（**只有这一份**，见 LOCAL-DEV.md §0） |
-| 分支 | `master`，与 `origin/master` 同步 |
-| commit | `956fc93`（本轮 5 个 commit 全部已推送） |
+| 分支 | `master` |
+| commit | ~~`956fc93`~~（本轮 5 个 commit 全部已推送；此后又有 20+ 个 commit） |
 | 后端 | http://localhost:8000（**改了 Python 必须重启**，无 `--reload`） |
 | 前端 | http://localhost:3000（**必须 webpack 模式**，Turbopack 会 500） |
 

@@ -44,18 +44,27 @@
 
 ## 5. Material Symbols 图标
 
-- 字体：Google `Material Symbols Outlined`（已在 `app/layout.tsx` 引入）
-- name **优先**从 `design/code.html` 12 个 design 里找
-- name **fallback**：可用 `lucide-react`（shadcn 默认依赖）
-- **禁止**：自己画 SVG / 用 emoji / 用 lucide 替代 design 里已存在的同义 icon
-- 封装组件 `<MaterialSymbol name="..." />`（自定义 helper），传入 name prop
+- 字体：Google `Material Symbols Outlined`，**本地 woff2**
+  （`apps/web/public/fonts/material-symbols-outlined.woff2`，在 `globals.css` 里
+  `@font-face` 声明为 `Material Symbols Outlined Local`）
+- **唯一封装组件**：`<IconSpan name="..." size={16} />`
+  （`apps/web/components/common/IconSpan/`）
+- **强制 inline `style={{ fontSize }}`**——Tailwind v3 的 `text-[Npx]` arbitrary
+  value 在 route group 路径下不可靠，会落回 24px。`IconSpan` 已封装这一点
+- size 档位：`13 / 14 / 15 / 16 / 18 / 20 / 22 / 24` 像素
+- **禁止**：自己画 SVG / 用 emoji / 用 lucide 替代 design 里已存在的同义 icon。
+  `lucide-react` **未安装**——import 会构建失败
+- name 优先从 design 稿里找（design 稿源文件不在仓内）
 
 ## 6. 字体
 
-- 阿里巴巴普惠体（Alibaba PuHuiTi），通过阿里妈妈 Smart Font 远程加载
-- 远程 URL：`https://at.alicdn.com/t/c/font_你的项目ID.css`
-- 字体声明：`globals.css` `@layer base` `html, body { font-family: 'AlibabaPuHuiTi', ... }`
-- tailwind.config.ts fontFamily 11 个 token 全部用 `'var(--font-alibaba-puhuiti), AlibabaPuHuiTi', ...`
+- 走 `next/font/google`：**Geist / Inter / JetBrains Mono**
+- **唯一导入入口**：`app/layout.tsx`。Next 16 要求 `next/font/google` 全项目
+  只能有一处 import（多处会 build 失败：`next/font/google queries have
+  exactly one entry`）
+- CSS 变量：`--font-geist` / `--font-inter` / `--font-jetbrains-mono`，
+  页面里用 `var(--font-inter)` 引用，**不要在自己页面里再 import 一次**
+- tailwind.config.ts fontFamily 11 个 token 基于 Geist / JetBrains Mono 定义
 
 ## 7. shadcn/ui 组件使用规范
 
