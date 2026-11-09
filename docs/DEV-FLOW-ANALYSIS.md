@@ -156,6 +156,11 @@ scoring），后者针对本项目最高频的真实 bug 类型——补偿代�
 catch 吞异常、fallback 掩盖真因。四个维度：并发/事务/边界、静默失败、
 错误路径与用户反馈、跨模块语义一致性。
 
+**独立验证环节**（同批落地）：新增全局 `~/.claude/agents/issue-validator.md`。
+reviewer-fresh 对 80 分以上的发现**逐条派它独立验证**（一个 agent 验证一条，
+不共享上下文），被否的直接丢掉。90+ 分在「编译失败 / 逻辑错误 / 明确规则
+违反」时免验证。目的是补上「自评会偏」这个盲区——打分是初筛，验证是终筛。
+
 项目侧的 `.claude/agents/code-reviewer.md` 已删（无人引用，且内容与
 `project-conventions` skill 重复）；其独有的「规则 → 条款出处」映射表迁到了
 `.claude/skills/project-conventions/SKILL.md` §2.3.1。
