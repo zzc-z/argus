@@ -71,7 +71,7 @@ header ≤ 100 字符。
 | 6 | **a11y**：`<button>` 必有 aria-label 或可见文字；`<img>` 必有 alt；`<input>` 必关联 `<label htmlFor>`；焦点环 `focus-visible:ring-2` | CONVENTIONS §12 |
 | 7 | **状态管理边界**：本地 `useState` / 跨路由 searchParams / 服务端 `fetch + useState`（项目**未装** Zustand / SWR / React Query，import 它们会构建失败） | CONVENTIONS §4 |
 | 8 | **TypeScript strict**：禁止 `any`；pre-commit 跑 `tsc --noEmit` | CODE-QUALITY §2.1-2.2 |
-| 9 | **错误路径必有**：async/await 必有 catch；API route 必返回错误状态；不可静默吞错 | CONVENTIONS §3 + AGENTS §10 |
+| 9 | **错误路径必有**：async/await 必有 catch；API route 必返回错误状态；不可静默吞错 | CONVENTIONS §3 + 全局 `rules/coding.md`「大声报错」 |
 | 10 | **shadcn 优先**：禁止装 MUI/Chakra/Mantine/Ant Design；禁止手改 `components/ui/` 下文件；新功能复用 shadcn 组件 | CONVENTIONS §7 |
 
 ### 2.4 设计稿还原 4 步（AGENTS.md §14）
