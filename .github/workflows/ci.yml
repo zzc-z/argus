@@ -37,7 +37,29 @@ jobs:
 
       # 全量测试并行跑（-n 4 配在 pyproject.toml 的 addopts 里）。
       # 单进程跑要 32 秒，并行 14 秒。
+      #
+      # 测试套件需要几个配置项存在，但**都不需要真值**：
+      #   - ANTHROPIC_API_KEY / JWT_SECRET_KEY：非空即可。真实模型调用
+      #     全被桩拦掉（conftest 的 _stub_stage_nodes + 各测试的
+      #     monkeypatch），key 只用来通过 _require 的非空检查。
+      #   - GITHUB_OAUTH_CLIENT_ID / _SECRET：非空即可，测试只验授权
+      #     URL 的形状与 PKCE，不发真实 OAuth 请求。
+      #   - COOKIE_SECURE=false：默认是 True（见 config.py 的注释——
+      #     线上漏配要报错，开发环境漏配只是登不上）。但 CI 走 http，
+      #     Secure cookie 不会被 TestClient 送回 → OAuth state cookie 丢失
+      #     → state 校验相关用例全挂。
+      #   - GITHUB_OAUTH_CALLBACK_URL：要带 /api/v1 前缀，与真实路由
+      #     （app/gateway/auth.py 的 prefix）一致。
+      #
+      # 顺带修了 .env.example 里这个 callback URL 少了 /api/v1 的 bug。
       - name: pytest
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder-not-a-real-key
+          JWT_SECRET_KEY: ci-placeholder-secret-0123456789abcdef
+          GITHUB_OAUTH_CLIENT_ID: ci-placeholder-client-id
+          GITHUB_OAUTH_CLIENT_SECRET: ci-placeholder-client-secret
+          GITHUB_OAUTH_CALLBACK_URL: http://localhost:8000/api/v1/auth/github/callback
+          COOKIE_SECURE: "false"
         run: uv run pytest tests/ -q --no-header -p no:cacheprovider
 
       - name: ruff format 检查（只查本次改动的文件）
