@@ -9,10 +9,13 @@
 [![LangGraph](https://img.shields.io/badge/LangGraph-1.2.x-blue)]()
 [![Phoenix](https://img.shields.io/badge/Phoenix-13.x-purple)]()
 [![Claude](https://img.shields.io/badge/Claude-Sonnet%205-orange)]()
-[![Visibility](https://img.shields.io/badge/visibility-PRIVATE-red)]()
+[![Visibility](https://img.shields.io/badge/visibility-PUBLIC-green)]()
 [![Status](https://img.shields.io/badge/status-MVP-yellow)]()
 
-> ⚠️ **此仓库为 Private**（2026-09-19 用户决策暂不开源）。仅设计文档 W0 阶段提交，代码与数据均不公开。
+> 本 README 记录的是 W0 设计阶段（2026-09-19）的方案。实现已在 `apps/api` 与
+> `apps/web` 中落地，当前状态见[仓库根 README](../README.md)。
+> 本文件保留为设计决策的历史记录——里面的技术选型有些已被实现推翻
+> （例如向量存储实际用 sqlite-vec 而非 pgvector），以正文为准。
 
 ---
 

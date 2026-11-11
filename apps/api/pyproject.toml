@@ -176,6 +176,18 @@ filterwarnings = [
     "ignore:.*AsyncIterator.*:DeprecationWarning",
     # SWIG 生成的包装类型缺 __module__，pymupdf 1.28 在 Python 3.14 上必报
     "ignore:builtin type .* has no __module__ attribute:DeprecationWarning",
+    # jieba 0.42.1（2020 年发布，PyPI 上最新版）源码里有无效转义序列：
+    # jieba/__init__.py:44 的 "\." "\-"、finalseg/__init__.py:78 的 "\."。
+    # Python 3.12 起报 SyntaxWarning，3.14 起在**编译期**直接报 SyntaxError。
+    # 上面的 "error" 把编译期 SyntaxWarning 升级成异常 → conftest 导入 jieba
+    # 时炸掉，整个测试套件收集失败（CI exit code 4）。
+    #
+    # 这条必须**不限 module**：实测（2026-11-11）编译期告警的 module 字段
+    # 是被编译文件的路径而非模块名，"ignore::SyntaxWarning:jieba.*"、
+    # ":jieba"、":.*" 全部匹配不上；只有不限 module 的 ignore 生效。
+    # 代价是第三方包里其它 SyntaxWarning 也不再拦——可接受，因为
+    # 项目自己的代码有 ruff 兜底（ruff W605 会报无效转义）。
+    "ignore::SyntaxWarning",
 ]
 
 [tool.coverage.run]
