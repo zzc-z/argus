@@ -42,17 +42,17 @@ commit/flush/execute 抛出。
 **判定方法**：读框架源码（`.venv/` 里的库代码可以读），不要靠记忆。
 框架行为随版本变，记忆不可靠。
 
-## A4. 时间语义统一 UTC aware
+## A4. 时间语义：argus 的具体后果
 
-**违反判据**：`datetime.now()`（无时区）、naive 与 aware 混用、
-naive 分支直接 `return value` 却注释说「按 UTC 解读」。
+通用判据见全局 `~/.claude/rules/cr-python.md` P5（naive/aware 混用）。
+argus 特有的后果：
 
-**为什么严重**：SQLite 上 `CURRENT_TIMESTAMP` 按定义就是 UTC；
-但 Postgres 上绑到 `timestamptz` 时按**会话 TimeZone GUC** 解释——
-同一段代码在两个库上差 8 小时，静默。
-
-（通用判据见全局 `~/.claude/rules/cr-python.md` P5；
-本条只写 argus 的具体后果。）
+- **本项目就是 SQLite**——`CURRENT_TIMESTAMP` 按定义就是 UTC。
+  历史上 `UtcDateTime` 的 docstring 写成「SQLite 存的是本机时区」，
+  照那条补救指引做 UPDATE 会把所有历史时间戳平移一个时区偏移。
+- **但代码要按可迁移写**：绑到 Postgres 的 `timestamptz` 时按**会话 TimeZone
+  GUC** 解释，同一段代码在两个库上差 8 小时且静默。所以存储层统一 UTC aware，
+  不依赖 SQLite 的具体行为。
 
 ## A5. 补偿覆盖全部状态 + 补偿自身可失败
 

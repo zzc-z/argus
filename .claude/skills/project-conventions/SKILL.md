@@ -47,14 +47,16 @@ git commit
 
 header ≤ 100 字符。
 
-### 2.3 代码硬规则（CONVENTIONS.md §1-3）
+### 2.3 代码硬规则
 
-- 函数 ≤ **50 行**（不含注释/空行）
-- 文件 ≤ **800 行**
-- JSX 嵌套 ≤ **4 层**（超出抽子组件）
-- **不可变 mutation**：`const` 优先；`let` 仅限 reducer / 计时器 / 累加器
-- 命名：组件 `PascalCase.tsx` / 函数 `camelCase.ts` / 常量 `UPPER_SNAKE_CASE.ts` / 路由 `kebab-case` / 数据库表 `snake_case`
-- 严禁：复制粘贴 > 3 次（DRY）、写将来才用的功能（YAGNI）、用 3 个指头能做的事用 2 个指头（KISS）
+**通用部分见全局 `~/.claude/rules/coding.md`**（函数/文件行数、嵌套深度、不可变
+mutation、DRY/YAGNI/KISS、防废码 4 原则）——argus 不重复定义，以全局为准。
+argus 特有的部分：
+
+- **命名**：组件 `PascalCase.tsx` / 函数 `camelCase.ts` / 常量 `UPPER_SNAKE_CASE.ts`
+  / 路由 `kebab-case` / 数据库表 `snake_case`
+- **图标**：Google `Material Symbols Outlined`（本地 woff2，唯一来源，
+  禁止自定义 SVG / emoji / lucide / react-icons）
 
 ### 2.3.1 审查速查：规则 → 条款出处
 
@@ -63,15 +65,15 @@ header ≤ 100 字符。
 
 | # | 规则 | 出处 |
 |---|---|---|
-| 1 | **不可变 mutation**：禁止原地改数组/对象；spread / map / filter 返回新引用 | CONVENTIONS §3 |
-| 2 | **嵌套 ≤ 4 层**：超出必须抽子组件 | CONVENTIONS §3 |
-| 3 | **函数 ≤ 50 行 / 文件 ≤ 800 行** | CONVENTIONS §3 |
-| 4 | **命名严格**：PascalCase=组件/类、camelCase=工具/变量、UPPER_SNAKE_CASE=常量、kebab-case=路由、snake_case=数据库表/LangGraph node | CONVENTIONS §2 |
+| 1 | **不可变 mutation**：禁止原地改数组/对象；spread / map / filter 返回新引用 | 全局 `rules/coding.md` |
+| 2 | **嵌套 ≤ 4 层**：超出必须抽子组件 | 全局 `rules/coding.md` |
+| 3 | **函数 ≤ 50 行 / 文件 ≤ 800 行** | 全局 `rules/coding.md` |
+| 4 | **命名严格**：PascalCase=组件/类、camelCase=工具/变量、UPPER_SNAKE_CASE=常量、kebab-case=路由、snake_case=数据库表 | CONVENTIONS §2 |
 | 5 | **设计 token 禁偏离**：禁止 `bg-[#XXX]` / `bg-oklch(...)` 任意值；必须用 `tailwind.config.ts` 的 color token | CONVENTIONS §8 |
 | 6 | **a11y**：`<button>` 必有 aria-label 或可见文字；`<img>` 必有 alt；`<input>` 必关联 `<label htmlFor>`；焦点环 `focus-visible:ring-2` | CONVENTIONS §12 |
 | 7 | **状态管理边界**：本地 `useState` / 跨路由 searchParams / 服务端 `fetch + useState`（项目**未装** Zustand / SWR / React Query，import 它们会构建失败） | CONVENTIONS §4 |
-| 8 | **TypeScript strict**：禁止 `any`；pre-commit 跑 `tsc --noEmit` | CODE-QUALITY §2.1-2.2 |
-| 9 | **错误路径必有**：async/await 必有 catch；API route 必返回错误状态；不可静默吞错 | CONVENTIONS §3 + 全局 `rules/coding.md`「大声报错」 |
+| 8 | **TypeScript strict**：禁止 `any`；pre-commit 跑 `tsc --noEmit` | CODE-QUALITY §2.1-2.2 + 全局 `rules/gen-typescript.md` G-T1 |
+| 9 | **错误路径必有**：async/await 必有 catch；API route 必返回错误状态；不可静默吞错 | CONVENTIONS §3 + 全局 `rules/coding.md`「大声报错」+ `rules/gen-python.md` G-P5 |
 | 10 | **shadcn 优先**：禁止装 MUI/Chakra/Mantine/Ant Design；禁止手改 `components/ui/` 下文件；新功能复用 shadcn 组件 | CONVENTIONS §7 |
 
 ### 2.4 设计稿还原 4 步（AGENTS.md §14）
@@ -103,10 +105,10 @@ header ≤ 100 字符。
 - [ ] **token 一致性**：颜色用 50 个 color token、字号用 11 个、字体用 11 个 fontFamily（不用 `bg-[#...]` / `text-[Npx]` arbitrary value / `bg-oklch(...)`）
 - [ ] **shadcn 优先**：交互元素（button / card / input / label / dialog 等）从 `apps/web/components/ui/` 取，不自造
 - [ ] **图标来源**：Material Symbols Outlined，封装用 `components/common/IconSpan`，强制 inline `style={{ fontSize }}`（Tailwind v3 `text-[Npx]` 在 route group 路径下不可靠）
-- [ ] **嵌套 ≤4 层**：JSX 嵌套超过必须抽子组件
+- [ ] **嵌套 ≤4 层**：JSX 嵌套超过必须抽子组件（全局 `rules/coding.md`）
 - [ ] **状态机可推导**：本地 `useState` / 跨路由 URL params / 服务端 `fetch` + `useState`（**项目没装 Zustand / SWR / React Query / Redux / MobX——不要 import 它们**）
 - [ ] **a11y 通过**：button 有 `aria-label` / img 有 `alt` / input 关联 `<label htmlFor>` / 焦点环 `focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary` / 对比度 ≥ 4.5:1 / 键盘导航完整
-- [ ] **不可变**：mutation 禁止；spread / filter / map 返回新引用
+- [ ] **不可变**：mutation 禁止；spread / filter / map 返回新引用（全局 `rules/coding.md`）
 - [ ] **组件文件夹**：`PascalCase/`（**B 必须大写**）+ `index.tsx` + `index.module.css`（**`.module.css` 不用 `.module.less`**——Next.js 15 不内置 less）
 - [ ] **Commit 自检**：删除走不到的 if 分支、未引用的 import、同时存在的旧路径
 

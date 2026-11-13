@@ -41,15 +41,19 @@ paths:
 
 ## W4. Hook：默认不包 `useCallback` / `useMemo`
 
-**现状**：React 19.3 + **React Compiler 未启用**，全项目 `React.memo` 0 处。
+**argus 现状**：React 19.3 + **React Compiler 未启用**，全项目 `React.memo` 0 处。
 
-**违反判据**（任一即是）：
-- 函数传给 `React.memo` 子组件 / 第三方 `memo()` 组件 —— ✅ 可用
-- 函数是 `useEffect` / `useMemo` 的依赖，且闭包里有 state/props —— ✅ 可用
-- **单纯「怕子组件重渲染」但子组件没 memo** —— ❌ 白包
-- **空函数 `useCallback(() => {}, [])`** —— ❌ 零收益纯噪音
-- 函数体内没读响应式值，deps 却写满 —— ❌ 本来就不会变
-- 「以防万一」预包 —— ❌ YAGNI
+通用判据见全局 `~/.claude/rules/cr-react.md`（React Compiler 未启用时，
+白包反而制造渲染期引用不稳定的风险）。argus 特有的**白包形态**：
+
+- **空函数 `useCallback(() => {}, [])`** —— 零收益纯噪音
+- **单纯「怕子组件重渲染」但子组件没 memo** —— 白包
+- 函数体内没读响应式值，deps 却写满 —— 本来就不会变
+- 「以防万一」预包 —— YAGNI
+
+**这四种之外仍可包**：
+- 函数传给 `React.memo` 子组件 / 第三方 `memo()` 组件
+- 函数是 `useEffect` / `useMemo` 的依赖，且闭包里有 state/props
 
 **依赖数组必须诚实**：闭包里读了什么就写什么，禁止为了少写几个删依赖。
 `react-hooks/exhaustive-deps` 已配为 `error`——**依赖数组的问题 lint 会抓，

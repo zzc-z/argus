@@ -16,8 +16,9 @@
 |---|---|---|
 | 通用口径 | 全局 `~/.claude/CLAUDE.md` §5 | 每次审查（**分维度与验证要求**、举证要求、严重度锚点、Nit 上限、噪音过滤、What NOT to Flag） |
 | 语言专项 | 全局 `~/.claude/rules/cr-python.md` / `cr-typescript.md` / `cr-react.md` | 审对应语言的代码时 |
+| 流程机制 | 全局 `~/.claude/rules/dev-flow.md` §4 | **什么时候必须起 CR**、报告怎么处置、并行 agent 验收 |
 | 项目专项 | 本仓库 `.claude/rules/api.md` / `web.md` | 审 `apps/api/**` / `apps/web/**` 时（错误分类、补偿四态、组件形式、shadcn 等） |
-| 本文件 | 根 `CLAUDE.md` | 项目画像、跨模块语义一致性、静默失败、文档断言 |
+| 本文件 | 根 `CLAUDE.md` | 项目画像、跨模块语义一致性、静默失败、项目事实 |
 
 **审 `apps/api/**`（`.py`）改动前，完整读这两份**：
 `~/.claude/rules/cr-python.md` → `.claude/rules/api.md`。
@@ -27,6 +28,10 @@
 
 （带 `paths` frontmatter 的文件，Claude Code 会在触碰匹配文件时自动加载；
 显式读一遍是保险——官方 CR 的子代理是否触发条件加载不做保证。）
+
+**本文件只写 argus 特有的事实与判据。** 通用规则一律回全局
+（`~/.claude/CLAUDE.md` §5 + `~/.claude/rules/`）——项目里不重复定义通用规则，
+避免两处漂移。
 
 ## 1. 项目是什么
 
@@ -75,17 +80,21 @@
 - **argus 特有**：`error_event_for` 的错误分档按 `error.type` 而非
   字符串关键词匹配——按关键词会在上游改措辞时失效。
 
-## 4. 文档与注释：写下 ≠ 核实过
+## 4. 文档与注释：argus 踩过的两次坑
 
-**注释里的技术断言，要么实测过，要么不写。**
+**通用判据在全局 `~/.claude/rules/coding.md`「注释与文档：不许编造事实」**
+（判据、核实成本三档、「什么时候不要写理由」都在那里），本节只留 argus
+的实证案例。
 
-- 一个**错误的技术断言**留在文档里比没有文档更危险——它不是描述现状，
-  是**指示操作**。照着错的指引做会损坏生产数据。
-- 断言框架行为时，**去框架源码确认**，不要凭记忆。
-  （例：SQLAlchemy 的 `SessionTransaction.rollback` 的 `declare_states`
-  **接受** DEACTIVE 状态，rollback 本身不抛 `PendingRollbackError`；
-  抛错的是 `commit`/`flush`/`execute`。）
-- 改了行为要同步改 docstring 与 commit message——**实测的结论必须覆盖到文档里**。
+- **2026-10-15 审计 WORKLOG 的「已知问题」表，四条里三条是假的**——一条引用
+  了项目文档里根本不存在��约定，一条把有意设计当成缺陷，一条描述的问题
+  三周前就修好并验证过了
+- **2026-10-13 CR 发现 `UtcDateTime` 的 docstring 写着「SQLite 存的是本机时区，
+  历史数据需 UPDATE 修正」——实测 SQLite 的 `CURRENT_TIMESTAMP` 就是 UTC**。
+  照那条补救指引操作会把所有历史时间戳平移一个时区偏移，**把正确的数据改坏**
+
+**一个错误的技术断言留在文档里，比没有文档更危险**——它不是描述现状，
+是**指示操作**。argus 的后端框架行为断言见 `.claude/rules/api.md` A3。
 
 ## 5. 不要报什么（argus 特有）
 
