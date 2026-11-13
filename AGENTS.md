@@ -109,7 +109,7 @@ uv run pytest tests/ -q --no-header -p no:cacheprovider  # 跑测试（并行配
 | 内容 | 位置 |
 |---|---|
 | 什么时候必须起 CR / 免起的豁免 | `~/.claude/rules/workflow-sop.md` |
-| 审查机制、维度、置信度门槛、独立验证 | `~/.claude/agents/reviewer-fresh.md` + `issue-validator.md` |
+| 审查机制（官方 `/code-review`：4 agent 并行、置信度 ≥80、逐条独立验证） | 官方内置 skill；规则依据见根 [`CLAUDE.md`](./CLAUDE.md) 与全局 `~/.claude/CLAUDE.md` §5 |
 | 流程骨架（分层反馈环、并行测试、范围纪律） | `~/.claude/rules/dev-flow.md` |
 | 编码约束与「注释里的技术断言要么实测过」 | `~/.claude/rules/coding.md` |
 
