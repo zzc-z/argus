@@ -14,7 +14,7 @@
 
 | 层 | 位置 | 何时读 |
 |---|---|---|
-| 通用口径 | 全局 `~/.claude/CLAUDE.md` §5 | 每次审查（补偿路径、举证要求、严重度锚点、Nit 上限、噪音过滤、What NOT to Flag） |
+| 通用口径 | 全局 `~/.claude/CLAUDE.md` §5 | 每次审查（**分维度与验证要求**、举证要求、严重度锚点、Nit 上限、噪音过滤、What NOT to Flag） |
 | 语言专项 | 全局 `~/.claude/rules/cr-python.md` / `cr-typescript.md` / `cr-react.md` | 审对应语言的代码时 |
 | 项目专项 | 本仓库 `.claude/rules/api.md` / `web.md` | 审 `apps/api/**` / `apps/web/**` 时（错误分类、补偿四态、组件形式、shadcn 等） |
 | 本文件 | 根 `CLAUDE.md` | 项目画像、跨模块语义一致性、静默失败、文档断言 |
@@ -90,7 +90,9 @@
 ## 5. 不要报什么（argus 特有）
 
 通用边界见全局 `~/.claude/CLAUDE.md` §5.9（既有问题、lint 能抓到的、
-注释命名格式、需要跑代码才能确认的、严重度按后果定）。
+注释命名格式、需要跑代码才能确认的、严重度按后果定）、
+§5.0.2（每条发现必须独立验证，验证不过丢弃）、
+§5.0.5（噪音文件过滤）、§5.0.6（通用 What NOT to Flag）。
 
 以下是 **argus 特有的噪音源**：
 
