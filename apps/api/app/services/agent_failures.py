@@ -45,6 +45,7 @@ async def _handle_cancel(
     report_body: list[str],
     current_turn_text: list[str],
     collected_refs: list[Reference],
+    tracker: NodeTracker,
 ) -> AsyncIterator[AgentEvent]:
     """取消时的收尾：落盘已生成的正文 + 发 done。
 
@@ -59,8 +60,18 @@ async def _handle_cancel(
     ``report_body`` 攒的是**已收尾**的轮次。而取消常常发生在某一轮
     **中途**——那一轮已经流出去的正文不在 ``report_body`` 里。用户看到
     的就是它，不能因为「取消发生在这一轮中途」而丢。
+
+    ## 为什么必须关掉 active 节点
+
+    取消时当前节点还开着（researcher 或 writer）。不关的话前端 DAG 上
+    它永远停在「运行中」，秒数无限增长，高亮轨道停在半路——
+    用户点了取消，界面却像还在跑。
     """
     logger.info("研究被取消，落盘已生成的部分")
+    # 先关节点再落盘——前端 DAG 上那一段要有终态，不能停在「运行中」。
+    # 标 failed 而不是 completed：取消意味着这段没跑完。
+    for event in _fail(tracker, "已取消"):
+        yield event
     ledger = ledger.mark_truncated()
     pending = "".join(current_turn_text)
     content = "\n".join([*report_body, *([pending] if pending else [])])

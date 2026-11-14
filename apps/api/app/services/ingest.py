@@ -161,10 +161,27 @@ async def mark_failed(db: AsyncSession, source: Source, message: str) -> None:
     （超时、404、非 200），那一刻管线还没开始，没人来写 error_message。
     抓取失败与摄取失败对用户是同一种事——「这份资料失败了，原因是 X」，
     所以必须写进同一个字段，轮询端点才能一视同仁。
+
+    ## 为什么必须把 chunk_count 归零
+
+    摄取分四步写状态：PARSING → CHUNKING（**这里写了 chunk_count=len(chunks)**）
+    → EMBEDDING → INDEXED。失败可能发生在 CHUNKING 之后——
+    比如嵌入服务欠费，解析和切片都已完成、chunk_count 已经是 21，
+    但切片**从未落库**（``_store`` 没被调用，它内部的 ``_clear_stored``
+    补偿也就没跑）。
+
+    不归零的话，库里留下「失败 · 21 切片」，实际 document_chunks 0 行。
+    前端 ``toSourceRow`` 按 ``chunk_count > 0`` 渲染「21 切片」，
+    用户点进去是空的——**状态自相矛盾，而且矛盾的是对外契约**。
+
+    归零是对的：失败 = 这份资料一条切片都没有。用户重传即刻恢复。
     """
     await db.rollback()
     source.status = SourceStatus.FAILED
     source.error_message = message
+    # 归零切片数——失败状态下这份资料没有任何可检索的切片。
+    # 不用 ``_set_status``：它会清掉 error_message，而这里刚写上。
+    source.chunk_count = 0
     await db.commit()
 
 

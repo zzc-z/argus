@@ -371,6 +371,65 @@ async def test_stream_releases_slot_on_error(
             assert resp.status_code == 200, "槽没归还，第 N 次已经被 503 挡掉"
 
 
+async def test_slot_released_before_citation_validation(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """引用校验阶段**不能占着并发槽位**。
+
+    ## 为什么
+
+    校验（critic）最长 120s × 3 次重试 = 6 分钟。槽位本来要等整个研究
+    协程结束才释放——4 个槽位全被校验占住时，新的研究请求全部 503，
+    而此时**没有一次 LLM 调用在跑**（模型和检索都结束了）。
+
+    done 帧早就被安排在校验之前发出（见 ``agent.py`` 的注释），
+    但槽位释放被漏掉了——这里是补上那一步。
+
+    ## 注入回归（**这条只验一半**）
+
+    这条验证的是「槽位不会被**重复**释放」——末尾连发 N+2 个请求全部 200，
+    说明 Semaphore 计数没虚高。
+
+    但它**验不到**「槽位被**提前**释放」：本用例用 ``_fake_agent`` 替换了
+    整个 ``run_agent``，钩子由它自己手动调。真实 ``run_agent`` 里那个
+    ``on_llm_done()`` 调用删掉，这条照样绿。
+
+    真正抓「钩子没被调用」的用例在 ``test_agent_loop.py`` 的
+    ``test_on_llm_done_hook_fires_after_done_frame``——它只 mock 网络层
+    （``_run_turn``），跑的是真实 ``run_agent``。
+    """
+    released_at: list[str] = []
+
+    async def _fake_agent(question: str, *, user_id: int, **kw: Any) -> AsyncIterator[Any]:
+        on_llm_done = kw.get("on_llm_done")
+        # 模拟真实 agent：先跑完 LLM 阶段（触发钩子），再进入校验。
+        if on_llm_done is not None:
+            on_llm_done()
+            released_at.append("llm_done")
+        yield DoneEvent(
+            session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1
+        )
+        # 校验阶段「还在跑」——这段时间槽位必须已经还回去了。
+        released_at.append("validating")
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "run_agent", _fake_agent)
+
+    with client.stream("POST", "/api/v1/research/ask", json={"question": "q"}) as resp:
+        assert resp.status_code == 200
+        list(resp.iter_lines())
+
+    assert "llm_done" in released_at, "LLM 阶段结束应触发槽位释放钩子"
+    # 钩子在 done 之前触发——槽位先还，报告后到。
+    assert released_at.index("llm_done") < released_at.index("validating")
+
+    # 关键：请求结束后槽位没被重复释放（否则 Semaphore 计数虚高，
+    # 闸门形同虚设）。再发 N+2 个请求，全部 200 说明计数正确。
+    for _ in range(research_module.MAX_CONCURRENT_STREAMS + 2):
+        with client.stream("POST", "/api/v1/research/ask", json={"question": "q"}) as resp:
+            assert resp.status_code == 200, "槽位计数错乱，第 N 次已经被 503 挡掉"
+
+
 async def test_agent_gets_the_override_session(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
 ) -> None:
@@ -609,15 +668,21 @@ async def test_end_to_end_with_stubbed_llm(client: TestClient, monkeypatch: pyte
         frames = _frames(resp)
 
     # 节点不变量：任一时刻至多一个 active，结束时归零
+    #
+    # 终态帧**只关闭它自己对应的那个** active——「存在没有配对 active
+    # 的终态帧」是合法状态（analyst 兜底时从未激活，直接发 completed）。
     active = 0
+    open_node: str | None = None
     for frame in frames:
         if frame["type"] != "node":
             continue
         if frame["v"]["lifecycle"] == "active":
             active += 1
+            open_node = frame["v"]["node_id"]
             assert active == 1, f"出现第二个 active: {frame}"
-        else:
+        elif open_node == frame["v"]["node_id"]:
             active -= 1
+            open_node = None
     assert active == 0
 
     # 正文能拼回原文

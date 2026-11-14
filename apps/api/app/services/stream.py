@@ -55,18 +55,35 @@ class NodeEvent:
 class DeltaEvent:
     """正文增量。一小段，不是全文——前端 ``streamedText += delta.text``。
 
-    ``reset=True`` 表示「把已经收到的正文清掉，从这里重新开始」。
+    ``reset=True`` 表示「把**本轮**已收到的正文清掉，从这里重新开始」。
     它只在**流被掐断后整轮重发**时出现：重发会从头再生成一遍，
     而上游有随机性（实测同一 prompt 连发 4 次，字数 1653/1155/1737/2164
     各不相同），没法靠裁剪前缀来去重——只能让前端把这一轮先收到的丢掉。
 
     前端收到它要把本轮的正文清零。少了这个信号，用户会看到同一段
     正文出现两遍（前半截是断流前的，后半截是重发后的）。
+
+    ## reset_keep_chars：为什么不能无脑清空全文
+
+    前端的 ``streamedText`` 是**全篇累积**（``prev + delta.text``），
+    而后端的 ``report_body`` 是**每轮追加**。两者本该一致。
+
+    无脑清空全文会破坏这个一致性：第 0 轮的正文**已经进了 report_body**
+    （会被落盘），第 N 轮的正文还在 ``current_turn_text`` 里（尚未落盘）。
+    reset 到达时若把 ``streamedText`` 全清，用户屏幕上第 0 轮的正文被抹掉，
+    但落盘报告里它还在——**用户看到的和历史里存的不是同一份**。
+
+    所以 reset 带上 ``reset_keep_chars``：**前 N 轮已落盘正文的长度**。
+    前端据此裁剪——保留已落盘的部分，只清掉本轮重发的部分。
+    这样屏幕与落盘报告始终一致。
     """
 
     node_id: str
     text: str
     reset: bool = False
+    #: reset 时保留的已落盘正文长度。前端按它裁剪 ``streamedText``。
+    #: 非 reset 时为 0。缺省 0 兼容旧前端（等价于「全清」，即旧行为）。
+    reset_keep_chars: int = 0
 
 
 @dataclass(frozen=True, slots=True)

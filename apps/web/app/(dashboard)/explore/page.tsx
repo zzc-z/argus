@@ -316,11 +316,18 @@ function applyEventInner(event: SseEvent, h: RunHandlers): void {
     }
     case 'delta': {
       const delta = parseEvent<DeltaEventV>(event)
-      // reset：流被掐断后整轮重发，已收到的正文作废。
-      // 不清零的话用户会看到同一段正文出现两遍（前半截是断流前的、
+      // reset：流被掐断后整轮重发，本轮已收到的正文作废。
+      // 不清的话用户会看到同一段正文出现两遍（前半截是断流前的、
       // 后半截是重发后的）。
+      //
+      // **只清本轮，不清全篇**。streamedText 是全篇累积，而后端落盘的
+      // report_body 是每轮追加——第 0 轮的正文已经落盘了。若无脑清空，
+      // 用户看过的正文会从屏幕上消失，但历史报告里还在，
+      // **屏幕与落盘报告不是同一份**。
+      // 后端用 reset_keep_chars 告诉我们要保留多少（已落盘部分的长度）。
       if (delta.reset) {
-        h.setStreamedText('')
+        const keep = delta.reset_keep_chars ?? 0
+        h.setStreamedText((prev) => prev.slice(0, keep))
         break
       }
       h.setStreamedText((prev) => prev + delta.text)

@@ -251,6 +251,107 @@ async def test_thinking_never_emitted_as_event(monkeypatch: pytest.MonkeyPatch) 
     assert "答案" in all_text
 
 
+async def test_reset_only_clears_current_turn(monkeypatch: pytest.MonkeyPatch) -> None:
+    """reset 只清**本轮**正文，已落盘的前几轮要保留。
+
+    ## 为什么这是 bug
+
+    前端的 ``streamedText`` 是**全篇累积**，后端的 ``report_body`` 是
+    **每轮追加**。第 0 轮的正文已经进了 ``report_body``（会被落盘），
+    第 N 轮的正文还在 ``current_turn_text`` 里（尚未落盘）。
+
+    reset 到达时若让前端无脑清空全文，用户屏幕上第 0 轮的正文被抹掉，
+    但落盘报告里它还在——**用户看到的与历史里存的不是同一份**。
+
+    所以 reset 帧必须带上 ``reset_keep_chars``（已落盘部分的长度），
+    前端据此裁剪。
+
+    ## 注入回归
+
+    把 ``keep = sum(len(t) for t in report_body)`` 改成 0，这条会红。
+    """
+
+    calls: list[Any] = []
+    turn_no = 0
+
+    async def _fake_run_turn(
+        client: Any, messages: list[dict[str, Any]], tools: Any
+    ) -> AsyncIterator[TurnChunk]:
+        nonlocal turn_no
+        calls.append(messages)
+        turn_no += 1
+        # 第 1 轮：带 tool_call（让循环继续）+ 正文（会进 report_body → 落盘）
+        # 工具名故意不存在——失败会变成 is_error 的 tool_result 喂回模型，
+        # 循环继续，且不碰网络。
+        if turn_no == 1:
+            yield TurnChunk(kind="text", text="第0轮的正文。")
+            yield TurnChunk(
+                kind="result",
+                result=_turn(text="第0轮的正文。", tool_calls=[_tool_call(name="不存在的工具")]),
+            )
+            return
+        # 第 2 轮：先发一段正文（属于本轮，尚未落盘），再 reset，然后重发
+        yield TurnChunk(kind="text", text="本轮断流前的半截。")
+        yield TurnChunk(kind="reset")
+        yield TurnChunk(kind="text", text="重发后的正文。")
+        yield TurnChunk(kind="result", result=_turn(text="重发后的正文。"))
+
+    monkeypatch.setattr(agent_module, "_run_turn", _fake_run_turn)
+
+    events = await _collect()
+
+    resets = [e for e in events if isinstance(e, DeltaEvent) and e.reset]
+    assert len(resets) == 1, "应恰好有一次 reset"
+    # 第 0 轮已落盘 7 个字（「第0轮的正文。」），本轮的半截不算。
+    assert resets[0].reset_keep_chars == len("第0轮的正文。")
+
+
+async def test_on_llm_done_hook_fires_after_done_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``on_llm_done`` 钩子必须在 **done 帧之后**被调用一次。
+
+    ## 为什么这是 bug
+
+    引用校验（critic）最长 120s × 3 次重试 = 6 分钟。槽位（并发闸门）
+    本来要等整个研究协程结束才释放——4 个槽位全被校验占住时，新请求
+    全部 503，而此时**没有一次 LLM 调用在跑**。
+
+    所以 LLM 阶段结束（done 帧发出）后要立刻调钩子还槽位。
+
+    ## 为什么这条测试不 mock 掉 run_agent
+
+    ``test_research_router.py`` 里那条用 ``_fake_agent`` 替换整个
+    ``run_agent``，自己手动调钩子——**真实 agent 里那个调用被删掉，
+    它照样绿**。这条直接跑真实 ``run_agent``，只 mock 掉网络层
+    （``_run_turn``），所以能真的抓到「钩子没被调用」。
+
+    ## 注入回归
+
+    把 ``agent.py`` 里的 ``on_llm_done()`` 删掉，这条会红。
+    """
+    fired_at: list[str] = []
+
+    def _on_llm_done() -> None:
+        fired_at.append("hook")
+
+    _stub_turns(monkeypatch, [_turn(text="这是答案。")])
+
+    events = [
+        event
+        async for event in run_agent(question="测试问题", user_id=1, on_llm_done=_on_llm_done)
+    ]
+
+    assert fired_at, "钩子没被调用——槽位会一直占着直到协程结束"
+
+    # 顺序：done 帧先发（报告交付），钩子后调（还槽位）。
+    # 钩子若早于 done，槽位会在报告落盘前就还掉——
+    # 那是另一个问题，但同样要能测出来。
+    done_idx = next(i for i, e in enumerate(events) if isinstance(e, DoneEvent))
+    assert done_idx >= 0
+    assert len(fired_at) == 1, f"钩子应只调一次，实际 {len(fired_at)} 次"
+
+
 async def test_tool_error_feeds_back_and_continues(monkeypatch: pytest.MonkeyPatch) -> None:
     """工具失败要变成 is_error 的 tool_result 喂回模型，流程继续。"""
     calls = _stub_turns(
@@ -501,14 +602,21 @@ async def test_never_two_active_nodes(monkeypatch: pytest.MonkeyPatch) -> None:
     events = await _collect()
 
     active = 0
+    # 当前开着的节点 id。终态帧**只关闭它自己对应的那个** active——
+    # 「存在没有配对 active 的终态帧」是合法状态（analyst 兜底时
+    # 从未激活过，直接发 completed，见 NodeTracker.complete_skipped）。
+    # 旧写法对每个非 active 帧都减 1，遇到这种帧计数会变成负数。
+    open_node: str | None = None
     for event in events:
         if not isinstance(event, NodeEvent):
             continue
         if event.lifecycle == "active":
             active += 1
+            open_node = event.node_id
             assert active == 1, f"出现第二个 active：{event.node_id}"
-        else:
+        elif open_node == event.node_id:
             active -= 1
+            open_node = None
         assert active in (0, 1), f"active 计数异常：{active}"
     assert active == 0, "结束时不应有未关闭的 active 节点"
 

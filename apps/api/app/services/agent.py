@@ -39,7 +39,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import asdict
 from typing import Any
 from uuid import uuid4
@@ -159,6 +159,7 @@ async def run_agent(
     db: AsyncSession | None = None,
     vec_engine: AsyncEngine | None = None,
     session_maker: async_sessionmaker[AsyncSession] | None = None,
+    on_llm_done: Callable[[], None] | None = None,
 ) -> AsyncIterator[AgentEvent]:
     """跑一轮完整的研究流程，逐个产出事件。
 
@@ -169,6 +170,16 @@ async def run_agent(
     ``user_id`` 是私域检索的边界，没有它就查不了本地资料。
     ``db`` / ``vec_engine`` 缺省时摘掉 ``local_search`` 工具——
     测试里大量场景不接数据库，强行造连接比少一个工具更麻烦。
+
+    ## ``on_llm_done``：LLM 阶段结束的钩子
+
+    引用校验（critic）最长要 120s × 3 次重试 = 6 分钟，而**槽位**
+    （并发闸门）本来要等整个协程结束才释放。4 个槽位全被校验占住时，
+    新的研究请求全部 503——尽管此时没有一次 LLM 调用在跑。
+
+    调用方（网关）在**进入校验前**调这个回调提前还槽位。
+    钩子**最多被调一次**（校验抛异常时也会调），调用方要自己保证
+    幂等——重复释放会让 Semaphore 计数虚高，闸门形同虚设。
     """
     ledger = TurnLedger(
         session_id=str(uuid4()),
@@ -243,6 +254,12 @@ async def run_agent(
         # 这不是「忘了」，而是这个阶段本来就没有内容可存。将来 Supervisor
         # 若产出正文（它现在只产出子任务列表），这里要改成落盘——否则
         # 那部分内容会静默丢失。
+        #
+        # **必须关掉 active 节点**：Supervisor 在 :180 被 activate，
+        # 不关的话前端 DAG 上它永远停在「运行中」，秒数无限增长，
+        # 高亮轨道停在半路。取消不是完成，但节点必须有终态。
+        for event in _fail(tracker, "已取消"):
+            yield event
         yield ledger.done()
         raise
     ledger = ledger.record_stage_usage(plan.input_tokens, plan.output_tokens)
@@ -263,8 +280,13 @@ async def run_agent(
 
     # **已经核对过的证据的键**。Analyst 只核对没见过的那些。
     #
-    # 键的形状：``("ref", chunk_id)`` 是用户资料里的切片，
-    # ``("web", (url, 摘要))`` 是公开来源。两种来源不会撞车。
+    # 键的形状：``("ref", chunk_id)``——引用表里的每一条证据。
+    #
+    # **公开来源（web）也用这个形状**：web 来源抓取后落成
+    # ``document_chunks`` 行（``web_sources.py`` 的 ``_register_in_current_session``），
+    # 进引用表时同样是 chunk_id，不是另一种键。
+    # 早先的注释写成「``("web", (url, 摘要))`` 是公开来源」——
+    # 那是从未实现的第二种形状，照着它理解会以为公开来源走另一条去重路径。
     seen_evidence_keys: set[tuple[str, object]] = set()
 
     # Analyst 节点是否激活过。
@@ -307,7 +329,17 @@ async def run_agent(
                     # 流被掐断后整轮重发：已发的正文作废，前端清零后重收。
                     # 本轮攒的也要作废 —— 否则重发的那份会跟它叠在一起。
                     current_turn_text.clear()
-                    yield DeltaEvent(node_id=Stage.WRITER.value, text="", reset=True)
+                    # 只清**本轮**，不是全篇。前端 streamedText 是全篇累积，
+                    # 而 report_body 是每轮追加——第 0 轮的正文已经落盘了，
+                    # 全清会让屏幕上的内容比落盘报告少一截。
+                    # reset_keep_chars 告诉前端「保留前 N 个字」。
+                    keep = sum(len(t) for t in report_body)
+                    yield DeltaEvent(
+                        node_id=Stage.WRITER.value,
+                        text="",
+                        reset=True,
+                        reset_keep_chars=keep,
+                    )
                 else:
                     result = chunk.result
 
@@ -421,6 +453,7 @@ async def run_agent(
             report_body=report_body,
             current_turn_text=current_turn_text,
             collected_refs=collected_refs,
+            tracker=tracker,
         ):
             yield cancel_event
         # 重新抛出，保持「这个任务确实被取消」的语义 ——
@@ -500,6 +533,14 @@ async def run_agent(
     # 之后还要干等，且 MAX_CONCURRENT_STREAMS 只有 4——几个并发就能
     # 把准入闸门堵死。先把报告与 token 用量交出去，校验随后补一帧。
     yield ledger.with_report_id(report_id).done()
+
+    # **LLM 阶段到此结束**——从下面开始只有 critic 的校验调用。
+    # 通知调用方提前还并发槽位：校验最长 6 分钟，槽位占着就是 4 个并发
+    # 全部卡死，新请求全 503，而此时没有一次 LLM 调用在跑。
+    #
+    # 钩子最多调一次（下面校验抛异常时不会再调），调用方负责幂等。
+    if on_llm_done is not None:
+        on_llm_done()
 
     async for settle_event in _settle(
         tracker, client, "\n".join(report_body), sources, analyst_ran=analyst_ran
@@ -588,12 +629,16 @@ async def _settle(
     一律降级成 ``skipped``，不影响报告本身。
     """
     if not analyst_ran:
+        # 关掉当前节点（writer 已完成），然后**直接**把 analyst 标成
+        # 已完成——不 activate。
+        #
+        # 走 activate 会让前端把高亮轨道从 writer（已完成）倒退回
+        # analyst：前端用 ``nodes.findIndex(lifecycle === 'active')``
+        # 算高亮位置，analyst 一变 active，轨道就往回跳一格。
+        # 用户看到的是「报告已完成，步骤条却往回退了一步」。
         for event in _close(tracker):
             yield event
-        yield tracker.activate(Stage.ANALYST)
-        tracker.set_note(Stage.ANALYST, "没有检索证据可核对")
-        for event in _close(tracker):
-            yield event
+        yield tracker.complete_skipped(Stage.ANALYST, "没有检索证据可核对")
 
     for event in _close(tracker):
         yield event

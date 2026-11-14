@@ -108,6 +108,29 @@ class NodeTracker:
         if note:
             self._notes[stage] = note
 
+    def complete_skipped(self, stage: Stage, note: str) -> NodeEvent:
+        """把一个**从未运行**的节点标成已完成（跳过），耗时记 0。
+
+        ## 为什么需要它
+
+        模型可能一次都没调工具——那 analyst 从未 activate，前端 DAG 上它
+        停在 pending。这时补一个「completed」让 DAG 走完 5 步。
+
+        **但不能走 activate → complete**：activate 会让前端把高亮轨道
+        从 writer（已完成）倒退回 analyst——用户看到步骤条往回跳一步。
+        前端用 ``nodes.findIndex(lifecycle === 'active')`` 算高亮位置，
+        任何时刻只能有一个 active。
+
+        所以直接发一帧 completed，不经过 active。
+        """
+        self._notes[stage] = note
+        return NodeEvent(
+            node_id=stage.value,
+            lifecycle="completed",
+            elapsed_ms=0,
+            note=note,
+        )
+
     def complete(self) -> NodeEvent | None:
         """结束当前 active 节点；没有 active 时返回 None。"""
         if self._active is None:

@@ -226,6 +226,41 @@ async def test_embedding_failure_marks_failed(
     assert source.status == SourceStatus.FAILED
 
 
+async def test_embedding_failure_resets_chunk_count(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """嵌入失败后 ``chunk_count`` 必须归零。
+
+    ## 为什么这条重要
+
+    摄取四步里 ``CHUNKING`` 那步已经把 ``chunk_count = len(chunks)`` 提交了
+    （21），但嵌入失败发生在 ``_store`` **之前**——切片从未落库。
+    不归零的话库里留下「失败 · 21 切片」，实际 ``document_chunks`` 0 行。
+
+    前端 ``toSourceRow`` 按 ``chunk_count > 0`` 渲染「21 切片」，
+    用户点进去是空的——**状态自相矛盾，且矛盾的是对外契约**。
+
+    ## 注入回归
+
+    把 ``mark_failed`` 里的 ``source.chunk_count = 0`` 删掉，这条会红。
+    """
+    db_session, vec_engine = shared_db
+    user = await _make_user(db_session)
+    source = await _make_source(db_session, user)
+    _patch_embed(monkeypatch, RuntimeError("上游炸了"))
+
+    with pytest.raises(IngestError):
+        await ingest(db_session, vec_engine, source, SAMPLE_TEXT.encode())
+
+    await db_session.refresh(source)
+    assert source.status == SourceStatus.FAILED
+    # 失败 = 这份资料一条切片都没有。
+    assert source.chunk_count == 0
+    # 且真的没有切片行——两者必须一致，不能一个说 0 一个说有。
+    assert await DocumentChunk.list_for_source(db_session, source.id) == []
+
+
 async def test_failure_does_not_leak_internal_details(
     shared_db: tuple[AsyncSession, AsyncEngine],
     monkeypatch: pytest.MonkeyPatch,

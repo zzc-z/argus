@@ -139,6 +139,9 @@ async def ask(
 
     run = registry.create(user_id=user.id, question=payload.question)
 
+    # 槽位状态——LLM 阶段结束与任务结束都会尝试还，只能还一次。
+    slot = _SlotState()
+
     # 后台任务自己开 session——请求的 db session 随响应结束就关了，
     # 后台任务跑到一半 session 已关，错误还很难看出来。
     task = spawn(
@@ -148,6 +151,7 @@ async def ask(
             user_id=user.id,
             vec_engine=vec_engine,
             session_maker=session_maker,
+            slot=slot,
         )
     )
     # 登记任务，取消时才能打断它。
@@ -160,7 +164,11 @@ async def ask(
     # 闸门坏了」，真正原因在几十行外。
     #
     # done_callback 覆盖**所有**结束路径：正常跑完、抛异常、被取消。
-    task.add_done_callback(lambda _t: _slots.release())
+    #
+    # 但「任务结束」太晚了：引用校验（critic）最长 6 分钟，
+    # 期间没有一次 LLM 调用在跑，槽位却被占着——4 个并发全卡在校验上时，
+    # 新请求全部 503。所以 done_callback 只在**槽位还没被提前还过**时释放。
+    task.add_done_callback(lambda _t: _release_slot_once(slot))
 
     return StreamingResponse(
         _forward(run, first=RunEvent(run_id=run.id, question=run.question)),
@@ -259,6 +267,46 @@ async def _try_acquire_slot() -> bool:
     return True
 
 
+class _SlotState:
+    """一次研究占用的槽位，保证**只还一次**。
+
+    ## 为什么需要它
+
+    槽位有两个释放点：
+
+    1. **LLM 阶段结束**（进入 critic 校验前）——提前还，校验那 6 分钟
+       不占着闸门
+    2. **任务结束**（``done_callback``）——兜底，覆盖取消、崩溃、
+       以及 1 没走到的情况
+
+    两个点都会触发时，重复 release 会让 Semaphore 的计数虚高
+    （``_value`` 变大），闸门形同虚设——并发限制彻底失效。
+
+    所以这里用一个标志位保证**只还一次**。
+    """
+
+    __slots__ = ("_released",)
+
+    def __init__(self) -> None:
+        self._released = False
+
+    def release(self) -> None:
+        """还槽位。已还过则什么都不做。"""
+        if self._released:
+            return
+        self._released = True
+        _slots.release()
+
+    @property
+    def released(self) -> bool:
+        return self._released
+
+
+def _release_slot_once(state: _SlotState) -> None:
+    """``done_callback`` 用的包装（回调签名要求单参数）。"""
+    state.release()
+
+
 def _reject_if_llm_unconfigured() -> None:
     """模型未配置时直接拒，同样要赶在开流之前。
 
@@ -286,6 +334,7 @@ async def _drive_run(
     user_id: int,
     vec_engine: AsyncEngine,
     session_maker: SessionMakerDep,
+    slot: _SlotState,
 ) -> None:
     """后台跑一次研究，把事件推进 run 的缓冲里。
 
@@ -297,6 +346,13 @@ async def _drive_run(
     决定，我们控制不了。
 
     所以后台任务自己开一个 session——工厂由依赖注入，测试能换成测试库的。
+
+    ## 为什么传 ``slot``
+
+    LLM 阶段结束（进入 critic 校验前）就还槽位——校验最长 6 分钟，
+    占着闸门会让 4 个并发全卡死、新请求全 503。
+    任务真正结束时 ``done_callback`` 再兜底还一次，但 ``_SlotState``
+    保证只还一次。
     """
     try:
         async with session_maker() as bg_db:
@@ -310,6 +366,7 @@ async def _drive_run(
                     # 不能持有整轮研究（30-60 秒），期间会阻塞并发研究与
                     # 用户的资料上传。
                     session_maker=session_maker,
+                    on_llm_done=slot.release,
                 ):
                     await run.publish(event)
             except Exception as exc:
