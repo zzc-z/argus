@@ -83,3 +83,12 @@ reports-*.png
 dashboard-*.png
 topics-*.png
 sources-*.png
+
+# 视觉审查的临时产物：文件名带轮次前缀（A-/B-/C-…）或 live-/now- 的截图，
+# 以及整个 review/ 目录。它们是自检过程的一次性产物，不是资产。
+review/
+live-*.png
+now-*.png
+*-desktop.png
+*-mobile*.png
+*-mobile-full.png
