@@ -86,8 +86,12 @@ class Settings(BaseSettings):
     # 任务级默认 model（complex = 复杂任务 / default = 简单任务）。
     # sprint-plan.md：Supervisor / Researcher / Writer 走 complex；
     # Analyst / Critic / Summarizer 走 default。
+    #
+    # **Haiku 4.5 已于 2026-10-15 退役**——必须用 Haiku 5 系列。
+    # 留着 4.5 的实测症状：中转站仍接受这个 alias，但长生成会被掐断
+    # （RemoteProtocolError，用户看到「生成一半→清空→再生成」）。
     anthropic_complex_model: str = Field(default="claude-sonnet-5")
-    anthropic_default_model: str = Field(default="claude-haiku-4-5")
+    anthropic_default_model: str = Field(default="claude-haiku-5-5")
 
     # 按 agent 路由的可选覆盖（留空则退到 complex_model / default_model）。
     # Day 3 单 agent 阶段可只填 anthropic_complex_model，其他 6 个留空。
@@ -97,6 +101,18 @@ class Settings(BaseSettings):
     anthropic_analyst_model: str | None = Field(default=None)
     anthropic_critic_model: str | None = Field(default=None)
     anthropic_summarizer_model: str | None = Field(default=None)
+
+    # 每个角色的**备胎模型**（fallback）。
+    #
+    # 业界通行的三层模型路由（Oracle / AWS / MLflow）：主模型挂了自动切备胎，
+    # 而不是让用户盯着转圈等错误。留空表示该角色没有备胎——
+    # 主模型失败时直接报错。
+    #
+    # 格式：逗号分隔的 alias 列表，按顺序尝试。第一个成功就用它。
+    anthropic_fallback_models: str = Field(
+        default="",
+        description="逗号分隔的备胎模型 alias，按顺序尝试。留空=无备胎。",
+    )
 
     # ── Embedding（RAG 检索用）────────────────────────────────
     # 嵌入模型与聊天模型是两回事：它把文字变成 1536 个数字，不生成内容。

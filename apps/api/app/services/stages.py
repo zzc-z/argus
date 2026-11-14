@@ -48,6 +48,7 @@ import jiter
 
 from app.services.agent_nodes import NodeTracker, Stage, _close
 from app.services.citation import Reference
+from app.services.llm import fallback_models
 from app.services.stream import NodeEvent
 
 if TYPE_CHECKING:
@@ -58,14 +59,19 @@ logger = logging.getLogger(__name__)
 
 # ── 配置 ──────────────────────────────────────────────────────
 
-# 两个节点的独立模型。
+# 模型选择全走配置，不在这里硬编码。
 #
-# 留空则退到 default（Haiku）——这两个节点都是结构化的短输出，
-# 用复杂模型是浪费。复杂模型的调用留给 Researcher 与 Writer。
+# supervisor / analyst / critic 都是**结构化的短输出**（几个子任务 /
+# 几条冲突 / 一条判定），走 ``ANTHROPIC_DEFAULT_MODEL`` 这一档——
+# 快、便宜。复杂模型的调用留给 Researcher 与 Writer。
+#
+# 早先这里有个 ``ANALYST_MODEL = "claude-haiku-4-5"`` 常量，
+# 而 ``ANTHROPIC_DEFAULT_MODEL`` 这个配置项**全仓零读取点**——
+# 改了 ``.env`` 也不生效。模型退役（Haiku 4.5 已于 2026-10-15 退役）
+# 时只能改代码重新发版。现在统一走 ``_model_for()``。
 #
 # 注意：中转站返回的 model 实际身份不一定是配置字段标称的版本，
 # 填的值必须是中转站能认的 alias。
-ANALYST_MODEL = "claude-haiku-4-5"
 
 # 单次调用的输出上限。
 #
@@ -370,20 +376,29 @@ def _json_part(raw: str) -> str:
 def _model_for(role: str) -> str:
     """取某个角色的模型。
 
-    优先用配置里的按角色覆盖（``ANTHROPIC_ANALYST_MODEL`` 等），
-    没配就用本模块的默认值。
+    优先级（业界静态分层路由的标准做法）：
+
+    1. **按角色覆盖** —— ``ANTHROPIC_{ROLE}_MODEL``（如
+       ``ANTHROPIC_ANALYST_MODEL``）。最具体，优先级最高。
+    2. **任务级默认** —— ``ANTHROPIC_DEFAULT_MODEL``。
+       supervisor / analyst / critic 都是「结构化的短输出」，
+       走这一档（快、便宜）。
+
+    ## 为什么不硬编码
+
+    早先这里写死 ``_DEFAULT_MODELS``，而 ``ANTHROPIC_DEFAULT_MODEL``
+    这个配置项**全仓零读取点**——改了 ``.env`` 也不生效。
+    模型退役或要换中转线路时，只能改代码重新发版。
+
+    现在统一走配置：``.env`` 里改一行就生效，代码不用动。
     """
     from app.config import get_settings
 
     settings = get_settings()
     override = getattr(settings, f"anthropic_{role}_model", None)
-    return override or _DEFAULT_MODELS[role]
-
-
-_DEFAULT_MODELS = {
-    "supervisor": "claude-haiku-4-5",
-    "analyst": ANALYST_MODEL,
-}
+    if isinstance(override, str) and override:
+        return override
+    return settings.anthropic_default_model
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,6 +427,15 @@ async def _call_structured(
     应用没有配置 root logger（uvicorn 的默认配置把 root 留在 WARNING），
     所以 ``logger.info`` **根本不会输出**。降级是「功能没按预期工作」，
     必须能被看到——它用 warning，今天就能进日志。
+
+    ## 失败后自动切备胎
+
+    主模型失败（断流 / 限流 / 500）时按 ``ANTHROPIC_FALLBACK_MODELS``
+    的顺序换模型重试。这是业界模型路由的标准做法：主模型不可用时
+    自动切备胎，而不是让用户看错误。
+
+    **只换模型，不换 prompt**——重试的是同一个请求，
+    所以备胎模型拿到的上下文与主模型完全一致。
     """
     request: dict[str, Any] = {
         "model": model,
@@ -419,19 +443,27 @@ async def _call_structured(
         "system": system,
         "messages": [{"role": "user", "content": user_prompt}],
     }
-    try:
-        final = await client.messages.create(**cast("Any", request))
-    except Exception:
-        logger.warning("%s 节点的模型调用失败，本次降级", model, exc_info=True)
-        return None
+    candidates = [model, *fallback_models()]
+    last_exc: Exception | None = None
+    for candidate in candidates:
+        request["model"] = candidate
+        try:
+            final = await client.messages.create(**cast("Any", request))
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("%s 节点的模型调用失败，本次降级", candidate, exc_info=True)
+            continue
 
-    content = cast("list[dict[str, Any]]", final.model_dump(exclude_none=True)["content"])
-    text = "".join(block.get("text", "") for block in content if block.get("type") == "text")
-    return _Call(
-        text=text,
-        input_tokens=final.usage.input_tokens,
-        output_tokens=final.usage.output_tokens,
-    )
+        content = cast("list[dict[str, Any]]", final.model_dump(exclude_none=True)["content"])
+        text = "".join(block.get("text", "") for block in content if block.get("type") == "text")
+        return _Call(
+            text=text,
+            input_tokens=final.usage.input_tokens,
+            output_tokens=final.usage.output_tokens,
+        )
+
+    assert last_exc is not None
+    return None
 
 
 @dataclass(slots=True)

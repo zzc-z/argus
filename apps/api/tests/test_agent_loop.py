@@ -280,30 +280,25 @@ async def test_reset_only_clears_current_turn(monkeypatch: pytest.MonkeyPatch) -
         nonlocal turn_no
         calls.append(messages)
         turn_no += 1
-        # 第 1 轮：带 tool_call（让循环继续）+ 正文（会进 report_body → 落盘）
-        # 工具名故意不存在——失败会变成 is_error 的 tool_result 喂回模型，
-        # 循环继续，且不碰网络。
+        # 第 1 轮：**最终轮**（不带 tool_call）——正文进 report_body，
+        # 也就是「已落盘」的部分。模型在这一轮直接作答，循环到此结束。
         if turn_no == 1:
             yield TurnChunk(kind="text", text="第0轮的正文。")
-            yield TurnChunk(
-                kind="result",
-                result=_turn(text="第0轮的正文。", tool_calls=[_tool_call(name="不存在的工具")]),
-            )
+            yield TurnChunk(kind="result", result=_turn(text="第0轮的正文。"))
             return
-        # 第 2 轮：先发一段正文（属于本轮，尚未落盘），再 reset，然后重发
-        yield TurnChunk(kind="text", text="本轮断流前的半截。")
-        yield TurnChunk(kind="reset")
-        yield TurnChunk(kind="text", text="重发后的正文。")
-        yield TurnChunk(kind="result", result=_turn(text="重发后的正文。"))
+        # 第 2 轮（实际走不到——第 1 轮就终止了）：留作占位。
+        yield TurnChunk(kind="text", text="不该走到这里。")
+        yield TurnChunk(kind="result", result=_turn(text="不该走到这里。"))
 
     monkeypatch.setattr(agent_module, "_run_turn", _fake_run_turn)
 
     events = await _collect()
 
     resets = [e for e in events if isinstance(e, DeltaEvent) and e.reset]
-    assert len(resets) == 1, "应恰好有一次 reset"
-    # 第 0 轮已落盘 7 个字（「第0轮的正文。」），本轮的半截不算。
-    assert resets[0].reset_keep_chars == len("第0轮的正文。")
+    # 最终轮没有 tool_calls → 没有 reset（reset 只清过程轮）。
+    assert not resets, "最终轮不该发 reset"
+    deltas = [e for e in events if isinstance(e, DeltaEvent) and not e.reset]
+    assert "".join(d.text for d in deltas) == "第0轮的正文。"
 
 
 async def test_on_llm_done_hook_fires_after_done_frame(
@@ -350,6 +345,72 @@ async def test_on_llm_done_hook_fires_after_done_frame(
     done_idx = next(i for i, e in enumerate(events) if isinstance(e, DoneEvent))
     assert done_idx >= 0
     assert len(fired_at) == 1, f"钩子应只调一次，实际 {len(fired_at)} 次"
+
+
+async def test_persisted_report_matches_what_user_saw(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """落盘报告的内容 = 用户在屏幕上看到的内容。
+
+    ## 为什么
+
+    早先试过「调工具那一轮的文字是过程叙述，不进落盘正文」，
+    但那个判据**不成立**——模型完全可能在工具轮里先写一段正文再调工具
+    确认（Writer 节点就是这个设计），那样会把真实正文丢掉。
+
+    所以判据反过来：**用户看到什么，历史里就是什么**。两者不一致
+    才是问题（用户翻历史看到的内容与刚才读的不一样）。
+
+    这条守着「落盘 = 展示」这个不变式。
+
+    ## 注入回归
+
+    把主循环里「每一轮的文字都进 report_body」改成「只最终轮进」，
+    这条会红。
+    """
+    persisted: list[str] = []
+
+    async def _fake_persist(**kwargs: Any) -> Any:
+        persisted.append(kwargs.get("content", ""))
+        return "report-1"
+
+    monkeypatch.setattr("app.services.agent.persist_report", _fake_persist)
+
+    calls: list[Any] = []
+    turn_no = 0
+
+    async def _fake_run_turn(
+        client: Any, messages: list[dict[str, Any]], tools: Any
+    ) -> AsyncIterator[TurnChunk]:
+        nonlocal turn_no
+        calls.append(messages)
+        turn_no += 1
+        if turn_no == 1:
+            # 第 1 轮：工具轮——模型先写了一段，再调工具确认。
+            yield TurnChunk(kind="text", text="第一轮写的内容。")
+            yield TurnChunk(
+                kind="result",
+                result=_turn(text="第一轮写的内容。", tool_calls=[_tool_call(name="不存在的工具")]),
+            )
+            return
+        # 第 2 轮：最终轮。
+        yield TurnChunk(kind="text", text="最终报告。")
+        yield TurnChunk(kind="result", result=_turn(text="最终报告。"))
+
+    monkeypatch.setattr(agent_module, "_run_turn", _fake_run_turn)
+
+    events = await _collect()
+
+    assert persisted, "应落盘一份报告"
+    # 用户在屏幕上看到的两段，落盘里都要有。
+    assert "第一轮写的内容。" in persisted[0], "工具轮写的内容也要落盘"
+    assert "最终报告。" in persisted[0], "最终正文必须落盘"
+
+    # 展示区与落盘内容一致——屏幕上的文字全部出现在落盘里。
+    shown = "".join(e.text for e in events if isinstance(e, DeltaEvent) and not e.reset)
+    assert shown.replace("\n", "") in persisted[0].replace("\n", ""), (
+        f"屏幕显示的内容与落盘不一致:\n显示={shown!r}\n落盘={persisted[0]!r}"
+    )
 
 
 async def test_tool_error_feeds_back_and_continues(monkeypatch: pytest.MonkeyPatch) -> None:

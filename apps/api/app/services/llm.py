@@ -76,6 +76,29 @@ STREAM_INTERRUPT_RETRIES = 2
 STREAM_INTERRUPT_BACKOFF_SECONDS = 1.0
 
 
+def fallback_models() -> list[str]:
+    """解析配置的备胎模型链（按顺序尝试）。
+
+    ## 为什么要有备胎
+
+    业界通行的三层模型路由（Oracle / AWS / MLflow）都包含
+    **pre-configured fallback logic**：主模型崩了、超时了、被限流了，
+    自动切到已知可用的备胎，而不是让用户盯着转圈等错误。
+
+    对 argus 尤其重要——中转站的断流是**常态**（实测失败率约 1/3），
+    单模型意味着三分之一的研究直接失败。
+
+    配置项 ``ANTHROPIC_FALLBACK_MODELS``，逗号分隔的 alias 列表。
+    留空表示没有备胎（保持原行为）。
+    """
+    from app.config import get_settings
+
+    raw = get_settings().anthropic_fallback_models.strip()
+    if not raw:
+        return []
+    return [m.strip() for m in raw.split(",") if m.strip()]
+
+
 def is_stream_interrupt(exc: BaseException) -> bool:
     """这个异常是不是「流被中途掐断」。
 

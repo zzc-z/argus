@@ -257,3 +257,89 @@ async def test_uses_configured_model_override() -> None:
         assert client.messages.calls[0]["model"] == "some-other-model"
     finally:
         settings.anthropic_analyst_model = original
+
+
+async def test_falls_back_to_default_model_config() -> None:
+    """没配按角色覆盖时，退到 ``ANTHROPIC_DEFAULT_MODEL``。
+
+    ## 为什么这条重要
+
+    早先 ``_model_for`` 硬编码 ``_DEFAULT_MODELS``，而
+    ``ANTHROPIC_DEFAULT_MODEL`` 这个配置项**全仓零读取点**——
+    改了 ``.env`` 也不生效。Haiku 4.5 退役（2026-10-15）时，
+    只能改代码重新发版才能换模型。
+
+    现在退到配置项：``.env`` 里改一行就生效。
+
+    ## 注入回归
+
+    把 ``_model_for`` 里的 ``return settings.anthropic_default_model``
+    改回硬编码，这条会红。
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    original_default = settings.anthropic_default_model
+    original_analyst = settings.anthropic_analyst_model
+    try:
+        settings.anthropic_default_model = "configured-default-model"
+        settings.anthropic_analyst_model = None
+        client = _FakeClient(['{"conflicts": [], "synthesis": ""}'])
+
+        await stages.analyze_evidence(client, _evidence(2))
+
+        assert client.messages.calls[0]["model"] == "configured-default-model"
+    finally:
+        settings.anthropic_default_model = original_default
+        settings.anthropic_analyst_model = original_analyst
+
+
+async def test_switches_to_fallback_model_on_failure() -> None:
+    """主模型失败时自动切备胎模型。
+
+    业界模型路由的标准做法（Oracle / AWS / MLflow）：主模型崩了自动切
+    已知可用的备胎，而不是让用户盯着转圈等错误。中转站断流是常态
+    （实测失败率约 1/3），单模型意味着三分之一研究直接失败。
+
+    ## 注入回归
+
+    把 ``_call_structured`` 里的 fallback 循环去掉，这条会红。
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    original = settings.anthropic_fallback_models
+    try:
+        settings.anthropic_fallback_models = "backup-model-1,backup-model-2"
+        # 主模型失败 → 备胎 1 成功
+        client = _FakeClient([RuntimeError("上游炸了"), '{"conflicts": [], "synthesis": ""}'])
+
+        await stages.analyze_evidence(client, _evidence(2))
+
+        assert len(client.messages.calls) == 2
+        assert client.messages.calls[0]["model"] != "backup-model-1"
+        assert client.messages.calls[1]["model"] == "backup-model-1"
+    finally:
+        settings.anthropic_fallback_models = original
+
+
+async def test_fallback_chain_exhausted_returns_none() -> None:
+    """所有备胎都失败时降级成空结果——不抛异常。
+
+    调用方（主循环）都是增益路径，抛出去会让整轮研究崩掉。
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    original = settings.anthropic_fallback_models
+    try:
+        settings.anthropic_fallback_models = "backup-1"
+        client = _FakeClient([RuntimeError("a"), RuntimeError("b")])
+
+        result = await stages.analyze_evidence(client, _evidence(2))
+
+        assert result is None or not result.conflicts
+        # 主模型 + 1 个备胎，两次尝试
+        assert len(client.messages.calls) == 2
+    finally:
+        settings.anthropic_fallback_models = original

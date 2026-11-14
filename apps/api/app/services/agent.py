@@ -350,6 +350,35 @@ async def run_agent(
             if result is None:
                 raise RuntimeError("模型一轮请求没有返回结果")
             ledger = ledger.record(result)
+
+            # **过程轮的文字不进展示区，也不进落盘正文。**
+            #
+            # 模型调工具前会先写一段话（「我先查一下…」「联网搜索不可用，
+            # 我换个办法…」）。那是**过程叙述**，不是正文——但它走的是
+            # 同一个 ``text_delta`` 通道，中转站又不实现官方的
+            # progress-update 通道（见 ``agent_turn._stream_turn_once``），
+            # 所以协议层分不出来。
+            #
+            # 判据：**这一轮有 tool_calls → 整轮文字是过程叙述。**
+            # 这与 Anthropic 协议里 block 顺序的含义一致——
+            # ``text`` 后面跟着 ``tool_use`` 就是「调工具前的说明」。
+            #
+            # 文字已经发出去了（边收边发，打字机效果不能丢），所以这里
+            # 发一个 reset 把**本轮**清掉。``reset_keep_chars`` 保留前几轮
+            # 已落盘的正文——用户看到的是自己刚才读过的内容，不是被抹掉。
+            # **每一轮的文字都进落盘正文。**
+            #
+            # 落盘 = 用户在屏幕上看到的那份。用户看到什么，历史里就是什么——
+            # 两者不一致才是问题（用户翻历史看到的内容与刚才读的不一样）。
+            #
+            # 早先试过「有 tool_calls 的轮是过程轮，文字不进 report_body」，
+            # 但那个判据**不成立**：模型完全可能在工具轮里先写一段正文再调
+            # 工具确认（Writer 节点就是这个设计），那样会把真实正文丢掉。
+            # 崩溃落盘测试正是守着这条。
+            #
+            # 展示区的过程叙述由 **prompt** 治（模型被要求调工具前不要说话），
+            # 代码不做过滤——协议层没有 progress-update 类型可用，
+            # 详见 ``agent_turn._stream_turn_once`` 的说明。
             if current_turn_text:
                 report_body.append("".join(current_turn_text))
             elif result.text:
@@ -465,6 +494,7 @@ async def run_agent(
             question=question,
             ledger=ledger,
             report_body=report_body,
+            current_turn_text=current_turn_text,
             collected_refs=collected_refs,
             tracker=tracker,
             exc=exc,

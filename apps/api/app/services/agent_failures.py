@@ -97,6 +97,7 @@ async def _handle_crash(
     question: str,
     ledger: TurnLedger,
     report_body: list[str],
+    current_turn_text: list[str],
     collected_refs: list[Reference],
     tracker: NodeTracker,
     exc: BaseException,
@@ -120,16 +121,24 @@ async def _handle_crash(
     # 崩溃 → 当前节点标**失败**，不是「完成」。
     for event in _fail(tracker, "执行中断"):
         yield event
+    # **当前轮的半截正文也要落盘**——与 ``_handle_cancel`` 同语义。
+    # 用户在崩溃前已经看到它了，历史里却找不到，就是「最贵的一次失败
+    # 变成最没有产出的失败」（实测一次崩溃烧掉 29548 输入 token）。
+    #
+    # ``report_body`` 攒的是**已收尾**的轮次；崩溃常常发生在某一轮
+    # **中途**，那一轮已经流出去的正文不在 ``report_body`` 里。
+    pending = "".join(current_turn_text)
+    content = "\n".join([*report_body, *([pending] if pending else [])])
     report_id = (
         await persist_report(
             db=db,
             question=question,
-            content="\n".join(report_body),
+            content=content,
             ledger=ledger,
             refs=collected_refs,
             persist_timeout=PERSIST_TIMEOUT_CRASH_SECONDS,
         )
-        if ledger.produced_text
+        if content.strip()
         else None
     )
     yield ledger.with_report_id(report_id).done()

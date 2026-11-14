@@ -219,7 +219,13 @@ async def verify_citations(
 
     settings = get_settings()
     request: dict[str, Any] = {
-        "model": settings.anthropic_complex_model,
+        # 按角色覆盖优先，其次退到复杂档。
+        #
+        # critic 要逐条判定「报告里这句话能不能从它引用的原文得到」——
+        # 20 条引用、15k tokens 输入，这是**复杂任务**（判「说反了」和
+        # 「数字错了 40 倍」需要真读原文），不是 supervisor / analyst
+        # 那种结构化短输出。所以走 complex 档，不走 default 档。
+        "model": settings.anthropic_critic_model or settings.anthropic_complex_model,
         "max_tokens": 2048,
         "system": JUDGE_PROMPT,
         "messages": [
