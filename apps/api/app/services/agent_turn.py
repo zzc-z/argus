@@ -28,6 +28,7 @@ from app.config import get_settings
 from app.services.llm import (
     STREAM_INTERRUPT_BACKOFF_SECONDS,
     STREAM_INTERRUPT_RETRIES,
+    fallback_models,
     is_stream_interrupt,
 )
 from app.services.stream import Typewriter
@@ -65,7 +66,16 @@ SYSTEM_PROMPT = """你是 Argus 的研究助手，回答用户的研究类问题
 - 资料不足时，明确说明缺什么，不要编造数据或引用。
 - 最终回答用中文，结构清晰；涉及数据时写明来源。
 
+**要查资料就直接调用工具，不要在调用前写任何说明文字。**
+过程性的话对读者没有价值——「我先查一下…」「联网搜索不可用，我换个办法…」
+这类句子不要写进回答，它们会被逐字显示给用户。
+
 写作要求：
+- **第一句必须是中文结论。** 不要用英文开场，也不要用"I'll research…"
+  "Let me dig deeper…"这类叙述句开头。
+- **只写给读者看的内容**：不写自己的行动计划、不写工具调用说明、
+  不写「接下来我打算…」「我发现…所以我要…」这类推理叙述。
+  这些内容属于你的内部思考，不要出现在回答里。
 - 先给结论，再给依据。
 - 用 Markdown 组织内容，该用小标题和列表就用。
 - 不要输出思考过程，只输出结论与依据。"""
@@ -149,7 +159,17 @@ async def _run_turn(
     # 要不要发 reset 标记。
     sent_any = False
 
+    # 备胎模型链：主模型断流时换下一个模型重发。
+    #
+    # 断流本身就是「这个模型（或这条线路）现在不可用」的信号——
+    # **同一个模型重发大概率还是断**。换模型才有机会成。
+    # 业界模型路由的标准做法（Oracle / AWS / MLflow）：
+    # pre-configured fallback，主模型失败自动切备胎。
+    candidates = [request["model"], *fallback_models()]
+
     for attempt in range(STREAM_INTERRUPT_RETRIES + 1):
+        # 第 n 次尝试用链上的第 n 个模型（超出链长就还用最后一个）。
+        request["model"] = candidates[min(attempt, len(candidates) - 1)]
         try:
             async for chunk in _stream_turn_once(client, request):
                 if chunk.kind == "text":
@@ -161,8 +181,9 @@ async def _run_turn(
                 raise
             last_exc = exc
             logger.warning(
-                "模型流被中断，第 %d 次重发整轮请求：%s",
+                "模型流被中断，第 %d 次重发整轮请求（模型 %s）：%s",
                 attempt + 1,
+                request["model"],
                 type(exc).__name__,
             )
             # 已经发出去的正文作废——重发会从头再来一遍。
@@ -195,6 +216,38 @@ async def _stream_turn_once(
     产出顺序：正文增量（``kind="text"``，可以有多段）→ 整轮结果
     （``kind="result"``）。``result`` 一定在最后——它是这一轮的收尾
     （usage / stop_reason / tool_calls），调用方靠它记账。
+
+    ## 文字怎么发：边收边发，过程轮由主循环事后清
+
+    模型调工具前会先写一段话（「我先查一下…」）。那是**过程叙述**，
+    不是正文——但它走的是同一个 ``text_delta`` 通道。
+
+    **为什么不能等轮末再判断**：等轮末才知道有没有 tool_calls，而
+    那时正文已经发完了，打字机效果全丢（用户等整轮结束才看到字，
+    正是这个模块要修的问题）。
+
+    所以**先照常发**，由主循环在轮末决定去留：
+
+    - 轮末**有 tool_calls** → 主循环发一个 ``reset``，把这一轮清掉
+    - 轮末**没有 tool_calls** → 这轮是最终轮，文字留下
+
+    reset 带 ``reset_keep_chars``（已落盘正文的长度），只清本轮——
+    前几轮已落盘的正文不受影响。
+
+    ## 为什么不用官方的 progress update 机制
+
+    Anthropic 有专门的 progress-update 通道（``thinking`` block +
+    ``display: "updates"``），过程叙述与正文在协议层就是两种东西。
+    但实测中转站**接受这个参数却不实现其语义**——progress update
+    仍然以 ``text_delta`` 回来：
+
+    ```
+    DELTA TextDelta: 我先用
+    DELTA TextDelta: 检索工具查一下"张建鹏"这个人及其相关技能信息。
+    ```
+
+    协议层没有 progress-update 类型可用，只能用「轮末有没有
+    tool_calls」这个等价的判据。
     """
     typewriter = Typewriter()
 
