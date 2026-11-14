@@ -430,6 +430,44 @@ async def test_slot_released_before_citation_validation(
             assert resp.status_code == 200, "槽位计数错乱，第 N 次已经被 503 挡掉"
 
 
+async def test_slot_state_releases_only_once() -> None:
+    """``_SlotState`` 重复 release 只能还一次槽位。
+
+    ## 为什么这是 bug
+
+    一次研究有**两个释放点**：LLM 阶段结束（``on_llm_done``）和任务结束
+    （``done_callback``）。两个都会触发，重复 release 会让 Semaphore 的
+    计数虚高（``_value`` 变大），闸门形同虚设——并发限制彻底失效。
+
+    ## 为什么上面那条测试抓不到
+
+    ``test_slot_released_before_citation_validation`` 用 ``_fake_agent``
+    替换了整个 ``run_agent``，钩子由它自己**手动调一次**——两条释放
+    路径从来没同时触发过。它验证的是「槽位不被重复释放」，但走的是
+    「只释放一次」的路径，天然测不出「释放两次会怎样」。
+
+    这条直接测 ``_SlotState``：调两次 release，槽位只该还一次。
+
+    ## 注入回归
+
+    把 ``release()`` 里的 ``if self._released: return`` 去掉，这条会红。
+    """
+    # 先 acquire 一个槽位——只 release 不 acquire 会让 Semaphore 的计数
+    # 比初始值多 1，污染后续测试里「槽满」的判断。
+    await research_module._slots.acquire()
+    before = research_module._slots._value
+
+    state = research_module._SlotState()
+    state.release()
+    state.release()
+    state.release()
+    after = research_module._slots._value
+
+    assert after == before + 1, (
+        f"重复 release 应只还一次槽位（计数 +1），实际 {after - before}"
+    )
+
+
 async def test_agent_gets_the_override_session(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
 ) -> None:

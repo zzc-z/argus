@@ -651,6 +651,21 @@ async def test_cancel_during_supervisor_emits_done(
         f"取消时必须发 done——否则前端一直转圈。实际产出：{events}"
     )
 
+    # 节点也必须有终态。Supervisor 在 plan_subtasks 之前被 activate，
+    # 取消时若不关它，前端 DAG 上它永远停在「运行中」——秒数无限增长，
+    # 高亮轨道停在半路。
+    #
+    # 断言的是**最后一帧**是终态，不是「没有 active 帧」——事件流是
+    # 历史记录，前端按最新状态渲染，active 帧本来就该留在流里。
+    #
+    # 注入回归：把 agent.py 里 Supervisor 取消分支的 ``_fail(tracker,
+    # "已取消")`` 去掉，这条会红。
+    node_frames = [e for e in events if isinstance(e, NodeEvent)]
+    assert node_frames, f"取消时必须发节点终态帧。实际产出：{events}"
+    assert node_frames[-1].lifecycle in ("failed", "completed"), (
+        f"取消时节点最后一帧必须是终态。实际产出：{node_frames}"
+    )
+
 
 async def test_analyst_does_not_rerun_without_new_evidence(
     monkeypatch: pytest.MonkeyPatch,
