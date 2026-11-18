@@ -155,3 +155,16 @@ mutations:
     from: '        variant = int(suffix_num)'
     to: '        variant = int(suffix_num) + 1'
     expect_fail: test_faithfulness_judge.py
+
+  # ── Judge prompt：多角标句要按部分判定 ──
+  # 缺这条指令时，「一句带两个角标」会被**整句**判成 unsupported
+  # （两个角标全错）。实测 κ 从 0.769 掉到 0.892 的反面。
+  #
+  # 这是**首批针对 prompt 内容的变异**——prompt 改掉不会有任何普通测试失败，
+  # 只有变异测试能发现。
+  - id: M17
+    desc: Judge prompt 丢掉「多角标按部分判定」这条指令
+    file: app/services/faithfulness.py
+    from: '一句话可能同时引用多份资料（带多个角标）。这时只判断**该句中由本段原文支撑的那部分结论**，不要因为句中的其它部分没有在本段原文中出现就判 unsupported。'
+    to: '（多角标句按整句判定。）'
+    expect_fail: test_prompt_contracts.py

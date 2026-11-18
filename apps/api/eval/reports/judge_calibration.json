@@ -1,0 +1,222 @@
+{
+  "dataset": "golden_v1",
+  "cases": 20,
+  "repeat": 3,
+  "judged_items": 77,
+  "unjudged_items": 1,
+  "tpr": 1.0,
+  "tnr": 0.9361702127659575,
+  "tpr_ci": [
+    0.8864829086095221,
+    1.0
+  ],
+  "tnr_ci": [
+    0.828371220656221,
+    0.9780550129792271
+  ],
+  "cohen_kappa": 0.9195402298850575,
+  "confusion": {
+    "tp": 30,
+    "fn": 0,
+    "tn": 44,
+    "fp": 3,
+    "unjudged": 1
+  },
+  "per_category": {
+    "baseline_supported": {
+      "total": 3,
+      "correct": 3,
+      "tp": 0,
+      "fn": 0,
+      "tn": 3,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "numeric_magnitude_error": {
+      "total": 3,
+      "correct": 3,
+      "tp": 3,
+      "fn": 0,
+      "tn": 0,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "reversed_conclusion": {
+      "total": 3,
+      "correct": 3,
+      "tp": 3,
+      "fn": 0,
+      "tn": 0,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "entity_substitution": {
+      "total": 3,
+      "correct": 3,
+      "tp": 3,
+      "fn": 0,
+      "tn": 0,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "legitimate_paraphrase": {
+      "total": 3,
+      "correct": 3,
+      "tp": 0,
+      "fn": 0,
+      "tn": 3,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "multiple_footnotes": {
+      "total": 6,
+      "correct": 5,
+      "tp": 0,
+      "fn": 0,
+      "tn": 5,
+      "fp": 1,
+      "unjudged": 0
+    },
+    "same_footnote_two_sentences": {
+      "total": 6,
+      "correct": 5,
+      "tp": 0,
+      "fn": 0,
+      "tn": 5,
+      "fp": 0,
+      "unjudged": 1
+    },
+    "same_footnote_mixed_verdicts": {
+      "total": 6,
+      "correct": 6,
+      "tp": 3,
+      "fn": 0,
+      "tn": 3,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "not_in_source": {
+      "total": 3,
+      "correct": 3,
+      "tp": 3,
+      "fn": 0,
+      "tn": 0,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "cross_sentence_synthesis": {
+      "total": 6,
+      "correct": 6,
+      "tp": 3,
+      "fn": 0,
+      "tn": 3,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "multiple_markers_one_sentence": {
+      "total": 6,
+      "correct": 6,
+      "tp": 0,
+      "fn": 0,
+      "tn": 6,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "numeric_date_mismatch": {
+      "total": 3,
+      "correct": 3,
+      "tp": 3,
+      "fn": 0,
+      "tn": 0,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "long_source_quoted_exactly": {
+      "total": 3,
+      "correct": 3,
+      "tp": 0,
+      "fn": 0,
+      "tn": 3,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "unit_scale_change": {
+      "total": 3,
+      "correct": 3,
+      "tp": 3,
+      "fn": 0,
+      "tn": 0,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "hedged_statement": {
+      "total": 3,
+      "correct": 3,
+      "tp": 0,
+      "fn": 0,
+      "tn": 3,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "three_footnotes_mixed": {
+      "total": 6,
+      "correct": 6,
+      "tp": 3,
+      "fn": 0,
+      "tn": 3,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "same_footnote_three_sentences": {
+      "total": 9,
+      "correct": 7,
+      "tp": 3,
+      "fn": 0,
+      "tn": 4,
+      "fp": 2,
+      "unjudged": 0
+    },
+    "no_citation": {
+      "total": 0,
+      "correct": 0,
+      "tp": 0,
+      "fn": 0,
+      "tn": 0,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "all_missing": {
+      "total": 0,
+      "correct": 0,
+      "tp": 0,
+      "fn": 0,
+      "tn": 0,
+      "fp": 0,
+      "unjudged": 0
+    },
+    "proper_noun_case_change": {
+      "total": 3,
+      "correct": 3,
+      "tp": 0,
+      "fn": 0,
+      "tn": 3,
+      "fp": 0,
+      "unjudged": 0
+    }
+  },
+  "stability": {
+    "repeat": 3,
+    "unstable_cases": [
+      "g006",
+      "g007",
+      "g017"
+    ],
+    "stable_ratio": 0.85
+  },
+  "order_sensitivity": {
+    "cases_checked": 7,
+    "changed": [
+      "g010:(1, 1)"
+    ]
+  }
+}

@@ -64,6 +64,19 @@ class TestJudgePromptContract:
         """
         assert "只输出 JSON" in JUDGE_PROMPT
 
+    def test_requires_partial_judgement_for_multi_citation_sentences(self) -> None:
+        """一句多角标时必须按「该句中由本段原文支撑的部分」判定。
+
+        实测（2026-11-18 校准，golden set）：缺这条指令时，
+        「Blackwell 采用 CoWoS 封装且能效提升 2.5 倍[1][2]」两个角标
+        **全被判成 unsupported** —— 因为整句无法被任一篇原文完整支撑。
+
+        加上这条指令后 κ 从 0.769 提到 0.892，误伤率从 18.8% 降到 8.3%，
+        顺序敏感从 2 条降到 0 条。
+        """
+        assert "多份资料" in JUDGE_PROMPT or "多个角标" in JUDGE_PROMPT
+        assert "支撑的那部分结论" in JUDGE_PROMPT
+
     def test_defines_both_verdict_vocabulary_words(self) -> None:
         """两个判定词都要在 prompt 里写明。
 

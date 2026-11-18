@@ -86,6 +86,9 @@ class TestGoldenExpectationsMatchText:
 
         数据集里手写的 variant 如果与 ``extract_cited_sentences`` 的实际
         抽取对不上，评测时就会「看起来跑通了」但比对的是错的东西。
+
+        **悬空角标（``expected_missing``）不在比对范围内**——它没有对应
+        原文，是「引用表里没有这个条目」，不属于「有据 / 无据」的判定。
         """
         for case in golden.cases:
             if case.expected_skipped:
@@ -93,6 +96,8 @@ class TestGoldenExpectationsMatchText:
             sentences = extract_cited_sentences(case.report_text)
             actual: set[tuple[int, int]] = set()
             for footnote, variants in sentences.items():
+                if footnote in case.expected_missing:
+                    continue
                 for variant_index in range(len(variants)):
                     actual.add((footnote, variant_index))
             expected = {(v.footnote, v.variant) for v in case.expected_verdicts}
@@ -109,6 +114,21 @@ class TestGoldenExpectationsMatchText:
             for footnote in case.expected_missing:
                 assert footnote not in case.sources, (
                     f"{case.id}：{footnote} 在 sources 里，不该期望为悬空"
+                )
+
+    def test_missing_footnote_appears_in_report(self, golden: GoldenSet) -> None:
+        """``expected_missing`` 的角标必须在正文里真的出现过。
+
+        否则这条声明是空的——「期望某个编号悬空」而正文里根本没这个编号，
+        说明数据集写错了，评测时会白等一个永远不来的 missing。
+        """
+        for case in golden.cases:
+            if not case.expected_missing:
+                continue
+            sentences = extract_cited_sentences(case.report_text)
+            for footnote in case.expected_missing:
+                assert footnote in sentences, (
+                    f"{case.id}：期望 {footnote} 悬空，但正文里没有这个角标"
                 )
 
 
