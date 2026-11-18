@@ -36,6 +36,7 @@ Critic 节点的实现（sprint plan Day 13）。产出「通过率 + 未支撑�
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
@@ -59,9 +60,15 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class Unsupported:
-    """一条没通过校验的句子。"""
+    """一条没通过校验的句子。
+
+    ``variant`` 是同一脚注内的**变体序号**（从 0 起）：脚注 n 被多个句子
+    引用时，第 k 句就是变体 k。它是 ``(footnote, variant)`` 这个二元 key
+    的后半段——前端用它做 React key，因为一个脚注现在可能产出多条 Unsupported。
+    """
 
     footnote: int
+    variant: int
     sentence: str
     reason: str
 
@@ -88,6 +95,19 @@ class FaithfulnessReport:
 
 SKIPPED_REASON_NO_CITATIONS = "报告没有任何引用角标"
 SKIPPED_REASON_NO_MODEL = "未配置模型客户端"
+
+
+class JudgeTruncated(RuntimeError):
+    """judge 的输出被 max_tokens 截断。
+
+    这是**配置问题**，不是「模型判不了」。两者必须分开：
+
+    - 截断 → 输出不完整 → JSON 解析必然失败 → 整批判定丢失
+    - 判不了 → 输出完整但内容不足 → 可以只丢没判出的那几条
+
+    早先没有这个区分，截断会落进通用的 except 分支，被标成「无法校验」，
+    排查方向会完全跑偏（以为是模型能力不足，实际是 max_tokens 不够）。
+    """
 
 
 JUDGE_PROMPT = """你是一个研报引用审核员。给定报告里若干条带角标的句子，以及每条句子所引用的原文片段，逐条判断该句子的结论能否从原文中得到。
@@ -136,11 +156,31 @@ _SUPPORTED_WORDS = {"supported", "support", "ok", "pass"}
 _UNSUPPORTED_WORDS = {"unsupported", "not_supported", "fail", "contradicted"}
 
 
-def _parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, tuple[bool, str]]:
+def _parse_verdicts(
+    raw: str, expected_ids: set[tuple[int, int]]
+) -> dict[tuple[int, int], tuple[bool, str]]:
     """解析模型输出。对不上的 id 直接丢弃——宁可少判几条，也不要编一个。
 
     宁可少判也不猜：模型编出来的 verdict 会让通过率变成假数字，而
     通过率是验收标准本身。
+
+    ## key 是 ``(脚注号, 变体序号)`` 而不是字符串
+
+    同一脚注被多个句子引用时，``_build_user_prompt`` 给它们编号
+    ``"1"`` / ``"1b"``（见那里）。早先这里用 ``rstrip("b")`` 归一化成
+    字符串 key，于是 **``"1b"`` 被压成 ``"1"``**——两条判定互相覆盖：
+    后写的赢，前写的被丢弃。
+
+    实测两��方向都会出错（同一脚注被两句引用，句A 有据、句B 数字错 40 倍）：
+
+    - ``1=supported, 1b=unsupported`` → ``1`` 变成 unsupported，
+      **有据的句子被误报成无据**（理由还是另一句的）
+    - ``1b=unsupported, 1=supported`` → unsupported **被完全丢弃**，
+      编造的引用被当成有据通过
+
+    而且消费端只查 ``str(n)``（脚注号），``"1b"`` 这个键**永远取不到**。
+
+    改成二元组后，两条判定各归各位，消费端也能逐变体取到。
     """
     start = raw.find("{")
     if start == -1:
@@ -155,15 +195,15 @@ def _parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, tuple[bool, s
     if not isinstance(payload, dict):
         return {}
 
-    out: dict[str, tuple[bool, str]] = {}
+    out: dict[tuple[int, int], tuple[bool, str]] = {}
     for item in payload.get("verdicts", []):
         # 每一层都要类型校验——模型返回 {"verdicts": "supported"} 时，
         # 迭代出的是字符 's'，直接 .get() 会 AttributeError 逃出降级路径。
         # 实测三种返回都会炸：字符串 / 数字数组 / 字典（迭代出 key）。
         if not isinstance(item, dict):
             continue
-        raw_id = str(item.get("id", "")).strip().rstrip("b").strip()
-        if raw_id not in expected_ids:
+        key = _verdict_key(item.get("id"))
+        if key is None or key not in expected_ids:
             logger.debug("丢弃无法对应的 verdict id: %r", item.get("id"))
             continue
         # 严格相等会把 "Supported" / "SUPPORTED" / "部分支撑" 全判成
@@ -172,12 +212,33 @@ def _parse_verdicts(raw: str, expected_ids: set[str]) -> dict[str, tuple[bool, s
         verdict = str(item.get("verdict", "")).strip().lower()
         reason = str(item.get("reason", ""))
         if verdict in _SUPPORTED_WORDS:
-            out[raw_id] = (True, reason)
+            out[key] = (True, reason)
         elif verdict in _UNSUPPORTED_WORDS:
-            out[raw_id] = (False, reason)
+            out[key] = (False, reason)
         else:
             logger.debug("verdict 词汇无法归类: %r（不计入通过也不计入失败）", verdict)
     return out
+
+
+def _verdict_key(raw_id: object) -> tuple[int, int] | None:
+    """把模型回的 id 拆成 ``(脚注号, 变体序号)``。
+
+    形如 ``"1"`` → ``(1, 0)``、``"1b"`` → ``(1, 1)``、``"1b2"`` → ``(1, 2)``。
+
+    **不能靠 ``rstrip("b")``**——它把 ``"1b"`` 压成 ``"1"``，
+    让同一脚注的两个变体拿到同一个 key（见 :func:`_parse_verdicts` 的说明）。
+
+    认不出来的形态返回 ``None``，由调用方丢弃——宁可少判，不猜。
+    """
+    text = str(raw_id).strip()
+    m = re.fullmatch(r"(\d+)(b*)", text)
+    if m is None:
+        return None
+    suffix = m.group(2)
+    # 变体后缀："" → 0，"b" → 1，"b2" → 2。编号只能递增，
+    # "bb"（=1）和 "b3"（=3）这种跳号形态交给 expected_ids 去挡。
+    variant = int(suffix[1:]) if len(suffix) > 1 else (1 if suffix else 0)
+    return int(m.group(1)), variant
 
 
 async def verify_citations(
@@ -218,6 +279,14 @@ async def verify_citations(
         )
 
     settings = get_settings()
+    # max_tokens 必须**按待判条数给**。硬编码 2048 时，20 条引用各带一句
+    # 中文 reason 会被截断——JSON 不完整 → 解析抛异常 → 整批判定被丢弃，
+    # 用户看到「无法校验」。而截断是**配置问题**，不是模型判不了，
+    # 两者混在一起会让排查方向完全跑偏。
+    #
+    # 每条判定含 id + verdict + 中文 reason，约 150 tokens；留 2 倍余量。
+    expected_count = sum(len(sentences[n]) for n in verifiable)
+    max_tokens = max(2048, expected_count * 300)
     request: dict[str, Any] = {
         # 按角色覆盖优先，其次退到复杂档。
         #
@@ -226,7 +295,7 @@ async def verify_citations(
         # 「数字错了 40 倍」需要真读原文），不是 supervisor / analyst
         # 那种结构化短输出。所以走 complex 档，不走 default 档。
         "model": settings.anthropic_critic_model or settings.anthropic_complex_model,
-        "max_tokens": 2048,
+        "max_tokens": max_tokens,
         "system": JUDGE_PROMPT,
         "messages": [
             {
@@ -238,6 +307,8 @@ async def verify_citations(
     try:
         async with client.messages.stream(**cast("Any", request)) as stream:
             final = await stream.get_final_message()
+    except JudgeTruncated:
+        raise
     except Exception:
         logger.exception("引用校验的 LLM 调用失败，降级为无法校验")
         return FaithfulnessReport(
@@ -249,32 +320,70 @@ async def verify_citations(
             reason="校验调用失败",
         )
 
+    # **截断要单独识别**。stop_reason == "max_tokens" 时 JSON 必然不完整，
+    # 解析会抛异常并落进上面的通用 except —— 那样用户看到的是「无法校验」，
+    # 而真因是 max_tokens 不够。两者都叫「无法校验」，排查方向完全不同：
+    # 前者要调配置，后者要换模型或改判定方式。
+    if final.stop_reason == "max_tokens":
+        raise JudgeTruncated(
+            f"判定输出被截断（max_tokens={max_tokens} 不足以容纳 {expected_count} 条判定）"
+        )
+
     content = cast("list[dict[str, Any]]", final.model_dump(exclude_none=True)["content"])
     raw = "".join(b.get("text", "") for b in content if b.get("type") == "text")
 
+    # expected 是「(脚注号, 变体序号)」的集合。同一脚注被多个句子引用时，
+    # 每个句子都是一条独立待判项——这是「逐条判定」的前提。
     expected = set()
     for n in verifiable:
-        expected.add(str(n))
-        if len(sentences[n]) > 1:
-            expected.add(f"{n}b")
+        for variant_index in range(len(sentences[n])):
+            expected.add((n, variant_index))
     verdicts = _parse_verdicts(raw, expected)
+
+    # **解析失败与「模型没给判定」要分开**。两者都表现为「没拿到 verdict」，
+    # 但真因完全不同：
+    #
+    # - 解析失败 → 模型返回的不是合法 JSON → **输出格式坏了**，可诊断
+    # - 没给判定 → 模型返回了合法 JSON 但没 verdict → **能力/内容问题**
+    #
+    # 混成一句话「模型未返回任何判定」会让排查方向跑偏：前者要改
+    # prompt 或换模型，后者可能是 max_tokens 不够或判定本身做不了。
+    if not verdicts and raw.strip():
+        stripped = raw.strip()
+        looks_like_json = stripped.startswith("{") or stripped.startswith("[")
+        if not looks_like_json:
+            logger.warning("judge 输出不是合法 JSON，无法解析。原文前 200 字：%r", stripped[:200])
+            return FaithfulnessReport(
+                checked=0,
+                supported=0,
+                unsupported=[],
+                missing=list(missing),
+                skipped=True,
+                reason="判定输出无法解析（不是合法 JSON）",
+            )
 
     passed = 0
     unsupported: list[Unsupported] = []
-    unjudged: list[int] = []
+    unjudged: list[tuple[int, int]] = []
     for n in verifiable:
-        verdict = verdicts.get(str(n))
-        if verdict is None:
-            # 模型没回这条。**必须从分母里剔除**——留在 checked 里会让
-            # 「通过 3 条、0 条未支撑」这种自相矛盾的数字出现，而且分母
-            # 永远不减、通过率系统性偏低。
-            unjudged.append(n)
-            continue
-        ok, reason = verdict
-        if ok:
-            passed += 1
-        else:
-            unsupported.append(Unsupported(footnote=n, sentence=sentences[n][0], reason=reason))
+        for variant_index, sentence in enumerate(sentences[n]):
+            verdict = verdicts.get((n, variant_index))
+            if verdict is None:
+                # 模型没回这条。**必须从分母里剔除**——留在 checked 里会让
+                # 「通过 3 条、0 条未支撑」这种自相矛盾的数字出现，而且分母
+                # 永远不减、通过率系统性偏低。
+                unjudged.append((n, variant_index))
+                continue
+            ok, reason = verdict
+            if ok:
+                passed += 1
+            else:
+                # **报告的必须是实际被判定的那一句**。早先这里恒用
+                # `sentences[n][0]`，同一脚注的第二句即便判定为无据，
+                # 报出来的也是第一句——用户按提示去原文找不到问题。
+                unsupported.append(
+                    Unsupported(footnote=n, variant=variant_index, sentence=sentence, reason=reason)
+                )
 
     if unjudged and not passed and not unsupported:
         # 全都没判出来——这是「无法校验」，不是「全部无据」。
@@ -288,7 +397,7 @@ async def verify_citations(
         )
 
     return FaithfulnessReport(
-        checked=len(verifiable) - len(unjudged),
+        checked=len(expected) - len(unjudged),
         supported=passed,
         unsupported=unsupported,
         missing=list(missing),

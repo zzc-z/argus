@@ -68,6 +68,8 @@ from app.services.agent_turn import (
 from app.services.citation import Reference
 from app.services.errors import classify_llm_error
 from app.services.faithfulness import (
+    FaithfulnessReport,
+    JudgeTruncated,
     load_source_texts,
     verify_citations,
 )
@@ -675,7 +677,21 @@ async def _settle(
     yield tracker.activate(Stage.CRITIC)
 
     # **校验在 critic 节点窗口内部**。见上面的说明。
-    report = await verify_citations(client, report_text, sources)
+    try:
+        report = await verify_citations(client, report_text, sources)
+    except JudgeTruncated as exc:
+        # 截断是**配置问题**（max_tokens 不够），不是「模型判不了」。
+        # 两者都归到 skipped，但文案必须能区分——否则排查时会往
+        # 「换模型 / 改判定方式」方向跑，而真因只是 max_tokens 该调大。
+        logger.warning("引用校验输出被截断：%s", exc)
+        report = FaithfulnessReport(
+            checked=0,
+            supported=0,
+            unsupported=[],
+            missing=[],
+            skipped=True,
+            reason=f"判定输出被截断：{exc}",
+        )
 
     if report.skipped:
         tracker.set_note(

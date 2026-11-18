@@ -179,7 +179,10 @@ export function FaithfulnessPanel({ report }: FaithfulnessPanelProps) {
       tagClass={hasIssues ? styles.tagWarn : styles.tagOk}
     >
       {/* 分母是「实际判定过的条数」，不是报告里的角标总数。这里显式写出
-          两个数字，避免用户把「20 条角标校验了 18 条」误读成漏了 2 条。 */}
+          两个数字，避免用户把「20 条角标校验了 18 条」误读成漏了 2 条。
+
+          注意「条」指的是**判定项**：同一角标被多个句子引用时，每个句子
+          是独立的一项（后端逐条判定），所以 checked 可能大于角标数。 */}
       <p className={styles.reason}>
         已判定 {report.checked} 条引用，其中 {report.supported} 条能在原文中找到支撑
         {report.unsupported.length > 0 && `，${report.unsupported.length} 条未能找到`}。
@@ -193,10 +196,11 @@ export function FaithfulnessPanel({ report }: FaithfulnessPanelProps) {
         // 「视觉上去掉项目符号的列表」的既定处理，且是否触发还取决于嵌套上下文。
         // role="list" 是标准补法，CSS 补不了这个语义。
         <ul className={styles.list} role="list">
-          {/* key 用 footnote 即可：后端 `verifiable` 由 `sorted(set(cited))` 过滤而来，
-              无重复，每个编号最多产出一条 Unsupported。 */}
+          {/* key 必须含 variant：同一角标被多个句子引用时，后端会产出**多条**
+              Unsupported（每个句子一条）。只用 footnote 会让 React 复用同一个
+              DOM 节点，列表项显示的内容会串。 */}
           {report.unsupported.map((u) => (
-            <UnsupportedItem key={u.footnote} item={u} />
+            <UnsupportedItem key={`${u.footnote}-${u.variant}`} item={u} />
           ))}
         </ul>
       )}

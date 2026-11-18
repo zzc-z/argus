@@ -24,11 +24,14 @@ mutations:
     expect_fail: test_agent_stages.py
 
   # ── 节点的产出摘要 ──
+  # from 必须**唯一**：``complete()`` 与 ``fail()`` 里都有同一行
+  # ``note=self._notes.pop(...)``，只写这一行会让变异落到靠前的那处
+  # （未必是意图位置），而测试仍会变红 —— 假阳性。故带上 lifecycle 上下文。
   - id: M2
     desc: 节点完成帧不带产出摘要
     file: app/services/agent_nodes.py
-    from: 'note=self._notes.pop(self._active, ""),'
-    to: 'note="",'
+    from: "lifecycle=\"completed\",\n            elapsed_ms=elapsed,\n            note=self._notes.pop(self._active, \"\"),"
+    to: "lifecycle=\"completed\",\n            elapsed_ms=elapsed,\n            note=\"\","
     expect_fail: test_agent_stages.py
 
   # ── Analyst 降级时说假话 ──
@@ -48,13 +51,16 @@ mutations:
     expect_fail: test_agent_stages.py
 
   # ── Supervisor 阶段取消 ──
+  # from 必须**唯一**：``yield ledger.done()`` 在文件里出现两处（取消路径
+  # 与「未产出内容」路径）。只写这一行会让变异落到靠前的那处——当前恰好
+  # 是意图位置，但那是运气，不是保证。带上 ``_fail`` 上下文锁定取消路径。
   - id: M5
     desc: Supervisor 阶段取消时不发 done（前端会一直转圈）
     file: app/services/agent.py
     # 换成 error 而不是删掉 yield——删掉会让 run_agent 不再是生成器，
     # 整个模块 import 失败（pytest 收集不到测试），那不叫「测试有效」。
-    from: "        yield ledger.done()"
-    to: "        yield ErrorEvent(code=\"wrong_event\", message=\"x\")"
+    from: "        for event in _fail(tracker, \"已取消\"):\n            yield event\n        yield ledger.done()"
+    to: "        for event in _fail(tracker, \"已取消\"):\n            yield event\n        yield ErrorEvent(code=\"wrong_event\", message=\"x\")"
     expect_fail: test_agent_stages.py
 
   # ── 公开来源：session_maker 接线 ──
@@ -82,11 +88,15 @@ mutations:
     expect_fail: test_web_sources.py
 
   # ── 公开来源：落库要用长内容（不是 Analyst 的短摘要）──
+  # from 必须**唯一**：``register_web_sources()``（落库）与
+  # ``render_web_evidence()``（渲染给模型看）里是**同一行**，连注释都一样。
+  # 只写这一行会让变异落到靠前的那处——当前恰好是落库路径，但那是运气。
+  # 带上 ``if not content.strip()`` —— 落库路径独有（渲染路径没有这个判空）。
   - id: M9
     desc: 落库用短摘要（critic 校验的是摘要而不是原文）
     file: app/services/web_sources.py
-    from: 'content = (item.content or item.excerpt)[:WEB_CHUNK_CHARS]'
-    to: 'content = item.excerpt[:WEB_CHUNK_CHARS]'
+    from: "        content = (item.content or item.excerpt)[:WEB_CHUNK_CHARS]\n        if not content.strip():"
+    to: "        content = item.excerpt[:WEB_CHUNK_CHARS]\n        if not content.strip():"
     expect_fail: test_web_sources.py
 
   # ── 打字机：节奏必须精确 ──
@@ -96,3 +106,38 @@ mutations:
     from: 'self._credit -= len(piece)'
     to: 'self._credit = 0'
     expect_fail: test_text_slicer.py
+
+  # ── Critic 判定：同一脚注的多句必须各自独立判定 ──
+  # 守护的是 verdict key 从字符串改成 (脚注号, 变体序号) 这件事。
+  # 改回字符串 key（或恢复 rstrip("b")）会让「1b」与「1」碰撞，
+  # 两条判定互相覆盖——用户看到的是错的通过率。
+  - id: M11
+    desc: verdict id 把变体后缀剥掉（同一脚注的两句判定互相覆盖）
+    file: app/services/faithfulness.py
+    from: 'm = re.fullmatch(r"(\d+)(b*)", text)'
+    to: 'm = re.fullmatch(r"(\d+)", text)'
+    expect_fail: test_faithfulness_judge.py
+
+  - id: M12
+    desc: 未支撑条目报告第一句而不是实际被判定的那句
+    file: app/services/faithfulness.py
+    from: 'Unsupported(footnote=n, variant=variant_index, sentence=sentence, reason=reason)'
+    to: 'Unsupported(footnote=n, variant=variant_index, sentence=sentences[n][0], reason=reason)'
+    expect_fail: test_faithfulness_judge.py
+
+  # ── Critic：截断必须与「调用失败」区分开 ──
+  # 截断是配置问题（max_tokens 不够），混进通用 except 会让用户
+  # 看到「无法校验」而排查方向跑偏。
+  - id: M13
+    desc: 截断不识别（落进通用 except，被标成「校验调用失败」）
+    file: app/services/faithfulness.py
+    from: '    if final.stop_reason == "max_tokens":'
+    to: '    if False:'
+    expect_fail: test_faithfulness_judge.py
+
+  - id: M14
+    desc: max_tokens 写死 2048（20 条引用会被截断）
+    file: app/services/faithfulness.py
+    from: '    max_tokens = max(2048, expected_count * 300)'
+    to: '    max_tokens = 2048'
+    expect_fail: test_faithfulness_judge.py

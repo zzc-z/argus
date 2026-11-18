@@ -81,7 +81,7 @@ class TestFaithfulnessReport:
         report = FaithfulnessReport(
             checked=4,
             supported=3,
-            unsupported=[Unsupported(footnote=2, sentence="x", reason="y")],
+            unsupported=[Unsupported(footnote=2, variant=0, sentence="x", reason="y")],
             missing=[],
             skipped=False,
         )
@@ -231,8 +231,8 @@ async def test_empty_response_path_still_sends_done(
 class TestParseVerdicts:
     """`_parse_verdicts` 曾是零覆盖——CR 报出的六个缺陷全在这里。"""
 
-    def _p(self, raw: str, ids: set[str] | None = None) -> dict[str, tuple[bool, str]]:
-        return _parse_verdicts(raw, ids or {"1", "2"})
+    def _p(self, raw: str, ids: set[tuple[int, int]] | None = None) -> dict:
+        return _parse_verdicts(raw, ids or {(1, 0), (2, 0)})
 
     def test_malformed_verdicts_types_do_not_raise(self) -> None:
         """C5：模型返回非 list 的 verdicts 时不抛 AttributeError。
@@ -261,7 +261,7 @@ class TestParseVerdicts:
     def test_verdict_whitespace_and_case_tolerated(self) -> None:
         """I6：`"Supported"` / `"supported "` 也该认。"""
         got = self._p('{"verdicts": [{"id": 1, "verdict": " Supported ", "reason": "ok"}]}')
-        assert got.get("1", (None,))[0] is True
+        assert got.get((1, 0), (None,))[0] is True
 
     def test_id_drift_is_dropped_not_guessed(self) -> None:
         """I7：id 是 `"1.0"` 这类无法对应的形态时被丢弃——宁可少判，不猜。
@@ -271,18 +271,78 @@ class TestParseVerdicts:
         """
         assert self._p('{"verdicts": [{"id": 1.0, "verdict": "supported", "reason": "x"}]}') == {}
         assert self._p('{"verdicts": [{"id": " 1", "verdict": "supported", "reason": "x"}]}').get(
-            "1"
+            (1, 0)
         ) is not None
 
     def test_json_fenced_output_parsed(self) -> None:
         """模型常带 ```json 围栏。"""
         raw = '```json\n{"verdicts": [{"id": 1, "verdict": "supported", "reason": "ok"}]}\n```'
-        assert self._p(raw).get("1", (None,))[0] is True
+        assert self._p(raw).get((1, 0), (None,))[0] is True
 
     def test_toplevel_array_and_trailing_text(self) -> None:
         """顶层是数组、JSON 后跟尾随文本——都不该抛，也不该编。"""
         assert self._p('[{"id": 1}]') == {}
         assert self._p('{"verdicts": []} 谢谢') == {}
+
+    # ── 同一脚注被多个句子引用：id 碰撞（2026-11-18 核查）──
+
+    def test_variant_suffix_ids_parsed(self) -> None:
+        """`"1"` 是第 1 个变体，`"1b"` 是同一脚注的第 2 个变体。
+
+        两者必须解析成**不同的 key**。早先的实现用 `rstrip("b")` 归一化，
+        把 `"1b"` 变成 `"1"` —— 两条判定互相覆盖。
+        """
+        got = _parse_verdicts(
+            '{"verdicts": ['
+            '{"id": "1", "verdict": "supported", "reason": "a"},'
+            '{"id": "1b", "verdict": "unsupported", "reason": "b"}'
+            "]}",
+            {(1, 0), (1, 1)},
+        )
+        assert set(got) == {(1, 0), (1, 1)}, f"两个变体必须各自成键：{got}"
+        assert got[(1, 0)][0] is True
+        assert got[(1, 1)][0] is False
+
+    def test_multiple_sentences_same_footnote_verdicts_do_not_collide(self) -> None:
+        """同一脚注被两句引用时，两条判定不能互相覆盖。
+
+        这是**用户可见的错误**：一个脚标被引用两次（研报里"先给结论、
+        再展开论证"是常规写法），第二句的判定要么被丢弃、要么污染第一句。
+        """
+        raw = (
+            '{"verdicts": ['
+            '{"id": "1", "verdict": "supported", "reason": "原文说 2.5 倍"},'
+            '{"id": "1b", "verdict": "unsupported", "reason": "原文是 2.5 倍不是 100 倍"}'
+            "]}"
+        )
+        got = _parse_verdicts(raw, {(1, 0), (1, 1)})
+        assert len(got) == 2, f"两条判定都要保留：{got}"
+        assert got[(1, 0)][0] is True, "第一句是 supported，不该被覆盖"
+        assert got[(1, 1)][0] is False, "第二句是 unsupported，不该被丢弃"
+
+        # 反序也要对——dict 的写入顺序不能决定谁赢
+        raw_rev = (
+            '{"verdicts": ['
+            '{"id": "1b", "verdict": "unsupported", "reason": "原文是 2.5 倍"},'
+            '{"id": "1", "verdict": "supported", "reason": "原文说 2.5 倍"}'
+            "]}"
+        )
+        got_rev = _parse_verdicts(raw_rev, {(1, 0), (1, 1)})
+        assert got_rev[(1, 0)][0] is True, "顺序不该影响判定归属"
+        assert got_rev[(1, 1)][0] is False, "unsupported 不能被后到的 supported 覆盖"
+
+    def test_bare_footnote_id_not_accepted_when_variants_exist(self) -> None:
+        """一个脚注有多个变体时，模型只回裸 `"1"` 只能算第 1 个变体。
+
+        早先的实现把 `"1b"` 归一成 `"1"` 再查表，于是**两个变体拿到同一个判定**。
+        现在 key 是 `(脚注号, 变体序号)`，裸 `"1"` 只对应 `(1, 0)`。
+        """
+        got = _parse_verdicts(
+            '{"verdicts": [{"id": "1", "verdict": "supported", "reason": "x"}]}',
+            {(1, 0), (1, 1)},
+        )
+        assert set(got) == {(1, 0)}, f"只有裸 id 时只应判定第 1 个变体：{got}"
+        assert (1, 1) not in got, "第 2 个变体没被判，不该有判定"
 
 
 # ── 原文加载：CR 的 C1 曾让整份校验方向相反 ──────────────────

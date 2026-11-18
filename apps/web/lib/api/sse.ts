@@ -170,6 +170,13 @@ export interface DoneEventV {
 export interface UnsupportedV {
   /** 角标编号，对应正文里的 `[n]`。 */
   footnote: number
+  /**
+   * 同一角标内的**变体序号**（从 0 起）。
+   *
+   * 角标 n 被多个句子引用时，每个句子是独立的一条待判项——后端逐条
+   * 判定，因此**一个角标可能产出多条 Unsupported**。这是 React key 的一部分。
+   */
+  variant: number
   /** 带角标的原句。 */
   sentence: string
   /** 模型给的中文理由，一句话。 */

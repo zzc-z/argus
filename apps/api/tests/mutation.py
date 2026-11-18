@@ -134,6 +134,27 @@ def run_mutation(mutation: Mutation) -> Result:
             detail=f"没找到要替换的代码（变异未生效，测试有效性未被验证）：{mutation.from_!r}",
         )
 
+    # **命中数必须恰好是 1**。多处命中时 `replace(..., 1)` 只改第一处，
+    # 而那一处未必是这条变异想改的地方——测试仍会变红（字符串确实变了），
+    # harness 报「有效」，但**验的根本不是这条变异守护的不变量**。
+    #
+    # 实测：M2 / M5 / M9 的 from 字符串在目标文件里各出现 2 次。
+    # 它们当前恰好改对了位置，靠的是「文件里靠前的那处正好是意图位置」，
+    # 没有任何机制保证这一点。一旦有人在前面插入代码，变异就会静默落到
+    # 另一个函数——而 harness 照样报「有效」。
+    #
+    # 这类假阳性最危险：它让人以为不变量被守住了。
+    occurrences = original.count(mutation.from_)
+    if occurrences != 1:
+        return Result(
+            mutation,
+            caught=False,
+            detail=(
+                f"变异字符串在 {target} 中出现 {occurrences} 次，无法确定变异点——"
+                f"请把 from 改成带上下文的唯一片段"
+            ),
+        )
+
     try:
         target.write_text(original.replace(mutation.from_, mutation.to_, 1), encoding="utf-8")
         proc = subprocess.run(
