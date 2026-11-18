@@ -168,3 +168,21 @@ mutations:
     from: '一句话可能同时引用多份资料（带多个角标）。这时只判断**该句中由本段原文支撑的那部分结论**，不要因为句中的其它部分没有在本段原文中出现就判 unsupported。'
     to: '（多角标句按整句判定。）'
     expect_fail: test_prompt_contracts.py
+
+  # ── 工具入参：必须按 schema 校验 ──
+  # 不校验的话，模型少传参数（query 写成 q）会流到工具内部 KeyError →
+  # 落进宽兜底 → 模型收到「内部出错，请不要重复调用它」——
+  # **模型被告知不要重试**，这次检索就永久丢了。
+  - id: M18
+    desc: 工具入参不校验（少传必填参数不再报错）
+    file: app/services/tools.py
+    from: '    missing = [key for key in required if key not in tool_input]'
+    to: '    missing = []'
+    expect_fail: test_tools.py
+
+  - id: M19
+    desc: 工具入参不拦不存在的参数（agent 发明 config 选项不被发现）
+    file: app/services/tools.py
+    from: '    unknown = [key for key in tool_input if key not in properties]'
+    to: '    unknown = []'
+    expect_fail: test_tools.py

@@ -95,10 +95,15 @@ async def test_dedup_empty_list() -> None:
 
 
 async def test_dedup_rejects_non_array() -> None:
-    """urls 传错类型时返回错误而不是抛异常。"""
+    """urls 传错类型时返回错误而不是抛异常。
+
+    文案现在由 ``_validate_input`` 统一出（schema 是唯一来源），
+    所以这里断言**语义**而不是字面量——改了措辞不该红。
+    """
     outcome = await execute_tool("dedup", {"urls": "https://a.com"})
     assert outcome.ok is False
-    assert outcome.content == "urls 必须是数组。"
+    assert "urls" in outcome.content
+    assert "数组" in outcome.content
 
 
 async def test_dedup_skips_blank_entries() -> None:
@@ -462,3 +467,95 @@ async def test_evidence_excerpt_is_shorter_than_the_tool_content(
 
     assert len(outcome.evidence[0].excerpt) == tools_module.EVIDENCE_EXCERPT_CHARS
     assert len(outcome.evidence[0].excerpt) < len(outcome.content)
+
+
+# ── 入参校验（schema 声明 → 运行时强制）─────────────────────────
+#
+# 这些参数是**模型**给的。它偶尔会：
+#   - 少传必填参数（"query" 写成 "q"）
+#   - 传错类型（"max_results" 给字符串）
+#   - 传不存在的参数（发明一个 config 选项）
+#
+# 不校验的话，这些错会一路流到工具内部：
+#   - 少传 → 工具内部 KeyError → 落进宽兜底 → 模型收到「内部出错，
+#     请不要重复调用它」——**模型被告知不要重试**，这次检索就永久丢了
+#   - 类型错 → 同样的宽兜底，报的还是「内部出错」
+#
+# 校验之后，错误文案必须**告诉模型怎么改**——这正是本模块的设计前提
+# （见模块 docstring「两条硬约束」第 1 条：把错误文本喂回模型让它自己纠正）。
+
+
+async def test_missing_required_argument_returns_actionable_error() -> None:
+    """缺必填参数 → 错误文案要指名缺哪个、有什么可用。"""
+    outcome = await execute_tool("local_search", {})
+
+    assert outcome.ok is False
+    assert "query" in outcome.content, "错误文案要指名缺哪个参数"
+    assert "参数" in outcome.content, "要让模型知道这是参数问题而不是内部故障"
+
+
+async def test_required_argument_wrong_type_returns_actionable_error() -> None:
+    """**必填**参数类型错 → 错误文案要说期望的类型。
+
+    只查必填参数：可选参数类型错走工具自己的宽容路径
+    （``max_results`` 传字符串时退回默认值），那是既有的设计。
+    """
+    outcome = await execute_tool("local_search", {"query": 123})
+
+    assert outcome.ok is False
+    assert "query" in outcome.content
+    assert "字符串" in outcome.content or "string" in outcome.content.lower()
+
+
+async def test_unknown_argument_is_rejected() -> None:
+    """发明一个不存在的参数 → 拒绝，并列出可用参数。
+
+    这正是「agent 发明库里不存在的 config 选项」那类 bug 的入口。
+    """
+    outcome = await execute_tool("local_search", {"query": "x", "retries": 3})
+
+    assert outcome.ok is False
+    assert "retries" in outcome.content, "要指名那个不存在的参数"
+    assert "query" in outcome.content, "要告诉模型实际能用什么参数"
+
+
+async def test_type_error_does_not_say_internal_error() -> None:
+    """参数错要说「参数错」，不能说「内部出错」。
+
+    说「内部出错」会让模型以为是自己不该重试（工具返回的文案里就有
+    「请不要重复调用它」），于是一次参数错误就永久丢掉这次检索。
+    """
+    outcome = await execute_tool("local_search", {"query": 123})
+
+    assert "内部出错" not in outcome.content
+    assert "不要重复调用" not in outcome.content
+
+
+async def test_array_argument_rejects_non_array() -> None:
+    """数组参数传了字符串 → 拒绝。"""
+    outcome = await execute_tool("dedup", {"urls": "https://a.com"})
+
+    assert outcome.ok is False
+    assert "urls" in outcome.content
+
+
+async def test_optional_argument_type_error_still_tolerated(
+    monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
+) -> None:
+    """**可选**参数类型错仍然宽容处理——既有设计，不改。
+
+    模型给 ``max_results`` 传个字符串「5」，它的本意是「多给点」。
+    工具会 ``int()`` 转换后照用（这里就是 5）；转不动才退回默认 3。
+    报错反而让这次检索白费。
+    """
+    seen: dict[str, int] = {}
+
+    async def _fake(client: Any, query: str, max_results: int) -> Any:
+        seen["n"] = max_results
+        return {"results": []}
+
+    monkeypatch.setattr(tools_module, "_search", _fake)
+    outcome = await execute_tool("tavily_search", {"query": "x", "max_results": "5"})
+
+    assert outcome.ok is True, "可选参数的类型问题不该让整个调用失败"
+    assert seen["n"] == 5, "字符串数字会被 int() 转换后照用"

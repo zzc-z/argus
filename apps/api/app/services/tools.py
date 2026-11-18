@@ -299,6 +299,91 @@ def tool_schemas(tools: tuple[ToolSpec, ...]) -> list[dict[str, Any]]:
 # ── 执行分发 ──────────────────────────────────────────────────
 
 
+def _validate_input(spec: ToolSpec, tool_input: dict[str, Any]) -> str | None:
+    """按 ``input_schema`` 校验入参。返回错误描述；``None`` 表示通过。
+
+    ## 为什么需要这道校验
+
+    ``input_schema`` 原本**只是给模型看的**——它告诉模型「这个工具该
+    传什么」，但运行时没人按它检查。于是模型传错参数时：
+
+    - 少传必填参数（``query`` 写成 ``q``）→ 流到工具内部 KeyError →
+      落进 ``execute_tool`` 的宽兜底 → 模型收到「内部出错，请不要
+      重复调用它」
+    - 发明不存在的参数 → 静默忽略
+
+    第一种最糟：**模型被告知不要重试**，于是一次参数错误就永久丢掉
+    这次检索——而模型本来只要换个参数名就能成功。
+
+    这正是「agent 发明库里不存在的 config 选项」那类 bug 的入口。
+
+    ## 拦什么、不拦什么
+
+    拦：**缺必填参数**、**不存在的参数**、**核心参数的类型错**。
+
+    不拦：**范围越界**（``max_results`` 越界由工具自己 clamp——
+    模型要 100 条时夹到上限即可，报错会让这次检索白费，而它的本意
+    只是「多给点」）、**可选参数的类型错**（``max_results`` 传字符串
+    时工具会退回默认值，那是既有的宽容设计，不该改）。
+
+    ## 为什么手写而不引 jsonschema
+
+    三个工具、三种类型（string / integer / array of string）。
+    引入 jsonschema 只为一个字符串类型检查和一次数组类型检查，
+    换来一个额外依赖（且它的错误信息要重写成给模型看的中文，
+    反而更啰嗦）。
+
+    ## 错误文案的硬要求
+
+    必须**告诉模型怎么改**：缺哪个参数、期望什么类型、实际能用什么。
+    这正是本模块的设计前提（见模块 docstring「两条硬约束」第 1 条：
+    把错误文本喂回模型让它自己纠正）。
+    """
+    schema = spec.input_schema
+    properties: dict[str, Any] = schema.get("properties", {})
+    required = schema.get("required", [])
+
+    missing = [key for key in required if key not in tool_input]
+    if missing:
+        available = "、".join(sorted(properties)) or "（无）"
+        return (
+            f"参数错误：缺少必填参数 {'、'.join(missing)}。"
+            f"可用参数：{available}。"
+        )
+
+    unknown = [key for key in tool_input if key not in properties]
+    if unknown:
+        available = "、".join(sorted(properties)) or "（无）"
+        return (
+            f"参数错误：不存在的参数 {'、'.join(sorted(unknown))}。"
+            f"可用参数：{available}。"
+        )
+
+    # 只校验**必填参数**的类型。可选参数类型错走工具自己的宽容路径
+    # （``max_results`` 传字符串时退回默认值）——那是既有的设计，
+    # 在这里拦掉等于把「模型给个怪值」升级成「这次检索白费」。
+    for key in required:
+        value = tool_input[key]
+        expected = properties.get(key, {}).get("type")
+        if expected == "string" and not isinstance(value, str):
+            return f"参数错误：{key} 应为字符串，实际收到 {type(value).__name__}。"
+        if expected == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
+            return f"参数错误：{key} 应为整数，实际收到 {type(value).__name__}。"
+        if expected == "array" and not isinstance(value, list):
+            return f"参数错误：{key} 应为数组，实际收到 {type(value).__name__}。"
+        if expected == "array":
+            item_type = properties.get(key, {}).get("items", {}).get("type")
+            if item_type == "string":
+                bad = [i for i, item in enumerate(value) if not isinstance(item, str)]
+                if bad:
+                    return (
+                        f"参数错误：{key} 的第 {'、'.join(str(i) for i in bad)} 项"
+                        f"应为字符串。"
+                    )
+
+    return None
+
+
 async def execute_tool(
     name: str,
     tool_input: dict[str, Any],
@@ -312,11 +397,24 @@ async def execute_tool(
 
     ``context`` 只有 ``local_search`` 需要。缺它时返回错误而不是崩溃——
     见 :func:`_run_local_search` 的注释。
+
+    ## 入参先按 schema 校验
+
+    ``input_schema`` 不只是给模型看的——运行时也按它检查（见
+    :func:`_validate_input`）。校验失败返回**可行动的**错误文案，
+    让模型换个参数就能重试；而不是让它撞进宽兜底、收到「内部出错，
+    请不要重复调用它」然后永久丢掉这次检索。
     """
     try:
         if name == TAVILY_SEARCH_SPEC.name:
+            error = _validate_input(TAVILY_SEARCH_SPEC, tool_input)
+            if error:
+                return ToolOutcome(ok=False, content=error, preview="参数错误")
             return await _run_tavily_search(tool_input, context)
         if name == LOCAL_SEARCH_SPEC.name:
+            error = _validate_input(LOCAL_SEARCH_SPEC, tool_input)
+            if error:
+                return ToolOutcome(ok=False, content=error, preview="参数错误")
             if context is None:
                 return ToolOutcome(
                     ok=False,
@@ -325,6 +423,9 @@ async def execute_tool(
                 )
             return await _run_local_search(context, tool_input)
         if name == DEDUP_SPEC.name:
+            error = _validate_input(DEDUP_SPEC, tool_input)
+            if error:
+                return ToolOutcome(ok=False, content=error, preview="参数错误")
             return _run_dedup(tool_input)
     except LLMNotConfiguredError as exc:
         # 走分类器而不是就地拼文案：code 与其它失败路径统一（前端按
