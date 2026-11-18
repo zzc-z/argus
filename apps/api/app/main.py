@@ -27,6 +27,7 @@ from app.gateway import (
     users_router,
 )
 from app.security import SecurityHeadersMiddleware, build_security_headers
+from app.services.llm import assert_distinct_judge_and_writer
 
 _settings = get_settings()
 
@@ -80,7 +81,19 @@ async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
     ``yield`` 之后 = 关闭阶段。Day 5 接 Redis 时在此创建/释放连接。
 
     需要跨端点共享的运行时对象挂到 ``app.state``（如 app.state.redis）。
+
+    ## 启动时校验 critic ≠ writer
+
+    自偏好偏差**不会报错**——它只是让「通过率」这个指标变得不可信：
+    LLM 评委给自己的输出打高分（arXiv 2410.21819）。argus 的默认配置下
+    Critic 与 Writer 是同一个型号，于是通过率系统性偏高，而**没有任何
+    外部证据能发现它**。
+
+    唯一挡得住的时机是启动时。放在这里而不是 ``get_anthropic_client()``：
+    客户端创建发生在**每次研究请求**里，而测试环境用的是占位 key，
+    在那里断言会把测试全部拦下。
     """
+    assert_distinct_judge_and_writer()
     yield
 
 

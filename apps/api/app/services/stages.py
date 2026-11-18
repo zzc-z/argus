@@ -374,31 +374,15 @@ def _json_part(raw: str) -> str:
 
 
 def _model_for(role: str) -> str:
-    """取某个角色的模型。
+    """取某个角色的模型。**已移到** ``app.services.llm.model_for``。
 
-    优先级（业界静态分层路由的标准做法）：
-
-    1. **按角色覆盖** —— ``ANTHROPIC_{ROLE}_MODEL``（如
-       ``ANTHROPIC_ANALYST_MODEL``）。最具体，优先级最高。
-    2. **任务级默认** —— ``ANTHROPIC_DEFAULT_MODEL``。
-       supervisor / analyst / critic 都是「结构化的短输出」，
-       走这一档（快、便宜）。
-
-    ## 为什么不硬编码
-
-    早先这里写死 ``_DEFAULT_MODELS``，而 ``ANTHROPIC_DEFAULT_MODEL``
-    这个配置项**全仓零读取点**——改了 ``.env`` 也不生效。
-    模型退役或要换中转线路时，只能改代码重新发版。
-
-    现在统一走配置：``.env`` 里改一行就生效，代码不用动。
+    模型路由是跨模块的（supervisor / analyst 在这里，critic 在
+    ``faithfulness.py``），放在本模块里会让后者跨模块 import 一个私有
+    函数——迟早有人绕过它，然后两处路由就漂移了。
     """
-    from app.config import get_settings
+    from app.services.llm import model_for
 
-    settings = get_settings()
-    override = getattr(settings, f"anthropic_{role}_model", None)
-    if isinstance(override, str) and override:
-        return override
-    return settings.anthropic_default_model
+    return model_for(role)
 
 
 @dataclass(frozen=True, slots=True)

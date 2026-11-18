@@ -11,6 +11,7 @@ SSE 这种长连接场景下，一个研究请求要连打好几轮模型。
 是直接失败还是降级，取决于缺的是哪一项能力。
 """
 
+import logging
 from functools import lru_cache
 
 import httpx
@@ -19,6 +20,8 @@ from anthropic import APIConnectionError, APITimeoutError, AsyncAnthropic
 from tavily import AsyncTavilyClient
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 # 单次模型请求的上限。SSE 长连接里一轮研究可能连续打好几轮，
 # 每轮都等满默认超时会让整个请求挂死，用户看不到任何反馈。
@@ -97,6 +100,95 @@ def fallback_models() -> list[str]:
     if not raw:
         return []
     return [m.strip() for m in raw.split(",") if m.strip()]
+
+
+def model_for(role: str) -> str:
+    """取某个角色的模型。
+
+    优先级（业界静态分层路由的标准做法）：
+
+    1. **按角色覆盖** —— ``ANTHROPIC_{ROLE}_MODEL``（如
+       ``ANTHROPIC_ANALYST_MODEL``）。最具体，优先级最高。
+    2. **任务级默认** —— ``ANTHROPIC_DEFAULT_MODEL``。
+
+    ## 为什么不硬编码
+
+    早先这里写死 ``_DEFAULT_MODELS``，而 ``ANTHROPIC_DEFAULT_MODEL``
+    这个配置项**全仓零读取点**——改了 ``.env`` 也不生效。
+    模型退役或要换中转线路时，只能改代码重新发版。
+
+    现在统一走配置：``.env`` 里改一行就生效，代码不用动。
+
+    ## critic 的回落档位与其它角色不同
+
+    Critic 逐条判定「这句话能不能从它引用的原文得到」——20 条引用、
+    15k tokens 输入，这是**复杂任务**（判「说反了」和「数字错了 40 倍」
+    需要真读原文），不是 supervisor / analyst 那种结构化短输出。
+    所以 critic 留空时退到 ``complex_model``，其余角色退到 ``default_model``。
+
+    ## 为什么放在这里而不是 stages.py
+
+    模型路由是**跨模块**的：``stages.py`` 的 supervisor / analyst 与
+    ``faithfulness.py`` 的 critic 都要读它。放在 stages.py 里，后者就得
+    跨模块 import 一个私有函数（``_model_for``）——迟早有人绕过它，
+    然后两处路由就漂移了。
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    override = getattr(settings, f"anthropic_{role}_model", None)
+    if isinstance(override, str) and override:
+        return override
+    if role == "critic":
+        return settings.anthropic_complex_model
+    return settings.anthropic_default_model
+
+
+def assert_distinct_judge_and_writer() -> None:
+    """断言 critic（判定者）与 writer（生成者）不是同一个模型。
+
+    ## 为什么这是硬要求
+
+    LLM 评委给自己的输出打高分，是被反复观测到的**自偏好偏差**
+    （arXiv 2410.21819）。业界的建议直接写明：
+
+        "Considering the significant self-enhancement bias, we should avoid
+         using the same model as the evaluator."
+
+    ## argus 的现状（2026-11-18 实测）
+
+    主循环（Researcher + Writer）走 ``agent_turn._build_turn_request``，
+    硬编码 ``settings.anthropic_complex_model``（默认 claude-sonnet-5）；
+    Critic 也用 ``anthropic_critic_model or anthropic_complex_model``
+    （默认同样是 claude-sonnet-5）。
+
+    **也就是说：默认配置下 judge 与 writer 就是同一个模型。**
+    自偏好偏差不是一个「将来可能发生的风险」，而是**现在就在**——
+    通过率会系统性偏高，而没有任何外部证据能发现它。
+
+    ## 为什么只在 prod 强制
+
+    本地开发与测试用同一个型号是合理的（省额度、行为一致好复现）。
+    **线上不行**——线上那个「通过率」是要给用户看的产品指标，
+    系统性偏高会直接误导判断。
+
+    ``APP_ENV=prod`` 时才强制；dev / test 只记警告。
+    """
+    from app.config import get_settings
+
+    settings = get_settings()
+    judge = settings.anthropic_critic_model or settings.anthropic_complex_model
+    # writer 的真实模型：主循环硬编码 complex_model（``anthropic_writer_model``
+    # 这个配置项全仓无人读取——别被它的名字骗了）。
+    writer = settings.anthropic_complex_model
+    if judge == writer:
+        message = (
+            f"critic 与 writer 用了同一个模型（{judge}）——自偏好偏差会让通过率"
+            f"系统性偏高。给 ANTHROPIC_CRITIC_MODEL 配一个与 writer 不同的型号。"
+        )
+        if settings.app_env == "prod":
+            raise ValueError(message)
+        logger.warning("（非 prod 环境，仅提示）%s", message)
 
 
 def is_stream_interrupt(exc: BaseException) -> bool:

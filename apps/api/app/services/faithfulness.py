@@ -45,9 +45,9 @@ import jiter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.models import DocumentChunk
 from app.services.citation import Reference, extract_cited_sentences
+from app.services.llm import model_for
 
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
@@ -280,7 +280,6 @@ async def verify_citations(
             reason="引用表里没有对应原文",
         )
 
-    settings = get_settings()
     # max_tokens 必须**按待判条数给**。硬编码 2048 时，20 条引用各带一句
     # 中文 reason 会被截断——JSON 不完整 → 解析抛异常 → 整批判定被丢弃，
     # 用户看到「无法校验」。而截断是**配置问题**，不是模型判不了，
@@ -290,13 +289,14 @@ async def verify_citations(
     expected_count = sum(len(sentences[n]) for n in verifiable)
     max_tokens = max(2048, expected_count * 300)
     request: dict[str, Any] = {
-        # 按角色覆盖优先，其次退到复杂档。
+        # 走**统一路由**（``llm.model_for``），不自己读配置。
         #
-        # critic 要逐条判定「报告里这句话能不能从它引用的原文得到」——
-        # 20 条引用、15k tokens 输入，这是**复杂任务**（判「说反了」和
-        # 「数字错了 40 倍」需要真读原文），不是 supervisor / analyst
-        # 那种结构化短输出。所以走 complex 档，不走 default 档。
-        "model": settings.anthropic_critic_model or settings.anthropic_complex_model,
+        # 早先这里直接读 ``anthropic_critic_model or anthropic_complex_model``，
+        # 绕过了 stages 的路由——那意味着有人设了
+        # ``ANTHROPIC_WRITER_MODEL=claude-sonnet-5`` 时，judge 与 writer
+        # 会静默变成同模型，自偏好偏差让通过率系统性偏高，而代码层面
+        # 没有任何提示。现在统一路由 + 启动即断言（见 llm.assert_distinct_...）。
+        "model": model_for("critic"),
         "max_tokens": max_tokens,
         "system": JUDGE_PROMPT,
         "messages": [
