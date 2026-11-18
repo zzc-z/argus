@@ -163,6 +163,7 @@ testpaths = ["tests"]
 addopts = "-ra --strict-markers --tb=short -p no:faulthandler -n 4 --dist=worksteal --maxfail=1"
 markers = [
     "smoke: 冒烟测试——验证包可导入、运行时版本满足下限（CI 快速通道）",
+    "live: 需要真实模型调用——本地有 ANTHROPIC_API_KEY 时才跑，CI 里跳过",
 ]
 # -p no:faulthandler：pytest 内置的 faulthandler 插件与 pymupdf 的 SWIG C 扩展
 # （pymupdf/_mupdf.so）在 Python 3.14 上冲突，一import pymupdf 就段错误，

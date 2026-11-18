@@ -319,3 +319,25 @@ def github_state(client: TestClient) -> str:
     """
     resp = client.get("/api/v1/auth/github/login", follow_redirects=False)
     return parse_qs(urlparse(resp.headers["location"]).query)["state"][0]
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    """没有真实 API key 时跳过标了 ``live`` 的用例。
+
+    标 ``live`` 的测试要**真的调模型**——CI 里只有占位 key，调用会得到
+    一个难以理解的报错（而不是清晰的 skip）。这里在收集阶段统一跳过。
+
+    判据用**配置层**而不是读 ``.env``：``.env`` 在本机是真 key，
+    而 CI 只提供占位值，两者不能靠「文件存不存在」区分。
+    """
+    from app.config import get_settings
+
+    if get_settings().anthropic_api_key:
+        return
+
+    skip_live = pytest.mark.skip(reason="需要真实模型调用（未配置 ANTHROPIC_API_KEY）")
+    for item in items:
+        if "live" in item.keywords:
+            item.add_marker(skip_live)
