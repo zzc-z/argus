@@ -98,3 +98,41 @@ jobs:
 
       - name: tsc
         run: pnpm exec tsc --noEmit
+
+  # 变异测试：验证「每条测试真的能抓到它要防的 bug」。
+  #
+  # **独立 job**，不与 api job 合并——变异测试会**改文件**再改回来
+  # （tests/mutation.py 的 try/finally 保证还原）。与 pytest 并发跑会
+  # 互相看到对方改到一半的代码，结果不可信。
+  #
+  # 为什么必须有这道门：变异测试的价值在于「每次改动都跑」，
+  # 手动跑一次就没人再跑了。而且它测的是**测试本身的有效性**——
+  # 一条断言恒真的测试在普通 pytest 下永远是绿的，只有变异测试能发现。
+  mutation:
+    name: 变异测试（验证测试有效性）
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: 装依赖
+        run: uv sync --extra dev
+
+      # 测试套件需要几个配置项存在但**不需要真值**（同 api job 的说明）。
+      # 变异测试跑的是指定测试文件，那些文件里真实模型调用全被桩拦掉。
+      - name: 变异测试
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder-not-a-real-key
+          JWT_SECRET_KEY: ci-placeholder-secret-0123456789abcdef
+          GITHUB_OAUTH_CLIENT_ID: ci-placeholder-client-id
+          GITHUB_OAUTH_CLIENT_SECRET: ci-placeholder-client-secret
+          GITHUB_OAUTH_CALLBACK_URL: http://localhost:8000/api/v1/auth/github/callback
+          COOKIE_SECURE: "false"
+        run: uv run python -m tests.mutation

@@ -109,13 +109,13 @@ mutations:
 
   # ── Critic 判定：同一脚注的多句必须各自独立判定 ──
   # 守护的是 verdict key 从字符串改成 (脚注号, 变体序号) 这件事。
-  # 改回字符串 key（或恢复 rstrip("b")）会让「1b」与「1」碰撞，
+  # 把变体后缀整个丢掉（只认脚注号）会让「1b」与「1」都落到 (1, 0)，
   # 两条判定互相覆盖——用户看到的是错的通过率。
   - id: M11
-    desc: verdict id 把变体后缀剥掉（同一脚注的两句判定互相覆盖）
+    desc: verdict id 丢掉变体后缀（同一脚注的多句判定互相覆盖）
     file: app/services/faithfulness.py
-    from: 'm = re.fullmatch(r"(\d+)(b*)", text)'
-    to: 'm = re.fullmatch(r"(\d+)", text)'
+    from: '    m = re.fullmatch(r"(\d+)(?:b(\d*))?", text)'
+    to: '    m = re.fullmatch(r"(\d+)", text)'
     expect_fail: test_faithfulness_judge.py
 
   - id: M12
@@ -140,4 +140,18 @@ mutations:
     file: app/services/faithfulness.py
     from: '    max_tokens = max(2048, expected_count * 300)'
     to: '    max_tokens = 2048'
+    expect_fail: test_faithfulness_judge.py
+
+  - id: M15
+    desc: 变体 tag 全部叫 "nb"（同一脚注的第 2 句与第 3 句撞同一个 tag）
+    file: app/services/faithfulness.py
+    from: 'tag = n if index == 0 else (f"{n}b" if index == 1 else f"{n}b{index}")'
+    to: 'tag = n if index == 0 else f"{n}b"'
+    expect_fail: test_faithfulness_judge.py
+
+  - id: M16
+    desc: 变体序号算错（"b2" 被当成 variant 1，第 3 个变体与第 2 个撞）
+    file: app/services/faithfulness.py
+    from: '        variant = int(suffix_num)'
+    to: '        variant = int(suffix_num) + 1'
     expect_fail: test_faithfulness_judge.py

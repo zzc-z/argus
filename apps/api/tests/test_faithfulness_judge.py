@@ -27,6 +27,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -215,6 +216,50 @@ class TestVerifyCitationsMultipleSentences:
         assert report.supported == 1
         assert len(report.unsupported) == 1
         assert "100 倍" in report.unsupported[0].sentence
+
+    async def test_three_sentences_same_footnote_get_distinct_tags(self) -> None:
+        """同一脚注被**三句**引用时，每句的 tag 必须唯一。
+
+        早先 ``_build_user_prompt`` 给所有非首变体都标 ``f"{n}b"``——
+        于是第 2 句与第 3 句拿到同一个 tag，模型对这两句只能给一个判定，
+        第 3 句的判定要么丢失、要么与第 2 句碰撞。
+        """
+        from app.services.faithfulness import _build_user_prompt
+
+        sentences = {1: ["句A", "句B", "句C"]}
+        prompt = _build_user_prompt(sentences, {1: "原文"})
+
+        tags = re.findall(r"### 句子 (\S+?)（", prompt)
+        assert tags == ["1", "1b", "1b2"], f"三个变体的 tag 必须互不相同：{tags}"
+
+        # 三个 tag 都要能被解析成不同的 (脚注号, 变体序号)
+        from app.services.faithfulness import _verdict_key
+
+        keys = [_verdict_key(t) for t in tags]
+        assert keys == [(1, 0), (1, 1), (1, 2)]
+        assert len(set(keys)) == 3, "三个变体解析后不能撞到同一个 key"
+
+    async def test_three_sentences_same_footnote_all_judged(self) -> None:
+        """三句都要能独立判定，且互不影响。"""
+        client = _client(
+            '{"verdicts": ['
+            '{"id": "1", "verdict": "supported", "reason": "a"},'
+            '{"id": "1b", "verdict": "unsupported", "reason": "b"},'
+            '{"id": "1b2", "verdict": "supported", "reason": "c"}'
+            "]}"
+        )
+
+        report = await verify_citations(
+            client,  # type: ignore[arg-type]
+            "营收增长 25%[1]。营收增长 100%[1]。海外增长放缓[1]。",
+            {1: "2025 年营收同比增长 25%，华东区是主要增长来源。"},
+        )
+
+        assert report.checked == 3, "三句都要计入分母"
+        assert report.supported == 2
+        assert len(report.unsupported) == 1
+        assert "100%" in report.unsupported[0].sentence
+        assert report.unsupported[0].variant == 1
 
 
 # ── 分母纪律 ──────────────────────────────────────────────────

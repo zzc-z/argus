@@ -146,7 +146,14 @@ def _build_user_prompt(
     sentence_blocks = []
     for n, variants in sorted(sentences.items()):
         for index, sentence in enumerate(variants):
-            tag = n if index == 0 else f"{n}b"
+            # 变体 tag 必须**每个都唯一**。早先所有非首变体都叫 f"{n}b"，
+            # 于是同一脚注的**第 2 句与第 3 句拿到同一个 tag**——模型对这两句
+            # 只能给一个判定，第 3 句的判定要么丢失、要么与第 2 句碰撞。
+            #
+            # 规则：**后缀数字就是变体序号**。
+            #   variant 0 → "n"；variant 1 → "nb"；variant 2 → "nb2"；…
+            # 解析侧见 :func:`_verdict_key`（"b2" → variant 2），两边必须一致。
+            tag = n if index == 0 else (f"{n}b" if index == 1 else f"{n}b{index}")
             sentence_blocks.append(f"### 句子 {tag}（对应「原文 {n}」）\n{sentence}")
 
     return "\n\n".join(sentence_blocks) + "\n\n" + source_block
@@ -226,6 +233,8 @@ def _verdict_key(raw_id: object) -> tuple[int, int] | None:
     """把模型回的 id 拆成 ``(脚注号, 变体序号)``。
 
     形如 ``"1"`` → ``(1, 0)``、``"1b"`` → ``(1, 1)``、``"1b2"`` → ``(1, 2)``。
+    规则：**后缀数字就是变体序号**，与 ``_build_user_prompt`` 的 tag 规则
+    一一对应——两边必须一致，否则第 3 个变体永远判不出来。
 
     **不能靠 ``rstrip("b")``**——它把 ``"1b"`` 压成 ``"1"``，
     让同一脚注的两个变体拿到同一个 key（见 :func:`_parse_verdicts` 的说明）。
@@ -233,13 +242,20 @@ def _verdict_key(raw_id: object) -> tuple[int, int] | None:
     认不出来的形态返回 ``None``，由调用方丢弃——宁可少判，不猜。
     """
     text = str(raw_id).strip()
-    m = re.fullmatch(r"(\d+)(b*)", text)
+    # 形如 "1" / "1b" / "1b2" / "1b3" —— 后缀是 "b" 可选跟一个数字。
+    # 注意 ``(b*)`` 不够：它只吃连续的 b，"1b2" 里的 "2" 匹配不上，
+    # 整个 id 会被当成无法对应而丢弃（第 3 个变体就永远判不出来）。
+    m = re.fullmatch(r"(\d+)(?:b(\d*))?", text)
     if m is None:
         return None
-    suffix = m.group(2)
-    # 变体后缀："" → 0，"b" → 1，"b2" → 2。编号只能递增，
-    # "bb"（=1）和 "b3"（=3）这种跳号形态交给 expected_ids 去挡。
-    variant = int(suffix[1:]) if len(suffix) > 1 else (1 if suffix else 0)
+    suffix_num = m.group(2)
+    if suffix_num is None:
+        variant = 0
+    elif suffix_num == "":
+        variant = 1
+    else:
+        # tag 规则是「第 k 句 → nb(k-1)」，所以 "b2" 对应第 3 句 = variant 2。
+        variant = int(suffix_num)
     return int(m.group(1)), variant
 
 
