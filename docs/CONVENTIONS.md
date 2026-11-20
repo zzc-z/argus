@@ -149,10 +149,35 @@ button / card / input / label / badge / sheet / dialog / select / switch / tabs 
 - 键盘导航：Tab / Enter / Esc / Arrow keys 全可用
 - 焦点环：`focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-primary`
 
+> 上面 6 条是**硬底线**，项目已守住。**已实测的深度缺口**（skip link、
+> polite live region、`prefers-reduced-motion` / `forced-colors` 覆盖、
+> 弹层 focus trap、平台 UI 原语的 a11y 语义）逐条带 `file:line` 列在
+> [`TODO-frontend-a11y-platform-ui.md`](./TODO-frontend-a11y-platform-ui.md)——
+> 写浮层组件或改 a11y 前先读它。
+
+## 12.1 环境适配（当前覆盖不足）
+
+| 媒体查询 | 用途 | 现状 |
+|---|---|---|
+| `prefers-reduced-motion` | 关闭非必要动效（vestibular disorders） | 85 个 css 文件里 1 处 |
+| `prefers-contrast` | 强化低对比度描边与次要文字 | 0 处 |
+| `forced-colors` | Windows 高对比度模式兜底 | 0 处 |
+| `prefers-color-scheme` | 系统主题偏好 | **刻意不用**——本项目主题由 `html[data-theme]` 手动切换 |
+
+**主题机制**：`globals.css` 的 `:root` **不**声明 `color-scheme`，
+只有 `html[data-theme='dark']` 声明 `color-scheme: dark`。这是现状，
+不是遗漏——但也意味着亮色模式下原生控件（滚动条、`<select>` 外观）会跟随
+操作系统。修法见 TODO 文档 T1。
+
+**`color-scheme` 与 `light-dark()`**：`light-dark()` 靠 computed `color-scheme`
+判定，与本项目的手动 `data-theme` 切换**不通**——**不要在本项目用 `light-dark()`**。
+
 ## 13. 全局规则速查
 
 - 本文档范围之外 → `~/.claude/rules/{core,coding,tools}.md`
 - 前端开发流程 → `apps/web/CONTRIBUTING.md`
 - 后端开发流程 → `apps/api/CONTRIBUTING.md`
 - 前端 / 后端工具链 → `docs/CODE-QUALITY.md`
+- 前端已实测的 a11y / 主题 / 浮层缺口 → `docs/TODO-frontend-a11y-platform-ui.md`
+- 现代 Web 指导插件的可用范围 → `AGENTS.md §10.1`
 - PRD 设计文档 → `prd/`（只读）

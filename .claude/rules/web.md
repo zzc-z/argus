@@ -99,6 +99,37 @@ paths:
 - **「应该改用 React Server Components」**——架构偏好，
   本项目是 Next.js App Router + 客户端交互的既定选型。
 - **测试代码里的**——快照不精确、mock 缺失。
+- **「应该用 `light-dark()` / `@layer` / 四层 token 命名」**——本项目主题是
+  `html[data-theme]` 手动切换，`light-dark()` 与之不通；token 真源是
+  `tailwind.config.ts`。理由见 `AGENTS.md §10.1`。
+- **「应该用 `modern-web-guidance` 指南里的 X」**——该插件在 argus 只开放
+  a11y / 平台 UI 原语 / 环境适配三块，其余建议不采。
+
+## W8. 已实测的 a11y 缺口（改动碰到对应文件时先看）
+
+以下问题**已经实测并记录在 `docs/TODO-frontend-a11y-platform-ui.md`**，
+每条带 `file:line`：
+
+| 缺口 | 涉及文件 |
+|---|---|
+| 无 skip link | 全局 |
+| 无 polite `aria-live` 区域 | 全局（只有 `role="alert"` 与 1 处 `role="status"`） |
+| `prefers-reduced-motion` 覆盖 1/85 | 全局 |
+| `prefers-contrast` / `forced-colors` 覆盖 0 | 全局 |
+| 3 处 `:focus` 而非 `:focus-visible` | EmailInput / SsoPanel / UrlRssTabs |
+| 弹层无 focus trap / 焦点不归还 | 全局（Esc 只有 PromptInput 一处） |
+| SlashCommandPopover 缺 `aria-activedescendant` | `explore/components/SlashCommandPopover/index.tsx:31` |
+| UserMenu 声明 `role="menu"` 但无方向键导航 | `dashboard/components/UserMenu/index.tsx` |
+| UserMenu 注释里的 `matchMedia` 未实现 | `dashboard/components/UserMenu/index.tsx:24` |
+| FilterDrawer 是 inline `<aside>`，非 dialog 语义 | `reports/components/FilterDrawer/index.tsx` |
+
+**审查判据**：改到对应文件时，**如果改动正好落在缺口上**（比如给 popover 加
+方向键、给弹层加焦点管理），那是对的，不要报。
+如果改动**没碰**缺口而 CR 报「这里缺 skip link」这类——
+那是既有问题（全局 §5.9），**不报**。
+
+**「注释里的技术断言与实现不符」是要报的**（根 `CLAUDE.md` §4）——
+`UserMenu` 的 `matchMedia` 就是一个实例，注释声称做了、实际没做。
 
 ---
 

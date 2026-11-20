@@ -122,6 +122,55 @@ cd apps/web/app/xxx && prettier --write .   # ❌ 把整个仓库都格式化了
 prettier --write "app/(dashboard)/layout.tsx" lib/auth/UserContext.tsx
 ```
 
+### 2.6 工具拦不住的坑（2026-11-21 补）
+
+同样 lint / tsc / build **全绿**，但影响用户体验或可访问性。
+
+#### `transition: all` —— 12 处
+
+```css
+.search {
+  transition: all 150ms ease-out;   /* ❌ */
+}
+```
+
+`all` 会过渡**所有**可动画属性，含 `width` / `height` / `padding` 这类触发
+layout 的属性；将来新增任何属性都会被意外过渡。正解是显式列出：
+
+```css
+.search {
+  transition: background-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+```
+
+实测 12 处：OAuthButton / EmailInput / LoginHeader / SsoPanel / explore\/page /
+UploadDropZone / UrlRssTabs / SourceFilterBar×2 / FilterDrawer / TableCells /
+PageHeader。逐条清单见
+[`TODO-frontend-a11y-platform-ui.md`](./TODO-frontend-a11y-platform-ui.md) §4。
+
+> ⚠️ **全局的 `modern-web-guidance` 插件不覆盖这条**——它的 `css.md` 不谈
+> transition，`forms/brand-consistent-forms.md` 里反而有一处 `transition: all`
+> 示例。这条要自己改。
+
+#### `:root` 不声明 `color-scheme` —— 原生控件跟随系统
+
+`globals.css` 的 `:root` 没有 `color-scheme`，只有
+`html[data-theme='dark']` 声明了 `color-scheme: dark`。后果：亮色模式下
+UA 渲染的原生控件（滚动条、`<select>` / `<input>` 原生外观）**跟随操作系统**——
+系统是暗色时，页面是亮的但滚动条是暗的。
+
+修法是 `:root` 补 `color-scheme: light`（亮色也显式声明，不跟随系统）。
+**不要用 `light-dark()`**——它靠 computed `color-scheme` 判定，跟本项目手动
+`data-theme` 切换不通。
+
+#### 注释里的技术断言与实现不符
+
+实测：`UserMenu` 的注释写「用 `matchMedia` 排除掉纯 hover 的指针类型」，
+但全项目 `grep -rn "matchMedia"` **只命中这行注释**。
+
+这类问题 lint 抓不到，只能靠 review 时对照实现逐条核。
+详见根 `CLAUDE.md` §4。
+
 ## 3. 后端（apps/api/）
 
 ### 3.1 工具链一览
@@ -288,5 +337,6 @@ body / footer 100 字符/行（`body-max-line-length` 已关闭为 `[0]`，不�
 - [CONVENTIONS.md](./CONVENTIONS.md) — 代码风格与设计约定
 - [apps/web/CONTRIBUTING.md](../apps/web/CONTRIBUTING.md) — 前端开发流程
 - [apps/api/CONTRIBUTING.md](../apps/api/CONTRIBUTING.md) — 后端开发流程
+- [TODO-frontend-a11y-platform-ui.md](./TODO-frontend-a11y-platform-ui.md) — 前端已实测的 a11y / 主题 / 浮层缺口
 - [prd/tech-stack.md](../prd/tech-stack.md) — 技术栈锁定版本
 - [AGENTS.md](../AGENTS.md) — 项目 AI agent 协作指南

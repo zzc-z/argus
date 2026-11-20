@@ -87,7 +87,7 @@
 的实证案例。
 
 - **2026-10-15 审计 WORKLOG 的「已知问题」表，四条里三条是假的**——一条引用
-  了项目文档里根本不存在��约定，一条把有意设计当成缺陷，一条描述的问题
+  了项目文档里根本不存在的约定，一条把有意设计当成缺陷，一条描述的问题
   三周前就修好并验证过了
 - **2026-10-13 CR 发现 `UtcDateTime` 的 docstring 写着「SQLite 存的是本机时区，
   历史数据需 UPDATE 修正」——实测 SQLite 的 `CURRENT_TIMESTAMP` 就是 UTC**。
@@ -108,6 +108,12 @@
 - **「本项目应该用某个更流行的库」**——见 §1，本项目的技术选型是刻意的
 - **纯文档改动、纯格式化**
 - 前端 lint 抓得到的（组件文件夹形式、依赖数组、a11y 基础项）→ 不报
+- **「应该用 `light-dark()` / `@layer` / 四层 token 命名」**——本项目的主题是
+  `html[data-theme]` 手动切换，`light-dark()` 靠 computed `color-scheme` 判定，
+  与之不通；token 真源是 `tailwind.config.ts`，引入第二套命名会打架。
+  理由与插件边界见 `AGENTS.md §10.1`
+- **「应该用 `modern-web-guidance` 指南里的 X」**——该插件在 argus 只开放了
+  a11y / 平台 UI 原语 / 环境适配三块，其余建议不采（`AGENTS.md §10.1`）
 
 ## 6. 审查时的项目事实
 
@@ -121,6 +127,14 @@
 - 改 `app/models/*.py` 之后要 `alembic revision --autogenerate` + `upgrade head`。
 - **前端 lint 真的会跑**：`eslint app components lib`，配置在 `apps/web/eslint.config.mjs`。
   （`next lint` 在 Next 16 已废弃，项目用的是 flat config 的 `eslint`。）
+- **主题机制**：`globals.css` 的 `:root` **不**声明 `color-scheme`，只有
+  `html[data-theme='dark']` 声明 `color-scheme: dark`。审查时看到「缺少
+  `color-scheme`」的建议，要先看 §5 的插件边界——**这是现状不是遗漏**，
+  但亮色模式下原生控件跟随系统确实是真问题（待办 T1）。
+- **已实测的 a11y 缺口**（skip link / live region / focus trap / `forced-colors`
+  / 3 处 `:focus` / 平台 UI 原语的 a11y 语义）逐条带 `file:line` 列在
+  `docs/TODO-frontend-a11y-platform-ui.md`——**改到对应文件时先看那里**，
+  别把已知问题当新发现报，也别重复报。
 
 ## 7. 与 AGENTS.md 的分工
 
@@ -132,7 +146,7 @@
 
 | 文件 | 用途 |
 |---|---|
-| `AGENTS.md` | 完整项目规范（人类阅读，26KB，不在审查时加载） |
+| `AGENTS.md` | 完整项目规范（人类阅读，~30KB，不在审查时加载） |
 | `CLAUDE.md`（本文件） | argus 审查规则：项目画像 + 跨模块语义 + 静默失败 + 文档断言 |
 | `.claude/rules/api.md` | argus 后端专项审查规则 |
 | `.claude/rules/web.md` | argus 前端专项审查规则 |

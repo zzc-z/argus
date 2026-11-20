@@ -1,6 +1,6 @@
 # Argus 项目结构
 
-> 最后更新：2026-10-19（Word 支持 + add-sources 修复落地）
+> 最后更新：2026-11-21（按磁盘现状核对：mock 状态、services 拆分、docs 清单）
 > ⚠️ 2026-09 之前本文档描述的是**实施计划**（大量 "W1/W2 待写"），实际早已实现。
 > 现已按磁盘现状重写。
 
@@ -8,13 +8,14 @@
 
 ```
 argus/
-├── prd/                  # 13 份 W0 设计文档
+├── prd/                  # 13 份 W0 设计文档（只读）
 ├── apps/
 │   ├── api/              # FastAPI 后端（uv）
 │   └── web/              # Next.js 16 前端（pnpm）
-├── packages/shared/      # 前后端共享 TS 类型
-├── docs/                 # 项目文档
+├── packages/shared/      # 前后端共享 TS 类型（types/ + schemas/，实际使用很少）
+├── docs/                 # 项目文档（13 份，见下表）
 ├── AGENTS.md             # agent 入口约定
+├── CLAUDE.md             # /code-review 的审查规则依据
 ├── package.json          # 根 monorepo（pnpm workspace + turbo）
 ├── pnpm-workspace.yaml
 ├── turbo.json
@@ -24,55 +25,101 @@ argus/
 > `infra/` 与 `scripts/` 在计划里出现过，**实际不存在**。数据库是 SQLite
 > （`apps/api/argus.db`），无 postgres / redis / nginx。
 
+## docs/ — 项目文档
+
+| 文件 | 作用 |
+|---|---|
+| `STRUCTURE.md` | 本文件。项目结构 |
+| `CONVENTIONS.md` | 代码规范（命名 / 嵌套 / 状态 / a11y / token） |
+| `CODE-QUALITY.md` | 前后端工具链 + 自动化拦截链路 |
+| `LOCAL-DEV.md` | 本地环境。**新会话接手先读这份**——几件「做错不报错、只表现为数据是旧的」的事写在这里 |
+| `DEV-FLOW-ANALYSIS.md` | 开发流程为什么慢：实测数据 + 优化建议 |
+| `TODO-frontend-a11y-platform-ui.md` | 前端待办：a11y 缺口 + 平台 UI 原语 + 主题机制三处问题 |
+| `SPEC-content-filtered-fix.md` | 规格：`llm_content_filtered` 误报 + 检索相关性下限 |
+| `SPEC-run-session.md` | 规格：研究会话（run）与可重连的流 |
+| `SPEC-streaming-typewriter.md` | 规格：explore 页正文真正打字机式流出 |
+| `WORKLOG-frontend-de-mock.md` | 前端去 mock 的进展（**最新章节在最上面**） |
+| `WORKLOG-run-session.md` | 研究会话（run）一轮的进展 |
+| `WORKLOG-streaming-typewriter.md` | 流式打字机 + 滚动跟随 + 错误分类修正的进展 |
+| `HANDOFF-explore-session.md` | 交接：explore 页会话化（2026-11-01 ~ 11-04） |
+
+> `prd/` 是只读的设计文档，**不随实现改动**。
+
 ## apps/api/ — FastAPI 后端
 
-`app/` 下只有 4 个包：
+`app/` 下只有 4 个包 + 4 个顶层模块：
 
 | 路径 | 作用 |
 |---|---|
-| `app/gateway/` | HTTP 路由。`auth` / `sources` / `reports` / `research` / `users` / `health` / `deps`（鉴权依赖） |
-| `app/services/` | 业务逻辑。`parser`（PDF/HTML/TXT/DOCX 解析）、`ingest`（摄取管线）、`chunker`、`embedder`、`retriever`、`vectorstore`、`bm25`、`fetcher`、`citation`、`faithfulness`（Critic 引用校验）、`agent`（LangGraph）、`llm`、`stream`（SSE 编码）、`storage`、`auth`、`token`（JWT）、`tools` |
+| `app/gateway/` | HTTP 路由。`auth` / `dashboard` / `sources` / `reports` / `research` / `users` / `health` / `deps`（鉴权依赖） |
+| `app/services/` | 业务逻辑。34 个模块，见下表 |
 | `app/models/` | SQLAlchemy ORM。`user` / `source` / `report` |
-| `app/schemas/` | Pydantic 出入参。**改 API 前必读**（前端 `SourceV` 等类型与之对应） |
+| `app/schemas/` | Pydantic 出入参。**改 API 前必读**（前端 `lib/api/*.ts` 的类型与之对应） |
+
+`app/services/` 按职责分组：
+
+| 组 | 模块 |
+|---|---|
+| agent 主循环 | `agent`（主循环）、`agent_nodes`（Stage 枚举 / NodeTracker）、`agent_turn`（单轮请求）、`agent_tools`（工具执行与检索上下文）、`agent_ledger`（用量记账）、`agent_failures`、`stages`（Supervisor / Analyst） |
+| 检索 | `retriever` `bm25` `embedder` `vectorstore`（sqlite-vec）`chunker` |
+| 摄取 | `ingest` `parser` `fetcher` `storage` `web_sources` `urls` |
+| 引用与校验 | `citation` `faithfulness`（Critic 引用校验） |
+| 错误分类 | `errors_base` `errors` `errors_tavily` |
+| 其他 | `llm` `stream`（SSE 编码）`persistence` `runs` `tasks` `auth` `token`（JWT）`tools` |
+
+> **agent 编排是手写的**，`agent.py` 的 docstring 明确「不用 LangGraph」。
+> `pyproject.toml` 里声明了 `langgraph` / `langchain-core`，但**代码里一处没用**——
+> 是计划遗留，别以为装了就等于用上了。
 
 | 其他 | 作用 |
 |---|---|
 | `alembic/` `alembic.ini` | DB 迁移。**改了 `app/models/` 必须生成迁移** |
-| `tests/` | pytest，30 个文件 |
+| `eval/` | agent 评测：`calibrate_judge.py`（judge 一致率校准）、`golden.py` + `datasets/golden_v1.jsonl`、`injection_probe.py`、`reports/`（校准与注入探测结果） |
+| `tests/` | pytest，48 个文件 |
 | `scripts/dev_login.py` | 本地造 session（绕过 GitHub OAuth） |
+| `uploads/` | 摄取的原文件落地目录 |
 | `argus.db` | SQLite 数据库文件 |
-| `WORKLOG.md` | **后端开发日志，顶部优先** —— 恢复上下文先读它 |
+| `WORKLOG.md` | **后端开发日志**——⚠️ 正文是 2026-10-19 ~ 11-09 的历史记录，顶部「待办」多处已过期；要当前状态看 `docs/LOCAL-DEV.md` 与代码本身 |
 
 ## apps/web/ — Next.js 16 前端
+
+**无 `app/api/` 路由**——前端只调后端 `http://localhost:8000/api/v1/*`。
 
 ### 路由组
 
 | 路径 | 作用 |
 |---|---|
-| `app/(auth)/login/` | OAuth 登录页 |
+| `app/(auth)/login/` | OAuth 登录页（12 个子组件） |
 | `app/(dashboard)/` | 主应用（`layout.tsx` = 侧边栏 + 顶栏 + `AuthGuard`） |
-| `app/(error)/` | 500 错误页 |
+| `app/(error)/error-500/` | 500 错误页 |
 
-### (dashboard) 页面
+### (dashboard) 页面与数据来源
 
 | 路径 | 后端状态 |
 |---|---|
 | `add-sources/` | ✅ 已接真接口（上传 / URL 建源 / 摄取队列轮询） |
 | `sources/` | ✅ 已接真接口 |
-| `explore/` | ⚠️ 仍有残留 mock（`explore/mock.ts`） |
-| `dashboard/` `topics/` `reports/` `report/[id]/` `notifications/` `settings/` | ❌ 仍用 mock（后端无对应端点） |
-| `components/` | `AuthGuard`（登录守卫）、`UserMenu`（顶栏用户菜单）、`QuickKeys`、`NavLink` |
-| `error-404/` | 静态 404 页 |
+| `explore/` | ✅ 已接真接口（run / SSE 流 / 引用校验面板） |
+| `reports/` `report/[id]/` | ✅ 已接真接口（`fetchReports` / 报告详情） |
+| `dashboard/` | ✅ 已接真接口（`GET /api/v1/dashboard`）——`view.ts` 里的假数据已删，只剩静态文案与映射函数 |
+| `settings/` | ✅ 已接真接口 |
+| `topics/` | 静态导航页（只列「下一步去哪」的三张卡片，无数据） |
+| `notifications/` | ⚠️ 后端无 notifications 表也无查询接口。页面只显示 `NotificationsContext` 推送的真实增量事件；`mock.ts` 里只剩**类型定义与筛选常量**（文件名保留，导入方不动） |
+| `error-404/` | 静态 404 页。`mock.ts` 是诊断快照（原设计的「集群故障」假数据已删——后端一个字段都没有） |
+| `components/` | `AuthGuard`（登录守卫）、`UserMenu`（顶栏用户菜单）、`ServiceStatusCard` / `ServiceStatusPill`、`SessionBadge`、`QuickKeys.tsx` |
 
 ### 共享层
 
 | 路径 | 作用 |
 |---|---|
-| `components/common/` | `PageLayout` `PageHeader` `DataTable` `PlainTable` `TableCells/` `EmptyState` `IconSpan` `SegmentedTab` `StatusDot` `ThemeToggle` `ArgusMark` |
-| `components/ui/` | shadcn 基础组件 |
-| `lib/api/` | `client.ts`（fetch 封装 + SSE）、`sources.ts`（资料 API + 模块级 chunk 缓存） |
+| `components/common/` | 12 个公共组件：`ArgusMark` `DataTable` `EmptyState` `IconSpan` `KbdHint` `PageHeader` `PageLayout` `PlainTable` `SegmentedTab` `StatusDot` `TableCells` `ThemeToggle` |
+| `components/ui/` | shadcn 基础组件（`Button` `Card` `Input` `Label` `Badge` `Separator`） |
+| `lib/api/` | `client.ts`（fetch 封装）、`sse.ts`、`dashboard.ts`、`health.ts`、`reports.ts`、`settings.ts`、`sources.ts` |
 | `lib/auth/` | `UserContext.tsx`（登录态，含 `AuthStatus` 四态） |
-| `lib/notifications/` `lib/theme/` | 通知中心 / 主题 |
+| `lib/notifications/` | `NotificationsContext.tsx` |
+| `lib/theme/` | `ThemeContext.tsx` |
+| `lib/hooks/` | `useStickToBottom.ts` |
+| `lib/markdown/` | `parse.ts` |
 
 ## packages/shared/
 

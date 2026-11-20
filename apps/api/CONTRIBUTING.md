@@ -32,23 +32,39 @@ apps/api/
 │   ├── models/                       # SQLAlchemy ORM
 │   │   ├── base.py  report.py  source.py  user.py
 │   ├── schemas/                      # Pydantic 请求/响应模型
-│   ├── services/                     # 业务逻辑层
+│   │   ├── dashboard.py  health.py  report.py  research.py  source.py  user.py
+│   ├── services/                     # 业务逻辑层（34 个模块）
 │   │   ├── agent.py                  # 多智能体主循环（手写，不用 LangGraph）
+│   │   ├── agent_nodes.py            # Stage 枚举 + NodeTracker 生命周期
+│   │   ├── agent_turn.py             # 单轮请求：拼请求 / 发流式 / 收结果
+│   │   ├── agent_tools.py            # 工具执行与检索上下文
+│   │   ├── agent_ledger.py           # TurnLedger（用量与产出记账）
+│   │   ├── agent_failures.py  stages.py  persistence.py
 │   │   ├── llm.py                    # Anthropic / Tavily 客户端
 │   │   ├── errors.py errors_base.py errors_tavily.py   # 错误分类
 │   │   ├── stream.py                 # SSE 事件契约
 │   │   ├── retriever.py bm25.py embedder.py vectorstore.py
 │   │   ├── ingest.py parser.py fetcher.py chunker.py storage.py
+│   │   ├── web_sources.py urls.py
 │   │   ├── citation.py faithfulness.py
+│   │   ├── runs.py tasks.py auth.py token.py tools.py
 ├── alembic/                          # 数据库 migration
-├── tests/                            # pytest
+├── eval/                             # agent 评测
+│   ├── calibrate_judge.py            # judge 一致率校准（TPR / TNR / Cohen's κ）
+│   ├── golden.py  datasets/golden_v1.jsonl
+│   ├── injection_probe.py            # prompt 注入对照实验
+│   └── reports/                      # 校准与注入探测结果
+├── tests/                            # pytest（48 个文件）
 │   ├── conftest.py
 │   └── ...
+├── scripts/dev_login.py              # 本地造 session（绕过 GitHub OAuth）
+├── uploads/                          # 摄取的原文件落地目录
 ├── pyproject.toml                    # uv + ruff + mypy + pytest
 ├── .ruff.toml                        # ruff 独立配置（保留供 pre-commit 单独跑 ruff）
 ├── .pre-commit-config.yaml           # pre-commit hooks
 ├── py.typed                          # PEP 561 标记
 ├── .gitignore
+├── WORKLOG.md                        # 后端开发日志（⚠️ 顶部待办多处已过期）
 └── README.md
 ```
 
@@ -178,11 +194,12 @@ SQLite 的两个坑：
 - [apps/web/CONTRIBUTING.md](../../apps/web/CONTRIBUTING.md)
 - [docs/CONVENTIONS.md](../../docs/CONVENTIONS.md)
 - [docs/CODE-QUALITY.md](../../docs/CODE-QUALITY.md)
+- [docs/LOCAL-DEV.md](../../docs/LOCAL-DEV.md)
 - [prd/architecture.md](../../prd/architecture.md)
 - [prd/tech-stack.md](../../prd/tech-stack.md)
 - [prd/multi-agent-design.md](../../prd/multi-agent-design.md)
 - [prd/rag-pipeline.md](../../prd/rag-pipeline.md)
-- [prd/security-review.md](../../prd/security-review.md)
+- [prd/risk-and-compliance.md](../../prd/risk-and-compliance.md)
 
 ## 12. 特殊配置文件作用（后端 6 个）
 

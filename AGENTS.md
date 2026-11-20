@@ -15,7 +15,7 @@
 - **设计 token**：50 个 color + 11 个 fontFamily + 11 个 fontSize（precision_technical_light 集）
 - **图标字体**：Google Material Symbols Outlined，**本地 woff2**
   （`apps/web/public/fonts/material-symbols-outlined.woff2`，在 `globals.css` 里 `@font-face`）
-- **代码图谱**：CodeGraph（项目级 MCP server，索引 258 文件）。agent 优先用
+- **代码图谱**：CodeGraph（项目级 MCP server，索引 ~273 文件）。agent 优先用
   `mcp__codegraph__codegraph_explore` 而不是 grep/find
 
 ## 2. 项目结构
@@ -24,22 +24,35 @@
 argus/
 ├── apps/
 │   ├── web/                # Next.js 前端
-│   │   ├── app/           # App Router
+│   │   ├── app/           # App Router（无 app/api/ 路由，只调后端）
 │   │   ├── components/
 │   │   │   ├── ui/        # shadcn CLI 装包自动生成（`pnpm dlx shadcn@latest add ...`）
-│   │   │   └── common/    # 自建公共组件，一个组件一个文件夹
+│   │   │   └── common/    # 自建公共组件，一个组件一个文件夹（12 个）
 │   │   ├── lib/
+│   │   │   ├── api/       # fetch 封装 + SSE + 各域类型
+│   │   │   ├── auth/ notifications/ theme/ hooks/ markdown/
 │   │   │   └── utils.ts   # shadcn CLI init 自动生成（cn = twMerge(clsx(...))）
 │   │   └── ...
 │   └── api/               # FastAPI 后端
 ├── packages/
 │   └── shared/            # 前后端共享类型
 ├── prd/                   # PRD 13 份文档（只读）
-└── docs/
-    ├── STRUCTURE.md       # 项目结构
-    ├── CONVENTIONS.md     # 代码规范（命名 / 嵌套 / 状态 / a11y / 性能）
-    └── CODE-QUALITY.md    # 前后端代码质量控制（工具链 + 自动化拦截）
+└── docs/                  # 13 份项目文档，完整清单见下表
 ```
+
+### docs/ 文档清单
+
+| 文件 | 作用 |
+|---|---|
+| `STRUCTURE.md` | 项目结构（按磁盘现状） |
+| `CONVENTIONS.md` | 代码规范（命名 / 嵌套 / 状态 / a11y / token） |
+| `CODE-QUALITY.md` | 前后端工具链 + 自动化拦截链路 |
+| `LOCAL-DEV.md` | 本地环境。**新会话接手先读这份** |
+| `DEV-FLOW-ANALYSIS.md` | 开发流程为什么慢：实测数据 + 优化建议 |
+| `TODO-frontend-a11y-platform-ui.md` | 前端待办：a11y 缺口 + 平台 UI 原语 + 主题机制 |
+| `SPEC-*.md`（3 份） | 已落地的规格：content-filtered 修复 / 研究会话 / 流式打字机 |
+| `WORKLOG-*.md`（3 份） | 已落地轮次的进展记录（最新章节在最上面） |
+| `HANDOFF-explore-session.md` | 交接：explore 页会话化（2026-11-01 ~ 11-04） |
 
 ## 6. 项目硬配置（Hard Gate）
 
@@ -211,7 +224,7 @@ CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类
 **本项目的两次踩坑（实证）**：
 
 - 2026-10-15 审计 WORKLOG 的「已知问题」表，四条里**三条是假的**——一条引用了
-  项目文档里根本不存在��约定，一条把有意设计当成缺陷，一条描述的问题三周前
+  项目文档里根本不存在的约定，一条把有意设计当成缺陷，一条描述的问题三周前
   就修好并验证过了
 - 2026-10-13 CR 发现 `UtcDateTime` 的 docstring 写着「SQLite 存的是本机时区，
   历史数据需 UPDATE 修正」——实测 SQLite 的 `CURRENT_TIMESTAMP` **就是 UTC**。
@@ -239,6 +252,41 @@ CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类
   `apps/web/components/ui/`——所有新功能优先用这些组件，不要重新发明
 - **调研不超过 5 个回合**——超过就停下来问用户
 
+### 10.1 现代 Web 指导插件（`modern-web-guidance`）
+
+全局已装 `modern-web-guidance@googlechrome`（v1.0.1，user scope）。它是
+**纯 skill**——无 hook、无 MCP、无自动注入，只在 agent 主动
+`npx modern-web-guidance@latest search|retrieve` 时把指南拉进 context。
+
+**遥测已关**：`~/.claude/settings.json` 的 `env` 块设了 `DISABLE_TELEMETRY=1`
+（默认会上报 agent 的搜索词原文 + retrieve 的 guide_id 到 Google Clearcut）。
+
+**在本项目只用这几块**：
+
+- 可访问性深度（`accessibility/accessibility.md`）——现有规则（W7 + `cr-react.md` R7）
+  只到硬底线，缺 skip link / live region / focus 管理 / forced-colors
+- 平台 UI 原语（`ui-components/dialog.md`、`ui-components/menu.md`、
+  `ui-behaviors/declarative-dialog-popover-control.md`）——argus 手写了
+  SlashCommandPopover 与 UserMenu 的 a11y 语义
+- 环境适配（`visual-design/color.md` 的 forced-colors / prefers-contrast、
+  `ui-behaviors/motion.md` 的 prefers-reduced-motion）
+
+**明确不用这三块**（照搬会破坏本项目的规范或架构）：
+
+| 不用 | 原因 |
+|---|---|
+| CSS 架构（`@layer` / `:scope` / 四层 token 命名） | 会引入第二套 token 命名，跟 `tailwind.config.ts`（唯一真源）打架 |
+| dark mode 主题机制（`light-dark()`） | `light-dark()` 靠 computed `color-scheme` 判定，跟本项目手动 `data-theme` 切换**不通**。本项目 `:root` 不声明 `color-scheme`、只由 `html[data-theme='dark']` 声明 `color-scheme: dark` |
+| token 体系整体重构 | `css.md` 的四层 token 与本项目的 `var(--token-xxx, #fallback)` 桥接层不同源 |
+
+**指南的技术栈是 vanilla HTML/CSS/JS**——`grep -ril "tailwind|shadcn|radix"`
+在 `skills/` 里只命中 SKILL.md 自己一行。本项目是 CSS Modules 主力
+（`styles.` 引用 1037 处 vs Tailwind class 57 处）+ shadcn/ui + Tailwind v3，
+**指南的代码示例要自己翻译，不要直接粘**。
+
+**冲突时以本项目规则为准**（§16 组件开发规范 + `docs/CONVENTIONS.md`）。
+相关待办见 `docs/TODO-frontend-a11y-platform-ui.md`。
+
 ## 11. 文档自动更新机制
 
 **触发场景**：当以下情况之一发生时，**必须**同步更新相关文档：
@@ -250,6 +298,9 @@ CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类
 5. **修改 git hooks / husky 配置** → 更新 `docs/CODE-QUALITY.md §2 前端` + `AGENTS.md §6 硬配置`
 6. **修改设计 token（Tailwind config）** → 更新 `apps/web/CONTRIBUTING.md § 设计 token` + `AGENTS.md §8`
 7. **修改 commit message 规范** → 更新 `docs/CODE-QUALITY.md §4 commit` + `AGENTS.md §6 Conventional Commits`
+8. **新增 `docs/` 下的文档** → 更新 `docs/STRUCTURE.md § docs/ 文档清单` + `AGENTS.md §2 docs/ 文档清单`
+9. **新增 / 移除 agent 侧工具（Claude Code 插件、skill、MCP server）** → 更新
+   `AGENTS.md §10 协作约定`（写清**在本项目里能用哪几块、不能用哪几块**）+ `CLAUDE.md`（若涉及审查规则）
 
 **检查清单**（提交前自检）：
 
@@ -485,5 +536,7 @@ Compiler 会自动做记忆化，届时 `useCallback` / `useMemo` 大部分不�
 - [apps/api/CONTRIBUTING.md](./apps/api/CONTRIBUTING.md)
 - [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)
 - [docs/CODE-QUALITY.md](./docs/CODE-QUALITY.md)
+- [docs/LOCAL-DEV.md](./docs/LOCAL-DEV.md)
 - [docs/DEV-FLOW-ANALYSIS.md](./docs/DEV-FLOW-ANALYSIS.md)
+- [docs/TODO-frontend-a11y-platform-ui.md](./docs/TODO-frontend-a11y-platform-ui.md)
 - [prd/PRD 总览](./prd/README.md)

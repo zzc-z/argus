@@ -20,12 +20,13 @@ cd apps/web && pnpm install
 
 ```
 apps/web/
-├── app/                              # Next.js App Router
-│   ├── layout.tsx                    # 根 layout，含 metadata + font link + body className
-│   ├── globals.css                   # 全局样式 + 字体声明
-│   └── (auth)/
-│       └── login/
-│           └── page.tsx              # 登录页（拆分前是单文件，拆后是 7 个子组件）
+├── app/                              # Next.js App Router（无 app/api/ 路由，只调后端）
+│   ├── layout.tsx                    # 根 layout，含 metadata + next/font + body className
+│   ├── globals.css                   # 全局 token + 字体声明（Material Symbols @font-face）
+│   ├── icon.svg                      # favicon
+│   ├── (auth)/login/                 # 登录页（12 个子组件）
+│   ├── (dashboard)/                  # 主应用（layout = 侧边栏 + 顶栏 + AuthGuard）
+│   └── (error)/error-500/            # 500 错误页
 ├── public/                           # 静态资源
 │   └── fonts/material-symbols-outlined.woff2   # Material Symbols 本地字体
 ├── eslint.config.mjs                 # ESLint flat config
@@ -40,12 +41,18 @@ apps/web/
 ├── tailwind.config.ts                # Tailwind v3.4.19 配置（50 color + 11 font + 11 size token）
 ├── postcss.config.js                 # PostCSS + tailwindcss + autoprefixer
 ├── components.json                   # shadcn CLI 配置（new-york + baseColor:custom + cssVariables:true）
-├── lib/                              # 工具函数
+├── lib/                              # 共享层
+│   ├── api/                          # client.ts（fetch 封装）+ sse.ts + 各域类型与调用
+│   ├── auth/                         # UserContext.tsx（登录态，含 AuthStatus 四态）
+│   ├── notifications/                # NotificationsContext.tsx
+│   ├── theme/                        # ThemeContext.tsx
+│   ├── hooks/                        # useStickToBottom.ts
+│   ├── markdown/                     # parse.ts
 │   └── utils.ts                      # cn = twMerge(clsx(...))
 └── components/                       # 业务组件
-    ├── ui/                           # shadcn CLI 装的组件（W1 已装 button/card/input/label）
+    ├── ui/                           # shadcn CLI 装的组件（Button/Card/Input/Label/Badge/Separator）
     │                                 # 绝对禁止手改，统一走 pnpm dlx shadcn@latest add
-    └── ...                           # 手写业务组件（W2+ 启用）
+    └── common/                       # 自建公共组件，12 个（一个组件一个文件夹）
 ```
 
 ## 4. 开发命令
@@ -144,6 +151,30 @@ CLI 自动做的事：
 - 颜色对比度 ≥ 4.5:1（WCAG AA）
 - 键盘导航：Tab / Enter / Esc / Arrow keys 全可用
 
+### 12.1 已实测的缺口（2026-11-21）
+
+上面 5 条是**硬底线**，项目已守住。以下是实测出的**深度缺口**，逐条带
+`file:line`，待办清单见
+[`docs/TODO-frontend-a11y-platform-ui.md`](../../docs/TODO-frontend-a11y-platform-ui.md)：
+
+- 无 skip link
+- 无 polite `aria-live` 区域（只有 `role="alert"` 与 1 处 `role="status"`）
+- `prefers-reduced-motion` 覆盖 1/85 个 css 文件
+- `prefers-contrast` / `forced-colors` 覆盖 0
+- 3 处 `:focus` 而非 `:focus-visible`（EmailInput / SsoPanel / UrlRssTabs）
+- 弹层无 focus trap / 焦点不归还（Esc 只有 1 处处理）
+
+### 12.2 平台 UI 原语
+
+`SlashCommandPopover` 与 `UserMenu` 手写了 listbox / menu 的 a11y 语义，但：
+
+- SlashCommandPopover 缺 `aria-activedescendant`（读屏不知道当前高亮第几项）
+- UserMenu 声明 `role="menu"` 却无方向键导航
+- UserMenu 的注释声称用 `matchMedia` 排除纯 hover 指针类型——**该实现不存在**
+
+**写新的浮层组件前**先查全局的 `modern-web-guidance` 插件（`<dialog>` / popover
+/ anchor positioning 原生方案），用法与边界见 `AGENTS.md §10.1`。
+
 ## 13. 测试
 
 待 Vitest / React Testing Library 启用后配。本期 W1 仅 `apps/api/tests/test_smoke.py`（pytest）。
@@ -173,5 +204,6 @@ CLI 自动做的事：
 - [apps/api/CONTRIBUTING.md](../../apps/api/CONTRIBUTING.md)
 - [docs/CONVENTIONS.md](../../docs/CONVENTIONS.md)
 - [docs/CODE-QUALITY.md](../../docs/CODE-QUALITY.md)
+- [docs/TODO-frontend-a11y-platform-ui.md](../../docs/TODO-frontend-a11y-platform-ui.md)
 - [prd/tech-stack.md](../../prd/tech-stack.md)
 - [shadcn/ui 文档](https://ui.shadcn.com)
