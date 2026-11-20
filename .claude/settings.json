@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "codegraph.cmd prompt-hook"
+            "command": "codegraph prompt-hook"
           }
         ]
       }
