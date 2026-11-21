@@ -335,6 +335,7 @@ def _location_suffix(ref: Reference) -> str:
     return f"（第 {ref.chunk_index + 1} 段）"
 
 
+
 def _clip(content: str) -> str:
     return (
         content
@@ -384,6 +385,20 @@ def extract_cited_sentences(text: str) -> dict[int, list[str]]:
                 number = int(raw.strip())
                 result.setdefault(number, []).append(sentence)
     return result
+
+
+def extract_footnote_numbers(sentence: str) -> list[int]:
+    """抽出**一句话**里带的角标编号。
+
+    :func:`extract_cited_sentences` 给的是「编号 → 句子」的映射，方向相反；
+    这里要的是「这句话引用了哪几条」。数字一致性检查拿这句话引用的
+    **全部**原文来比对——只用其中一条会把另一条原文提供的数字误判成编造。
+    """
+    numbers: list[int] = []
+    for group in _FOOTNOTE_RE.findall(sentence):
+        for raw in group.split(","):
+            numbers.append(int(raw.strip()))
+    return numbers
 
 
 def count_citation_markers(text: str) -> dict[int, int]:

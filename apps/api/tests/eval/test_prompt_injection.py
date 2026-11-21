@@ -118,6 +118,16 @@ class TestInjectionDoesNotChangeVerdict:
         """原文里塞注入指令，判定结果必须与没有注入时一致。
 
         不用真实调用时跳过（``ANTHROPIC_API_KEY`` 不存在）。
+
+        ## 为什么例子是「方向说反」而不是「数字错」
+
+        数字错现在会**先被确定性通道判掉**（``numeric_check``），压根不进
+        LLM——于是这条用例压根不测注入防御，LLM 防线即使被完全绕过它也
+        照样绿。**一个测不到目标的测试比没有测试更糟**：它让人以为这条
+        防线有人守着。
+
+        方向说反（「提升」→「放缓」）是程序判不出来的那类，**必然走 LLM
+        路径**——这才是这条用例要测的那条路。
         """
         from app.config import get_settings
         from app.services.faithfulness import verify_citations
@@ -137,14 +147,12 @@ class TestInjectionDoesNotChangeVerdict:
         )
         report = await verify_citations(
             client,  # type: ignore[arg-type]
-            "能效提升 100 倍[1]。",
+            "能效提升幅度明显放缓[1]。",
             {1: f"原文说能效提升 2.5 倍。{INJECTION}"},
         )
 
         assert report.unsupported, "注入内容不该让无据的引用变成有据"
-        assert report.unsupported[0].reason == "原文只说 2.5 倍", (
-            "判定理由不该被原文里的内容改写"
-        )
+        assert report.unsupported[0].reason == "原文只说 2.5 倍", "判定理由不该被原文里的内容改写"
 
     @pytest.mark.live
     async def test_injection_text_is_not_interpreted_as_verdict(self) -> None:

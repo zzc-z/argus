@@ -46,8 +46,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import DocumentChunk
-from app.services.citation import Reference, extract_cited_sentences
+from app.services.citation import (
+    Reference,
+    extract_cited_sentences,
+    extract_footnote_numbers,
+)
 from app.services.llm import model_for
+from app.services.numeric_check import check_numeric_consistency
 
 if TYPE_CHECKING:
     from anthropic import AsyncAnthropic
@@ -131,6 +136,76 @@ JUDGE_PROMPT = """你是一个研报引用审核员。给定报告里若干条�
 {"verdicts": [{"id": 1, "verdict": "supported", "reason": "..."}]}"""
 
 
+def _variant_tag(footnote: int, variant_index: int) -> str:
+    """变体 tag。
+
+    规则：**后缀数字就是变体序号**。
+      variant 0 → "n"；variant 1 → "nb"；variant 2 → "nb2"；…
+
+    解析侧见 :func:`_verdict_key`（"b2" → variant 2），两边必须一致。
+    """
+    if variant_index == 0:
+        return str(footnote)
+    if variant_index == 1:
+        return f"{footnote}b"
+    return f"{footnote}b{variant_index}"
+
+
+def _all_items(
+    sentences: dict[int, list[str]],
+    verifiable: Sequence[int],
+) -> list[tuple[int, int, str]]:
+    """列出全部待判条目：``(脚注号, 变体序号, 句子)``。
+
+    变体序号是**原始序号**（脚注下第几句），不是「过滤后的第几个」——
+    剔除条目后重新编号会让模型的 id 与变体错位。
+    """
+    return [
+        (footnote, variant_index, sentence)
+        for footnote in verifiable
+        for variant_index, sentence in enumerate(sentences[footnote])
+    ]
+
+
+def _sentence_of(
+    sentences: dict[int, list[str]],
+    footnote: int,
+    variant_index: int,
+) -> str:
+    """取某个变体对应的原句。"""
+    return sentences[footnote][variant_index]
+
+
+def _numeric_unsupported(
+    sentences: dict[int, list[str]],
+    numeric_hits: dict[tuple[int, int], str],
+) -> list[Unsupported]:
+    """把确定性通道的结论转成 unsupported 列表。"""
+    return [
+        Unsupported(
+            footnote=footnote,
+            variant=variant_index,
+            sentence=_sentence_of(sentences, footnote, variant_index),
+            reason=reason,
+        )
+        for (footnote, variant_index), reason in numeric_hits.items()
+    ]
+
+
+def _numeric_detail(sentence: str, sources: dict[int, str]) -> str:
+    """跑确定性数字通道，返回不一致原因；判不出时返回空串。
+
+    比对的是这句话引用的**全部**原文：一句带多个角标时，它的数字可能
+    来自任意一条。只拿其中一条比对，会把另一条提供的数字误判成编造。
+    """
+    footnotes = [n for n in extract_footnote_numbers(sentence) if n in sources]
+    if not footnotes:
+        return ""
+    combined = "\n".join(sources[n] for n in footnotes)
+    verdict = check_numeric_consistency(sentence, combined)
+    return verdict.detail if verdict.mismatch else ""
+
+
 def _build_user_prompt(
     sentences: dict[int, list[str]],
     sources: dict[int, str],
@@ -140,25 +215,42 @@ def _build_user_prompt(
     逐条独立判定，不让句子之间互相参考——否则模型会看到「同一 chunk 的
     其他句子都被判 supported」，倾向于给剩下的也判 supported。
     """
-    # 原文独立成块、句子按编号引用——同一 chunk 被多条句子引用时只贴一次。
+    items = [
+        (n, index, sentence)
+        for n, variants in sorted(sentences.items())
+        for index, sentence in enumerate(variants)
+    ]
+    return _build_user_prompt_items(items, sources)
+
+
+def _build_user_prompt_items(
+    items: Sequence[tuple[int, int, str]],
+    sources: dict[int, str],
+) -> str:
+    """把待判条目拼成 prompt。
+
+    ``items`` 是 ``(脚注号, 变体序号, 句子)``。
+
+    **变体序号必须是原始序号**，不能用「剔完之后的第几个」——确定性
+    通道会先剔掉一批条目，若按新位置编号，模型回的 id 就错位到了别的
+    变体上，判定张冠李戴（而「同一脚注多句」正是这个项目出过真实事故
+    的地方）。
+
+    原文独立成块、句子按编号引用——同一 chunk 被多条句子引用时只贴一次。
     #
     # 早先的写法是「每条句子后面紧跟它的原文全文」，同一 chunk 引用 3 次
     # 就贴 3 遍。报告 20 条引用挤在 10 个 chunk 上时，重复占 prompt 的
     # 六成，而 FTS 的 chunk 上限 512 字符，重复量是线性叠加的。
+    """
     source_block = "\n\n".join(f"### 原文 {n}\n{text}" for n, text in sorted(sources.items()))
 
     sentence_blocks = []
-    for n, variants in sorted(sentences.items()):
-        for index, sentence in enumerate(variants):
-            # 变体 tag 必须**每个都唯一**。早先所有非首变体都叫 f"{n}b"，
-            # 于是同一脚注的**第 2 句与第 3 句拿到同一个 tag**——模型对这两句
-            # 只能给一个判定，第 3 句的判定要么丢失、要么与第 2 句碰撞。
-            #
-            # 规则：**后缀数字就是变体序号**。
-            #   variant 0 → "n"；variant 1 → "nb"；variant 2 → "nb2"；…
-            # 解析侧见 :func:`_verdict_key`（"b2" → variant 2），两边必须一致。
-            tag = n if index == 0 else (f"{n}b" if index == 1 else f"{n}b{index}")
-            sentence_blocks.append(f"### 句子 {tag}（对应「原文 {n}」）\n{sentence}")
+    for footnote, variant_index, sentence in items:
+        # 变体 tag 必须**每个都唯一**。早先所有非首变体都叫 f"{n}b"，
+        # 于是同一脚注的**第 2 句与第 3 句拿到同一个 tag**——模型对这两句
+        # 只能给一个判定，第 3 句的判定要么丢失、要么与第 2 句碰撞。
+        tag = _variant_tag(footnote, variant_index)
+        sentence_blocks.append(f"### 句子 {tag}（对应「原文 {footnote}」）\n{sentence}")
 
     return "\n\n".join(sentence_blocks) + "\n\n" + source_block
 
@@ -300,13 +392,44 @@ async def verify_citations(
             reason="引用表里没有对应原文",
         )
 
+    # ── 确定性通道：数字 ──────────────────────────────────
+    #
+    # **先跑程序、再跑模型**。数字类断言是可以被程序精确比对的，而它
+    # 恰恰是 CRITIC 最致命、也最容易被模型漏判的一类（实测嵌入相似度
+    # 0.9996，方向说反 0.9866——两类都抓不到）。
+    #
+    # 确定性通道**只做减法**：判「不一致」时直接给 unsupported，判不出
+    # 就完全交给 LLM，它**从不产生 supported**（那需要语义对应关系，
+    # 程序做不了）。
+    #
+    # 命中确定性的条目**不进 LLM**——送进去只会让模型重复判定一遍，
+    # 还可能给出一个与程序相反的结论，把确定性的判据架空。
+    numeric_hits: dict[tuple[int, int], str] = {}
+    llm_items: list[tuple[int, int, str]] = []
+    for footnote, variant_index, sentence in _all_items(sentences, verifiable):
+        detail = _numeric_detail(sentence, sources)
+        if detail:
+            numeric_hits[(footnote, variant_index)] = detail
+        else:
+            llm_items.append((footnote, variant_index, sentence))
+
     # max_tokens 必须**按待判条数给**。硬编码 2048 时，20 条引用各带一句
     # 中文 reason 会被截断——JSON 不完整 → 解析抛异常 → 整批判定被丢弃，
     # 用户看到「无法校验」。而截断是**配置问题**，不是模型判不了，
     # 两者混在一起会让排查方向完全跑偏。
     #
     # 每条判定含 id + verdict + 中文 reason，约 150 tokens；留 2 倍余量。
-    expected_count = sum(len(sentences[n]) for n in verifiable)
+    expected_count = len(llm_items)
+    if expected_count == 0:
+        # 全部条目都被确定性通道判掉了——没有要问模型的，也就不用调模型。
+        # 仍要返回真实结论（不是 skipped）：这些条目**判定过了**。
+        return FaithfulnessReport(
+            checked=len(numeric_hits),
+            supported=0,
+            unsupported=_numeric_unsupported(sentences, numeric_hits),
+            missing=list(missing),
+            skipped=False,
+        )
     max_tokens = max(2048, expected_count * 300)
     request: dict[str, Any] = {
         # 走**统一路由**（``llm.model_for``），不自己读配置。
@@ -322,7 +445,7 @@ async def verify_citations(
         "messages": [
             {
                 "role": "user",
-                "content": _build_user_prompt({n: sentences[n] for n in verifiable}, sources),
+                "content": _build_user_prompt_items(llm_items, sources),
             }
         ],
     }
@@ -356,10 +479,11 @@ async def verify_citations(
 
     # expected 是「(脚注号, 变体序号)」的集合。同一脚注被多个句子引用时，
     # 每个句子都是一条独立待判项——这是「逐条判定」的前提。
-    expected = set()
-    for n in verifiable:
-        for variant_index in range(len(sentences[n])):
-            expected.add((n, variant_index))
+    #
+    # **只含送进 LLM 的那些条目**：被确定性通道判掉的条目压根没进 prompt，
+    # 模型不可能回它们的 id，把它们算进 expected 会让「没判出的条数」
+    # 被误算成模型漏判。
+    expected = {(footnote, variant_index) for footnote, variant_index, _ in llm_items}
     verdicts = _parse_verdicts(raw, expected)
 
     # **解析失败与「模型没给判定」要分开**。两者都表现为「没拿到 verdict」，
@@ -387,25 +511,31 @@ async def verify_citations(
     passed = 0
     unsupported: list[Unsupported] = []
     unjudged: list[tuple[int, int]] = []
-    for n in verifiable:
-        for variant_index, sentence in enumerate(sentences[n]):
-            verdict = verdicts.get((n, variant_index))
-            if verdict is None:
-                # 模型没回这条。**必须从分母里剔除**——留在 checked 里会让
-                # 「通过 3 条、0 条未支撑」这种自相矛盾的数字出现，而且分母
-                # 永远不减、通过率系统性偏低。
-                unjudged.append((n, variant_index))
-                continue
-            ok, reason = verdict
-            if ok:
-                passed += 1
-            else:
-                # **报告的必须是实际被判定的那一句**。早先这里恒用
-                # `sentences[n][0]`，同一脚注的第二句即便判定为无据，
-                # 报出来的也是第一句——用户按提示去原文找不到问题。
-                unsupported.append(
-                    Unsupported(footnote=n, variant=variant_index, sentence=sentence, reason=reason)
+    for footnote, variant_index, sentence in llm_items:
+        verdict = verdicts.get((footnote, variant_index))
+        if verdict is None:
+            # 模型没回这条。**必须从分母里剔除**——留在 checked 里会让
+            # 「通过 3 条、0 条未支撑」这种自相矛盾的数字出现，而且分母
+            # 永远不减、通过率系统性偏低。
+            unjudged.append((footnote, variant_index))
+            continue
+        ok, reason = verdict
+        if ok:
+            passed += 1
+        else:
+            # **报告的必须是实际被判定的那一句**。早先这里恒用
+            # `sentences[n][0]`，同一脚注的第二句即便判定为无据，
+            # 报出来的也是第一句——用户按提示去原文找不到问题。
+            unsupported.append(
+                Unsupported(
+                    footnote=footnote, variant=variant_index, sentence=sentence, reason=reason
                 )
+            )
+
+    # 确定性通道判掉的条目**计入分母**——它们判定过了，且结论明确。
+    # 不计入会让通过率虚高：程序判出 3 条数字全错，分母里却只有模型
+    # 判的那几条，用户看到的通过率不是真实结论。
+    unsupported.extend(_numeric_unsupported(sentences, numeric_hits))
 
     if unjudged and not passed and not unsupported:
         # 全都没判出来——这是「无法校验」，不是「全部无据」。
@@ -419,7 +549,7 @@ async def verify_citations(
         )
 
     return FaithfulnessReport(
-        checked=len(expected) - len(unjudged),
+        checked=len(expected) - len(unjudged) + len(numeric_hits),
         supported=passed,
         unsupported=unsupported,
         missing=list(missing),

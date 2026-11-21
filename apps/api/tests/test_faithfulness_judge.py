@@ -148,9 +148,7 @@ class TestVerifyCitationsCounting:
         这类错误**不能混进通过率**：它既不是「无据支撑」，也不是
         「无法核对」——它是引用表与正文不一致。
         """
-        client = _client(
-            '{"verdicts": [{"id": "1", "verdict": "supported", "reason": "ok"}]}'
-        )
+        client = _client('{"verdicts": [{"id": "1", "verdict": "supported", "reason": "ok"}]}')
 
         report = await verify_citations(
             client,  # type: ignore[arg-type]
@@ -272,9 +270,7 @@ class TestVerifyCitationsDenominator:
         留在 ``checked`` 里会出现「通过 1 条、0 条未支撑」这种自相矛盾
         的数字，而且分母永远不减 → 通过率系统性偏低。
         """
-        client = _client(
-            '{"verdicts": [{"id": "1", "verdict": "supported", "reason": "ok"}]}'
-        )
+        client = _client('{"verdicts": [{"id": "1", "verdict": "supported", "reason": "ok"}]}')
 
         report = await verify_citations(
             client,  # type: ignore[arg-type]
@@ -394,3 +390,151 @@ class TestVerifyCitationsMaxTokens:
         await verify_citations(client, "一句话[1]。", {1: "原文"})  # type: ignore[arg-type]
 
         assert client.messages.calls[0]["max_tokens"] >= 2048
+
+
+# ── 确定性数字通道的接线 ──────────────────────────────────────
+
+
+class TestNumericChannelWiring:
+    """确定性通道必须**真的接在** ``verify_citations`` 上。
+
+    ``test_numeric_consistency.py`` 测的是纯函数；这里测的是**接线**——
+    判出不一致的条目是否真的绕过了 LLM、是否真的进了 unsupported、
+    分母是否算对了。
+
+    接线漏了的话，纯函数测试全绿而用户看到的通过率仍然是错的。
+    """
+
+    async def test_numeric_mismatch_bypasses_llm(self) -> None:
+        """量级错的条目不进 LLM，直接给 unsupported。"""
+        client = _client(
+            '{"verdicts": [{"id": "1", "verdict": "supported", "reason": "假装有据"}]}'
+        )
+
+        report = await verify_citations(
+            client,  # type: ignore[arg-type]
+            "能效提升 100 倍[1]。",
+            {1: "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍。"},
+        )
+
+        assert report.skipped is False
+        assert report.checked == 1
+        assert report.supported == 0
+        assert len(report.unsupported) == 1
+        assert "量级" in report.unsupported[0].reason
+        # **LLM 压根没被问**——模型回什么都不影响结论。
+        assert client.messages.calls == [], "确定性通道判掉的条目不该进 LLM"
+
+    async def test_numeric_mismatch_counts_in_denominator(self) -> None:
+        """确定性通道判出的条目**计入分母**。
+
+        不计入会让通过率虚高：程序判出 1 条数字全错，分母里却只有模型
+        判的那几条，用户看到的通过率不是真实结论。
+        """
+        # 第 1 句被确定性通道判掉，第 2 句进 LLM——模型只会看到第 2 句，
+        # 所以回的 id 是 "2" 而不是 "1"。
+        client = _client('{"verdicts": [{"id": "2", "verdict": "supported", "reason": "有据"}]}')
+
+        report = await verify_citations(
+            client,  # type: ignore[arg-type]
+            "能效提升 100 倍[1]。工艺由台积电代工[2]。",
+            {
+                1: "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍。",
+                2: "该工艺由三星代工。",
+            },
+        )
+
+        assert report.checked == 2, "两条都要进分母"
+        assert report.supported == 1
+        assert report.pass_rate == 0.5
+        assert len(report.unsupported) == 1
+
+    async def test_llm_judged_items_keep_original_variant_index(self) -> None:
+        """确定性通道剔掉一条后，剩下的**变体序号不能重排**。
+
+        重排会让模型回的 id 落到别的变体上——同一个脚注的第 2 句被判成
+        第 3 句，结论张冠李戴。这正是这个项目出过真实事故的地方。
+        """
+        client = _client('{"verdicts": [{"id": "1b", "verdict": "supported", "reason": "有据"}]}')
+
+        report = await verify_citations(
+            client,  # type: ignore[arg-type]
+            "营收增长 100 倍[1]。营收增长 2.5 倍[1]。",
+            {1: "营收增长 2.5 倍"},
+        )
+
+        # 第 1 句（100 倍）被确定性通道判掉，第 2 句进 LLM。
+        # LLM 必须看到「1b」这个 tag——原始变体序号是 1，不是剔除后的 0。
+        sent = client.messages.calls[0]
+        assert "### 句子 1b（" in sent["messages"][0]["content"], (
+            "变体序号被重排了——模型回的 id 会落到别的变体上"
+        )
+        assert report.checked == 2
+        assert report.supported == 1
+        assert len(report.unsupported) == 1
+        assert "100 倍" in report.unsupported[0].sentence
+
+    async def test_undetectable_numbers_still_go_to_llm(self) -> None:
+        """程序判不出的数字**照旧交给 LLM**——确定性通道只做减法。"""
+        client = _client('{"verdicts": [{"id": "1", "verdict": "supported", "reason": "有据"}]}')
+
+        report = await verify_citations(
+            client,  # type: ignore[arg-type]
+            "营收同比增长 25%[1]。",
+            {1: "公司本季度营业收入 32.1 亿美元，同比增长 22%。"},
+        )
+
+        assert len(client.messages.calls) == 1, "判不出的必须进 LLM"
+        assert report.checked == 1
+        assert report.supported == 1
+
+    async def test_all_items_numeric_mismatch_skips_llm_call(self) -> None:
+        """全部条目都被确定性通道判掉 → 不调模型，且**不是 skipped**。
+
+        这些条目判定过了，结论明确——报成「无法校验」是错的。
+        """
+        client = _client("{}")
+
+        report = await verify_citations(
+            client,  # type: ignore[arg-type]
+            "能效提升 100 倍[1]。",
+            {1: "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍。"},
+        )
+
+        assert client.messages.calls == [], "没有要问模型的就不该调模型"
+        assert report.skipped is False
+        assert report.checked == 1
+        assert report.supported == 0
+        assert len(report.unsupported) == 1
+
+    async def test_multi_footnote_sentence_uses_all_sources(self) -> None:
+        """一句带多个角标时，比对要用**全部**引用的原文。
+
+        只用其中一条比对，另一条提供的数字会被误判成编造。
+        """
+        client = _client('{"verdicts": [{"id": "1", "verdict": "supported", "reason": "有据"}]}')
+
+        report = await verify_citations(
+            client,  # type: ignore[arg-type]
+            "营收 32.1 亿美元[1][2]。",
+            {1: "公司本季度营业收入 32.1 亿美元。", 2: "净利润 8.2 亿美元。"},
+        )
+
+        assert report.unsupported == [], "另一条原文提供的数字不该被当成编造"
+        assert report.checked == 1
+
+    async def test_numeric_mismatch_reason_names_the_numbers(self) -> None:
+        """判定理由要能说清是哪个数对不上。
+
+        只说「数字不一致」的话，用户拿到报告也不知道要去原文核对什么。
+        """
+        client = _client("{}")
+
+        report = await verify_citations(
+            client,  # type: ignore[arg-type]
+            "能效提升 100 倍[1]。",
+            {1: "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍。"},
+        )
+
+        reason = report.unsupported[0].reason
+        assert "100" in reason and "2.5" in reason, f"理由里要带上具体的数：{reason}"
