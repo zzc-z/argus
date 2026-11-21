@@ -28,6 +28,18 @@ class ReportCitationV(BaseModel):
     title: str
     excerpt: str
     cite_count: int = Field(description="该切片在这份报告里被引用了几次")
+    version_label: str = Field(
+        default="",
+        description="资料版本标记，如「第 2 版」。空串 = 无版本信息。",
+    )
+    """版本标记。
+
+    同名资料的引用角标在页面上长得一模一样——两份都叫「张建鹏简历.pdf」
+    时，用户点角标才发现跳到了不同的原文。带上版本标记才能分辨。
+
+    空串 = 没有值得显示的版本信息（不参与分组，或它是该组的第 1 版）。
+    理由见 ``app.services.grouping.version_label``。
+    """
 
 
 class ReportSummaryV(BaseModel):

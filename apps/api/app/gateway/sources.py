@@ -45,7 +45,7 @@ from app.schemas.source import (
     SourceListResponse,
     SourceResponse,
 )
-from app.services import storage
+from app.services import grouping, source_versions, storage
 from app.services.fetcher import FetchError, fetch_for_ingest
 from app.services.ingest import IngestError, ingest, mark_failed
 from app.services.vectorstore import get_vector_engine
@@ -96,24 +96,24 @@ async def upload_source(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "文件内容为空")
 
     try:
-        stored = storage.save_upload(payload, file.filename or "upload")
+        source = await source_versions.create_source_from_upload(
+            db,
+            user_id=user.id,
+            title=file.filename or "未命名资料",
+            source_type=source_type,
+            filename=file.filename or "upload",
+            payload=payload,
+        )
+    except source_versions.DuplicateSourceError as exc:
+        # 409 而不是 400：内容完全相同的文件不是「请求格式不对」，
+        # 而是「这个资源已经存在」。查重只按 content_hash 且带 user_id
+        # 约束——别人的同内容文件不会因此暴露（查不到就是查不到）。
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except storage.UploadTooLarge as exc:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, str(exc)) from exc
 
-    source = Source(
-        user_id=user.id,
-        title=file.filename or "未命名资料",
-        source_type=source_type,
-        storage_path=stored,
-        size_bytes=len(payload),
-        status=SourceStatus.PENDING,
-    )
-    db.add(source)
-    await db.commit()
-    await db.refresh(source)
-
     _schedule_ingest(source.id, payload)
-    return SourceResponse.model_validate(source)
+    return _to_response(source)
 
 
 @router.post("/url", response_model=SourceResponse, status_code=status.HTTP_201_CREATED)
@@ -139,7 +139,29 @@ async def create_from_url(
     await db.commit()
     await db.refresh(source)
     _schedule_url_ingest(source.id, payload.url, payload.source_type)
-    return SourceResponse.model_validate(source)
+    return _to_response(source)
+
+
+@router.patch(
+    "/{source_id}/activate",
+    response_model=SourceResponse,
+    summary="把某个版本设为生效版",
+)
+async def activate_source(source_id: int, user: CurrentUser, db: DbSession) -> SourceResponse:
+    """把这份资料设为其所在组的**生效版本**，同组其他版本自动转归档。
+
+    组内旧版留档但不进默认检索；用户想拿旧版当准时可以在这里切回来。
+    """
+    source = await _owned(db, source_id, user.id)
+    try:
+        await source_versions.activate(db, source)
+    except source_versions.NotIndexableError as exc:
+        # 409 而不是 400：不是请求格式不对，是「这个资源当前不能这么用」。
+        # 资料还在，只是它没建成索引——用户重传或等摄取成功后再来。
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    await db.commit()
+    await db.refresh(source)
+    return _to_response(source)
 
 
 @router.get("", response_model=SourceListResponse, summary="列出我的资料")
@@ -151,9 +173,7 @@ async def list_sources(user: CurrentUser, db: DbSession) -> SourceListResponse:
     cited = await _citation_counts(db, [s.id for s in sources])
     return SourceListResponse(
         items=[
-            SourceResponse.model_validate(s).model_copy(
-                update={"citation_count": cited.get(s.id, 0)}
-            )
+            _to_response(s).model_copy(update={"citation_count": cited.get(s.id, 0)})
             for s in sources
         ],
         total=len(sources),
@@ -167,7 +187,7 @@ async def read_source(source_id: int, user: CurrentUser, db: DbSession) -> Sourc
     # citation_count 在这里也要算：否则同一个字段在列表端点有值、详情
     # 端点恒为 0（落到 schema 默认值），前端轮询时会看到数字自己掉回 0。
     counts = await _citation_counts(db, [source.id])
-    return SourceResponse.model_validate(source).model_copy(
+    return _to_response(source).model_copy(
         update={"citation_count": counts.get(source.id, 0)}
     )
 
@@ -192,11 +212,32 @@ async def delete_source(source_id: int, user: CurrentUser, db: DbSession) -> Non
     暂留给 W3 的清理任务；当前用量下孤儿向量不影响正确性（检索按
     chunk_id 回查，查不到就丢弃），但**这是个已知缺口，不是设计**。
     """
-    await db.delete(await _owned(db, source_id, user.id))
+    source = await _owned(db, source_id, user.id)
+    # 删掉的是组内的**生效版**时，让组里剩下的版本接管生效位。
+    # 不接管的话它们会全是 is_active=False——还在库里、还能点开，
+    # 但一份都召不回来（检索候选集只取生效版）。
+    #
+    # **先删后接管**：反过来会让组内同时存在两条 is_active=1，
+    # 撞 ``ux_sources_group_active`` 部分唯一索引。删除先 flush 到库，
+    # 接管的那条 UPDATE 才不会撞车。
+    await db.delete(source)
+    await db.flush()
+    await source_versions.promote_after_delete(db, source)
     await db.commit()
 
 
 # ── 内部 ───────────────────────────────────────────────────
+def _to_response(source: Source) -> SourceResponse:
+    """资料 → 响应。
+
+    ``version_label`` 由后端算（``grouping.version_label`` 是唯一真源）——
+    前端拼就要复制一份「什么算一组」的规则，规则一变两处就漂移。
+    """
+    return SourceResponse.model_validate(source).model_copy(
+        update={"version_label": grouping.version_label(source.group_id, source.version_no)}
+    )
+
+
 async def _citation_counts(db: AsyncSession, source_ids: list[int]) -> dict[int, int]:
     """资料 id → 被多少份报告引用。
 

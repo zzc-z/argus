@@ -32,7 +32,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models import DocumentChunk, Source, SourceStatus, SourceType
-from app.services import bm25
+from app.services import bm25, grouping
 from app.services.chunker import Chunk, ChunkingError, TextChunker
 from app.services.embedder import EmbeddingError, embed_or_none
 from app.services.errors import classify_embedding_error
@@ -124,7 +124,38 @@ async def ingest(
         raise IngestError("处理时发生内部错误") from exc
 
     await _set_status(db, source, SourceStatus.INDEXED, chunk_count=len(chunks))
+    await _switch_active_version(db, source)
     return source
+
+
+async def _switch_active_version(db: AsyncSession, source: Source) -> None:
+    """摄取成功后，把这份资料切成组内的**生效版本**。
+
+    ## 为什么只在成功路径调
+
+    失败时**不能**动 ``is_active``：摄取失败是已知场景（嵌入服务欠费），
+    而旧版仍是可检索的那一份。在这里把它归档了，用户会同时失去新旧
+    两份可检索资料——新的一份根本没建好。
+
+    所以新版本插入时是 ``is_active=False``（见 grouping 的
+    ``GroupingDecision.is_active``），切换只发生在成功之后。
+
+    ## 为什么按 version_no 决胜
+
+    摄取是**后台并发**跑的——用户连传 v2 与 v3，完成顺序不确定。
+    若「谁最后完成谁生效」，v2 后完成就会顶掉已生效的 v3，用户在检索
+    的是旧版。``version_no`` 才是「新旧」的判据（详见
+    ``grouping.activate_if_newest``）。
+
+    ## 顺序：先归档旧的，再激活新的
+
+    ``ux_sources_group_active`` 是部分唯一索引，同组至多一条
+    ``is_active=1``。反过来会撞唯一约束。
+
+    两条 UPDATE 在同一事务里：中间态不会被别的连接看到。
+    """
+    await grouping.activate_if_newest(db, source)
+    await db.commit()
 
 
 # ── 各阶段 ─────────────────────────────────────────────────

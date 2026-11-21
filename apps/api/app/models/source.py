@@ -11,6 +11,11 @@
 
 ``document_chunks.id`` 就是 ``chunk_embeddings.chunk_id``——两表靠这个
 整数主键对齐，不是各自的主键+外键。
+
+第四层是版本分组：
+
+    source_groups    一个逻辑文档（同一份资料的多个版本）
+      └ sources         该组下的各个版本，组内至多一份 is_active
 """
 
 from datetime import datetime
@@ -19,6 +24,7 @@ from typing import Self
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Float,
     ForeignKey,
     Index,
@@ -28,6 +34,7 @@ from sqlalchemy import (
     and_,
     func,
     select,
+    text,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -71,6 +78,61 @@ class SourceStatus(StrEnum):
     EMBEDDING = "embedding"
     INDEXED = "indexed"
     FAILED = "failed"
+    SUPERSEDED = "superseded"
+    """被更新的同内容资料取代——它**什么都不是**，不是失败。
+
+    ## 什么时候出现
+
+    用户误点两次上传（或客户端重试）时，两条内容完全相同的 Source
+    都会建出来。若都建成索引，检索会召回两份一模一样的证据，模型把
+    同一段话当成两个独立来源互相印证。
+
+    老的那些被标成 superseded：不生效、不进检索池、不算重复。
+
+    ## 为什么不是 FAILED
+
+    failed 的语义是「处理失败，原因是 X」——用户要看到那个原因
+    （嵌入服务欠费是已知状态）。superseded 的语义是「它被取代了，
+    没什么可看的」——混进 failed 会让用户以为自己的资料坏了。
+
+    **行不删**：删掉会让「这份资料曾经失败过」的历史消失，而失败原因
+    是用户需要的诊断信息。
+    """
+
+
+class SourceGroup(Base):
+    """一个逻辑文档组——同一份资料的多个版本。
+
+    ## 为什么要这张表，而不是复用 sources.id
+
+    ``group_id`` 需要一个**独立于 sources.id 的自增空间**。
+
+    拿「组内第一份资料的 id」当 group_id 不行：新建组时那份资料的 id
+    还没拿到（要先插 source 才知道 id），得反过来再插一次；而用
+    「max(source.id)+1」分配又会与未来新 source 的 id 撞车——两者共用
+    一个序列。
+
+    所以 group_id 由这张表分配，``sources.group_id`` 是指向它的外键。
+
+    ## 组里存什么
+
+    **只有身份，不存内容**。组内各版本的内容在各自的 ``sources`` 行里。
+    这张表存在的唯一理由是「需要一个稳定的组 id」。
+    """
+
+    __tablename__ = "source_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        UtcDateTime(),
+        server_default=func.now(),
+    )
+
+    __table_args__ = (Index("ix_source_groups_user_id", "user_id"),)
 
 
 class Source(Base):
@@ -102,6 +164,55 @@ class Source(Base):
     char_count: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text)
 
+    # ── 版本分组 ────────────────────────────────────────────
+    #
+    # 同一份资料的多个版本（改过的简历、改过的报告）归到一个 group。
+    # 检索**只取组内生效的那一份**，旧版留档但默认召不到。
+    #
+    # 为什么不用「文件名相同」当分组键：文件名取自上传时的原名
+    # （gateway/sources.py 的 upload_source），用户改个名就破组；
+    # 而同名不同文档（两份不同人的「简历.pdf」）又会被误并。
+    # 所以 group_id 由内容判定（services/grouping.py），不靠名字。
+    group_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source_groups.id", ondelete="SET NULL"),
+    )
+    """逻辑文档组 id。指向 source_groups.id。NULL = 不参与分组。
+
+    非空时，同组内至多一条 ``is_active=True``——由
+    ``ux_sources_group_active`` 部分唯一索引在数据库层保证。
+
+    ``ON DELETE SET NULL``：组没了，组内资料退回「各自独立、都生效」，
+    而不是跟着被删。
+    """
+    content_hash: Mapped[str | None] = mapped_column(String(64))
+    """原始文件的 sha256 十六进制摘要。
+
+    **只用来识别「完全相同的文件」，不用来判断哪个版本权威**——
+    权威性由 ``is_active`` 决定。两份 hash 相同说明它们是同一份内容，
+    不说明哪份更新（用户可能故意重传同一份来覆盖）。
+    """
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("1"))
+    """是否是该组的**生效版本**。组内至多一条为 True。
+
+    默认 True：单份资料（没有其他版本竞争）天然是生效的，
+    不需要用户做任何操作。
+
+    「组内至多一条」由 ``ux_sources_group_active`` 这个**部分唯一索引**
+    在数据库层保证，不靠应用层自觉。
+    """
+    version_no: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    """组内版本号，从 1 起。用于 UI 展示「第 2 版」与人工核对。
+
+    **server_default 不能省**：``default=1`` 是 **Python 层**默认值，
+    只在 ORM 构造对象时生效——裸 SQL INSERT 不带这一列时它是 NULL。
+    而这一列是 NOT NULL，于是那条 INSERT 报
+    ``NOT NULL constraint failed: sources.version_no``。
+
+    用 ``Base.metadata.create_all`` 建表的库（测试库就是）**没有迁移**，
+    server_default 是唯一的兜底——所以它必须写在 ORM 上，不能只写在
+    迁移文件里。
+    """
+
     created_at: Mapped[datetime] = mapped_column(
         UtcDateTime(),
         server_default=func.now(),
@@ -128,7 +239,26 @@ class Source(Base):
         lazy="raise",
     )
 
-    __table_args__ = (Index("ix_sources_user_id", "user_id"),)
+    __table_args__ = (
+        Index("ix_sources_user_id", "user_id"),
+        # **部分唯一索引**：保证「同一个组里至多一条生效版本」。
+        #
+        # 为什么用部分索引（`WHERE is_active`）而不是普通唯一索引：
+        # 普通唯一索引建在 (group_id, is_active) 上会把「组内两条归档版本」
+        # 也管住——两条 is_active=False 就会撞车，而归档版本本来可以有多份。
+        #
+        # 为什么 `group_id IS NOT NULL`：group_id 为 NULL 的行（公开来源、
+        # 未归组资料）不参与版本竞争，它们的 is_active 恒为 True，多行共存
+        # 是正常的。SQLite 与 Postgres 的唯一索引都把 NULL 视作互不相等，
+        # 但显式排除更清楚，也省掉「靠 NULL 语义碰巧不撞车」的隐式依赖。
+        Index(
+            "ux_sources_group_active",
+            "group_id",
+            unique=True,
+            sqlite_where=text("is_active = 1 AND group_id IS NOT NULL"),
+            postgresql_where=text("is_active = true AND group_id IS NOT NULL"),
+        ),
+    )
 
     @classmethod
     async def find_owned(cls, session: AsyncSession, source_id: int, user_id: int) -> Self | None:
@@ -178,8 +308,54 @@ class Source(Base):
         要拿到公开来源（角标点开看原文）走
         ``GET /sources/{id}/chunks``，那个端点按 source_id 直查，
         不经过本方法。
+
+        ## 这个方法返回**全部**版本（含归档的旧版）
+
+        资料页要展示旧版（用户能看见「这组有 3 个版本」）。检索的候选集
+        用 :meth:`list_active_owned`。
+
+        ## 但**不含 superseded** 的行
+
+        superseded 是「被同内容的新上传取代」的内部状态（见
+        :data:`SourceStatus.SUPERSEDED`）。它不是用户的一份资料——
+        用户没主动上传过它（是误点两次或客户端重试产生的），把它
+        列进「我的资料」只会让用户困惑「这份我没传过」。
         """
-        stmt = select(cls).where(cls.owned_clause(user_id)).order_by(cls.created_at.desc())
+        stmt = (
+            select(cls)
+            .where(cls.owned_clause(user_id), cls.status != SourceStatus.SUPERSEDED)
+            .order_by(cls.created_at.desc())
+        )
+        return list((await session.scalars(stmt)).all())
+
+    @classmethod
+    async def list_active_owned(cls, session: AsyncSession, user_id: int) -> list[Self]:
+        """列出某用户**生效版本**的资料——检索的候选集。
+
+        ## 与 :meth:`list_owned` 的区别
+
+        ``list_owned`` 返回**全部**上传的资料（含旧版本），给资料页展示用；
+        本方法只返回 ``is_active=True`` 的那些，给本地检索收窄 source_ids 用。
+
+        ## 为什么旧版本不参与检索
+
+        同一份资料的旧版本与新版本**内容高度相似**——旧版答对了也不新鲜，
+        新版答对了才对。两版都进候选池时，向量检索会把它们都召回来，
+        模型收到互相冲突的证据，于是可能选中旧版、或把两版混着编。
+
+        语义相似不等于事实有效：旧版可以和问题一样匹配，但已经不是当前答案。
+        所以旧版留档（可查、可切回）但不进默认检索。
+
+        ## 归档版本怎么办
+
+        归档版本仍在库里，只是不在这里返回。用户可以在资料页手动把它设为
+        生效版（``PATCH /sources/{id}/activate``），或问历史问题。
+        """
+        stmt = (
+            select(cls)
+            .where(cls.owned_clause(user_id), cls.is_active.is_(True))
+            .order_by(cls.created_at.desc())
+        )
         return list((await session.scalars(stmt)).all())
 
 

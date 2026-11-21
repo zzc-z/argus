@@ -11,7 +11,7 @@ import { SourceBulkRibbon } from './components/SourceBulkRibbon'
 import { SourceTable } from './components/SourceTable'
 import { SourcePagination } from './components/SourcePagination'
 import { ApiError } from '@/lib/api/client'
-import { deleteSource, fetchSources, type SourceV as ApiSource } from '@/lib/api/sources'
+import { activateSource, deleteSource, fetchSources, type SourceV as ApiSource } from '@/lib/api/sources'
 import {
   countByStatus,
   countByType,
@@ -138,6 +138,25 @@ export default function SourcesPage() {
     await refresh(new AbortController().signal)
   }, [selectedIds, refresh])
 
+  const onActivate = React.useCallback(
+    async (sourceId: number) => {
+      setErrorText(null)
+      try {
+        await activateSource(sourceId)
+      } catch (err) {
+        // 失败要说出来——「点了没反应」会让用户以为按钮坏了，
+        // 而实际是后端拒绝了或网络挂了。
+        setErrorText(err instanceof Error ? err.message : '切换生效版本失败')
+        return
+      }
+      // 切换后组内其他版本会转归档，整份列表的状态都变了——
+      // 重新拉全量而不是本地改一行：本地改要同步维护「哪些行同组」，
+      // 那是后端的判断，前端不该猜。
+      await refresh(new AbortController().signal)
+    },
+    [refresh],
+  )
+
   return (
     <PageLayout
       header={{
@@ -181,6 +200,7 @@ export default function SourcesPage() {
           />
           <SourceTable
             data={rows}
+            onActivate={onActivate}
             selection={{
               selectedIds,
               onToggle: toggleRow,

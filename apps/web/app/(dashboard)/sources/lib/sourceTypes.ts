@@ -67,6 +67,24 @@ export interface SourceRow {
   timeLabel: string
   iconName: string
   iconAccent: string
+  /** 版本标记，如「第 2 版」。空串 = 这份资料没有版本概念。 */
+  versionLabel: string
+  /**
+   * 组内版本号，从 1 起。
+   *
+   * 归档徽章要用它区分「哪个旧版」——一库里有多组资料时，
+   * 全是「旧版」的徽章长得一模一样，用户点错一行就切错资料。
+   * 后端的 `version_label` 对第 1 版返回空串，所以这里用原始版本号。
+   */
+  versionNo: number
+  /**
+   * 是否是**归档版本**（同组内已被更新的版本取代）。
+   *
+   * 归档版本留档但不参与本地检索——旧版内容与新版高度相似，两版都进
+   * 候选池会让模型拿到互相冲突的证据。表格要标出来，否则用户会以为
+   * 「这份搜不到」是坏了。
+   */
+  archived: boolean
 }
 
 const ICON_ACCENT: Record<RowStatus, string> = {
@@ -131,6 +149,9 @@ export function toSourceRow(source: SourceV, now: Date = new Date()): SourceRow 
     timeLabel: formatRelativeTime(source.created_at, now),
     iconName: mapIcon(source.source_type),
     iconAccent: ICON_ACCENT[status],
+    versionLabel: source.version_label,
+    versionNo: source.version_no,
+    archived: !source.is_active,
   }
 }
 

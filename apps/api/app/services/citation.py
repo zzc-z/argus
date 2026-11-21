@@ -32,6 +32,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.services import grouping
 from app.services.retriever import Retrieved
 
 # 喂给模型的单块正文上限。切片按 512 字切，但个别解析器吐的长句可能
@@ -80,6 +81,12 @@ class Reference:
     excerpt: str
     recall: str
     """召回来源："向量+BM25" / "向量" / "BM25"。前端用它标注引用强度。"""
+    version_label: str = ""
+    """版本标记，如「第 2 版」。空串 = 无版本概念（不参与分组）。
+
+    **默认空串**：公开来源（``web_sources``）与单份资料没有版本概念，
+    显式构造 ``Reference`` 的地方不必关心这个字段。
+    """
 
     def to_citation(self, *, url: str = "", date: str = "") -> dict[str, object]:
         """转成前端 ``Citation`` 形状的字典，随 ``reference`` 事件下发。
@@ -116,6 +123,7 @@ class Reference:
             "date": date,
             "excerpt": self.excerpt,
             "recall": self.recall,
+            "version_label": self.version_label,
         }
 
 
@@ -246,15 +254,17 @@ class ReferenceTable:
     @staticmethod
     def _make(n: int, hit: Retrieved) -> Reference:
         chunk = hit.chunk
+        source = hit.source
         return Reference(
             n=n,
             chunk_id=chunk.id,
-            source_id=hit.source.id,
+            source_id=source.id,
             chunk_index=chunk.chunk_index,
             page=chunk.page,
-            title=hit.source.title,
+            title=source.title,
             excerpt=_excerpt(chunk.content),
             recall=_recall_label(hit),
+            version_label=grouping.version_label(source.group_id, source.version_no),
         )
 
 
@@ -269,7 +279,8 @@ def render_evidence(pairs: Sequence[tuple[Reference, Retrieved]]) -> str:
     该不该告诉模型「你没有资料可用」。
     """
     blocks = [
-        f"[{ref.n}] {ref.title}{_location_suffix(ref)}\n{_clip(hit.chunk.content)}"
+        f"[{ref.n}] {ref.title}{_version_suffix(ref)}{_location_suffix(ref)}\n"
+        f"{_clip(hit.chunk.content)}"
         for ref, hit in pairs
     ]
     return "\n\n".join(blocks)
@@ -334,6 +345,16 @@ def _location_suffix(ref: Reference) -> str:
         return f"（第 {ref.page} 页，第 {ref.chunk_index + 1} 段）"
     return f"（第 {ref.chunk_index + 1} 段）"
 
+
+def _version_suffix(ref: Reference) -> str:
+    """版本标记的括号部分。无版本概念时返回空串。
+
+    模型要能分辨**同名资料的不同版本**——两份都叫「简历.pdf」时，
+    只看标题分不出证据来自哪一版，模型会把两版的内容混着编。
+    """
+    if not ref.version_label:
+        return ""
+    return f"（{ref.version_label}）"
 
 
 def _clip(content: str) -> str:

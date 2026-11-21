@@ -22,6 +22,7 @@ from app.schemas.report import (
     ReportSummaryV,
 )
 from app.services.citation import EXCERPT_CHARS
+from app.services.grouping import version_label
 
 router = APIRouter(prefix="/api/v1/reports", tags=["reports"])
 
@@ -127,45 +128,48 @@ async def _load_citations(db: AsyncSession, report_id: int) -> list[ReportCitati
     rows = (
         await db.execute(
             select(
-                ReportSource.n,
-                ReportSource.cite_count,
-                DocumentChunk.id,
-                DocumentChunk.chunk_index,
-                DocumentChunk.page,
-                DocumentChunk.content,
-                DocumentChunk.source_id,
-                Source.title,
+                ReportSource.n.label("n"),
+                ReportSource.cite_count.label("cite_count"),
+                DocumentChunk.id.label("chunk_id"),
+                DocumentChunk.chunk_index.label("chunk_index"),
+                DocumentChunk.page.label("page"),
+                DocumentChunk.content.label("content"),
+                DocumentChunk.source_id.label("source_id"),
+                Source.title.label("title"),
+                Source.group_id.label("group_id"),
+                Source.version_no.label("version_no"),
             )
             .join(DocumentChunk, DocumentChunk.id == ReportSource.chunk_id)
             .join(Source, Source.id == DocumentChunk.source_id)
             .where(ReportSource.report_id == report_id)
             .order_by(ReportSource.n)
         )
-    ).all()
+    ).mappings()
 
     # 切片可能已被删（资料被删 → CASCADE 掉了 chunk → 这里就没有行）。
     # 那种情况这条引用自然不出现在列表里，而不是拿半条数据糊出去。
+    #
+    # **用 mappings() 按列名取**：``.all()`` 返回的 Row 是**位置**访问的
+    # （row[0]），按属性名访问只有列名能对上标签时才行——而这里的 select
+    # 有两个叫 ``id`` 的候选列，SQLAlchemy 会把标签去重成 ``id`` /
+    # ``id_1``，属性名访问会抛 ``AttributeError: chunk_id``。
+    #
+    # 改成显式给每列取标签（``DocumentChunk.id.label("chunk_id")``），
+    # 再用 mappings() 取——列名与业务字段名一一对应，不用解包 tuple
+    # （mypy 不允许对变长 tuple 做定长解包），也不受标签去重影响。
     return [
         ReportCitationV(
-            n=n,
-            chunk_id=chunk_id,
-            source_id=source_id,
-            chunk_index=chunk_index,
-            page=page,
-            title=title,
-            excerpt=_excerpt(content),
-            cite_count=cite_count,
+            n=row["n"],
+            chunk_id=row["chunk_id"],
+            source_id=row["source_id"],
+            chunk_index=row["chunk_index"],
+            page=row["page"],
+            title=row["title"],
+            excerpt=_excerpt(row["content"]),
+            cite_count=row["cite_count"],
+            version_label=version_label(row["group_id"], row["version_no"]),
         )
-        for (
-            n,
-            cite_count,
-            chunk_id,
-            chunk_index,
-            page,
-            content,
-            source_id,
-            title,
-        ) in rows
+        for row in rows
     ]
 
 

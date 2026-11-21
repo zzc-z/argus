@@ -119,7 +119,24 @@ async def retrieve(
 
 # ── 各路召回 ───────────────────────────────────────────────
 async def _user_source_ids(db: AsyncSession, user_id: int) -> list[int]:
-    sources = await Source.list_owned(db, user_id)
+    """检索的候选 source_id——**只含生效版本**。
+
+    ## 为什么不是全部资料
+
+    同一份资料的旧版本与新版本内容高度相似，两版都能匹配同一个问题。
+    都进候选池时，模型会收到互相冲突的证据，可能选中旧版、或把两版
+    混着编。
+
+    语义相似不等于事实有效：旧版可以和问题一样匹配，但已经不是当前答案。
+    所以旧版留档（资料页可看、可手动切回生效）但不进默认检索。
+
+    收窄在这一层做，意味着向量路与 BM25 路**同时**生效——两条路都靠
+    这份 source_ids 列表过滤，不需要各自再改一遍。
+
+    公开来源（``source_type="web"``）由 :meth:`Source.list_active_owned`
+    一并排除。
+    """
+    sources = await Source.list_active_owned(db, user_id)
     return [s.id for s in sources]
 
 

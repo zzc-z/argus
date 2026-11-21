@@ -38,6 +38,32 @@ export interface SourceV {
   created_at: string
   /** 被多少份报告引用过（按报告去重）。 */
   citation_count: number
+  /**
+   * 逻辑文档组 id。null = 不参与分组（公开来源、未归组资料）。
+   *
+   * 同一份资料的多个版本（改过的简历）共享同一个 group_id，
+   * 组内至多一份 `is_active` 为 true——那份才是参与检索的**生效版本**。
+   */
+  group_id: number | null
+  /** 组内版本号，从 1 起。 */
+  version_no: number
+  /**
+   * 是否是组内生效版本。false = 归档的旧版（留档但不进默认检索）。
+   *
+   * 归档版本仍可手动切回生效——见 `activateSource`。
+   */
+  is_active: boolean
+  /**
+   * 给人看的版本标记，如「第 2 版」。
+   *
+   * **空串 = 没有值得显示的版本信息**——不参与分组，或它是该组的第 1 版。
+   * 第 1 版不标是因为每份上传的资料都自建一个组，标了会让表格每行都挂
+   * 一个不携带信息的徽章。
+   *
+   * **由后端算好**：拼法要跟「什么算一组」保持一致，两处各拼一次
+   * 必然漂移。
+   */
+  version_label: string
 }
 
 /** 资料列表响应。与后端 `SourceListResponse` 一一对应。 */
@@ -54,6 +80,22 @@ export function fetchSources(signal?: AbortSignal): Promise<SourceListV> {
 /** 删一份资料。返回 204。 */
 export function deleteSource(sourceId: number): Promise<void> {
   return apiFetch<void>(`/api/v1/sources/${sourceId}`, { method: 'DELETE' })
+}
+
+/**
+ * 把某份资料设为其所在组的**生效版本**。
+ *
+ * 同一份资料有多个版本时，默认只有生效版本参与本地检索与引用。
+ * 用户可以在资料页手动切换——比如刚上传了一份旧版想拿它当准，
+ * 或者想回退到之前那版。
+ *
+ * 成功后同组的其他版本自动转归档（留档但不进检索）。
+ */
+export function activateSource(sourceId: number, signal?: AbortSignal): Promise<SourceV> {
+  return apiFetch<SourceV>(`/api/v1/sources/${sourceId}/activate`, {
+    method: 'PATCH',
+    ...(signal ? { signal } : {}),
+  })
 }
 
 /** 从错误响应体里取 `detail`。422 时它是**数组**（字段级校验），拼成人话。 */

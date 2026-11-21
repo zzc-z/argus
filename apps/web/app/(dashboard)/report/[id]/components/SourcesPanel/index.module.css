@@ -113,6 +113,19 @@
   color: var(--token-primary, #5704e1);
 }
 
+/*
+ * 版本标记（"第 2 版"）。跟在标题后面，用来分辨同名资料的不同版本。
+ *
+ * 不做成独立行：标题行已经承载了「哪份资料」这个信息，版本是它的限定，
+ * 拆行会让每条引用多占一行高度、挤掉摘要。
+ */
+.versionTag {
+  margin-left: 6px;
+  color: var(--token-on-surface-variant, #494456);
+  font-size: 11px;
+  font-weight: 400;
+}
+
 /* 切片摘要：最多两行，超出省略——完整摘要在正文里能看到。 */
 .itemExcerpt {
   color: var(--token-on-surface-variant, #494456);

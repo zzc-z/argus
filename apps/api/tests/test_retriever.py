@@ -9,7 +9,7 @@ from collections.abc import Sequence
 import pytest
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
-from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
+from app.models import DocumentChunk, Source, SourceGroup, SourceStatus, SourceType, User
 from app.services import bm25, retriever, vectorstore
 from app.services.bm25 import Bm25Hit
 from app.services.ingest import ensure_index_tables
@@ -551,3 +551,74 @@ async def test_retrieve_dedup_key_is_the_full_content(
     got = await retriever.retrieve(db_session, vec_engine, "zzzqqqxyz", user_id=uid, limit=5)
 
     assert [r.chunk.id for r in got] == [rows[0].id, rows[1].id]
+
+
+# ── 版本分组：归档版本不参与检索 ──────────────────────────────
+#
+# 同一份资料的旧版本与新版本内容高度相似，两版都能匹配同一个问题。
+# 都进候选池时，模型收到互相冲突的证据，可能选中旧版、或把两版混着编。
+# 语义相似不等于事实有效——所以旧版留档但不进默认检索。
+
+
+async def test_retrieve_excludes_archived_version(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """归档版本（``is_active=False``）不参与检索。
+
+    搭法：同一组里两份资料——一份生效、一份归档，**正文不同**。
+
+    **为什么正文要不同**：``retrieve`` 会按正文全文去重。两份内容完全
+    相同的切片，去重会把归档那份**顺带**去掉——于是这条即使实现里
+    完全没有「只取生效版」的过滤，也会绿。用不同正文，去重就抓不到
+    归档那份，只能靠 source_ids 过滤把它挡掉。
+
+    反例实现：``_user_source_ids`` 用 ``Source.list_owned``（含归档版）
+    而不是 ``list_active_owned`` —— 这条会红。
+
+    反例实现：向量路与 BM25 路各自过滤、只过滤了一路 —— 这条也会红
+    （两路都召回了归档那份）。
+    """
+    db_session, vec_engine = shared_db
+    uid, active_id = await _seed_user_and_source(db_session, "ver@t.local")
+
+    group = SourceGroup(user_id=uid)
+    db_session.add(group)
+    await db_session.flush()
+
+    # 把上面那份改成「生效版且在组里」
+    active = await db_session.get(Source, active_id)
+    assert active is not None, "刚建的资料不该查不到"
+    active.group_id = group.id
+    active.is_active = True
+
+    archived = Source(
+        user_id=uid,
+        title="旧版本",
+        source_type=SourceType.TEXT,
+        status=SourceStatus.INDEXED,
+        group_id=group.id,
+        is_active=False,
+        version_no=1,
+    )
+    db_session.add(archived)
+    await db_session.flush()
+    archived_id = archived.id
+
+    rows = [
+        DocumentChunk(source_id=active_id, chunk_index=0, content="新版正文 能效提升的关键路径", page=1),
+        DocumentChunk(source_id=archived_id, chunk_index=0, content="旧版正文 能效提升的历史结论", page=1),
+    ]
+    db_session.add_all(rows)
+    await db_session.commit()
+    await db_session.refresh(active)
+
+    await ensure_index_tables(vec_engine)
+    await bm25.index_chunks(vec_engine, [(r.id, r.content) for r in rows])
+    await vectorstore.upsert_embeddings(vec_engine, [(r.id, _vec(0.95)) for r in rows])
+    _patch_embed(monkeypatch, [_vec(1.0)])
+
+    got = await retriever.retrieve(db_session, vec_engine, "能效", user_id=uid, limit=10)
+
+    assert [r.chunk.id for r in got] == [rows[0].id], "归档版本的切片不该被召回"
+    assert archived_id not in [r.chunk.id for r in got]

@@ -298,6 +298,9 @@ export function buildCitationPayload(citation: Citation): InspectorPayload {
         // 原文区优先用 page，这里保留原值供排查时对照。
         page: citation.page,
         source_title: citation.title,
+        // 版本标记：同名资料的引用角标在页面上长得一模一样，
+        // 带这个字段才分辨得出跳到的是哪一份。
+        version_label: citation.version_label ?? '',
         recall: citation.recall,
         // 公开来源（联网搜索）的 URL——用户要知道「这个数字是哪来的」。
         // 用户上传的资料没有 URL，空串。

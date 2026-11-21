@@ -100,12 +100,17 @@ function Cite({
   // 里的软约束，模型可能编造或漏标编号——不能崩，也不能吞掉这个号。
   if (!citation) return <span>[{id}]</span>
 
+  // 版本标记进 tooltip：同名资料的角标在页面上长得一模一样——两份都叫
+  // 「张建鹏简历.pdf」时，hover 看到的 tooltip 完全相同，分不清这个角标
+  // 来自哪一版。
+  const version = citation.version_label ? ` · ${citation.version_label}` : ''
+
   return (
     <button
       type="button"
       className={styles.cite}
       onClick={() => onSelect(citation)}
-      title={`${citation.title}${citation.page != null ? ` · 第 ${citation.page} 页` : ''}`}
+      title={`${citation.title}${version}${citation.page != null ? ` · 第 ${citation.page} 页` : ''}`}
     >
       {id}
     </button>

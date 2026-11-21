@@ -52,7 +52,15 @@ export function SourcesPanel({ citations, totalCount, highlightedN, onSelect }: 
                 被引 {c.cite_count} 次
               </span>
             </div>
-            <span className={cn(styles.itemTitle, 'font-body-sm')}>{c.title}</span>
+            <span className={cn(styles.itemTitle, 'font-body-sm')}>
+              {c.title}
+              {/* 版本标记跟标题同行：同名资料（两份都叫「张建鹏简历.pdf」）
+                  的角标在页面上长得一模一样，用户点进去才发现跳到了
+                  不同的原文。带上「第 N 版」才分辨得出。 */}
+              {c.version_label && (
+                <span className={cn(styles.versionTag, 'font-code')}>{c.version_label}</span>
+              )}
+            </span>
             {c.excerpt && (
               <span className={cn(styles.itemExcerpt, 'font-body-sm')}>{c.excerpt}</span>
             )}

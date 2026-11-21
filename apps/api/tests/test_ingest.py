@@ -7,6 +7,7 @@
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
@@ -580,3 +581,109 @@ async def test_compensation_survives_failing_rollback(
     assert await DocumentChunk.list_for_source(db_session, source.id) == []
     await db_session.refresh(source)
     assert source.chunk_count == 0
+
+
+# ── 版本分组：生效版切换只在成功路径 ────────────────────────
+async def test_failed_new_version_keeps_old_version_active(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**新版本摄取失败时，旧版必须仍是生效版。**
+
+    ## 为什么这条是整个方案最关键的不变量
+
+    嵌入服务欠费是已知状态（项目记忆里的 embedding-api-arrearage）。
+    用户改完简历重新上传，摄取因欠费失败——如果这时把旧版归档了、
+    新版切成生效，用户会**同时失去两份可检索资料**：旧版被顶掉，
+    新版又根本没建好。
+
+    所以切换必须只发生在摄取成功的路径上。
+
+    ## 在哪种错误实现下也会通过
+
+    只测「成功路径会切换」的实现（``is_active`` 一律为 True）——
+    那条路径下旧版根本没被归档，这条照样过。所以这条显式地
+    **先建好旧版**（is_active=True），再让新版本摄取失败，
+    断言旧版的 ``is_active`` 仍是 True。
+
+    反例实现：在 ``except`` 分支里也调切换（变异测试会红）。
+    """
+    from app.models import SourceGroup
+
+    db_session, vec_engine = shared_db
+    user = await _make_user(db_session)
+    group = SourceGroup(user_id=user.id)
+    db_session.add(group)
+    await db_session.commit()
+    await db_session.refresh(group)
+    # 存 int 而不是 ORM 对象：后面 expire_all() 会让对象的属性全部过期，
+    # 再读 group.id 会触发隐式 SELECT——async 场景下那是 MissingGreenlet。
+    group_id = int(group.id)
+
+    old = await _make_source(
+        db_session, user, group_id=group_id, is_active=True, version_no=1
+    )
+    new = await _make_source(
+        db_session, user, group_id=group_id, is_active=False, version_no=2
+    )
+
+    # 让嵌入服务失败——这是摄取失败最常见的真实成因。
+    _patch_embed(monkeypatch, RuntimeError("上游炸了"))
+
+    with pytest.raises(IngestError):
+        await ingest(db_session, vec_engine, new, SAMPLE_TEXT.encode())
+
+    db_session.expire_all()
+    states = {
+        row.id: row.is_active
+        for row in (
+            await db_session.execute(
+                select(Source).where(Source.group_id == group_id)
+            )
+        ).scalars().all()
+    }
+    assert states[old.id] is True, "旧版被归档了——新版本还没建好，用户会一份都搜不到"
+    assert states[new.id] is False, "摄取失败的新版本不该是生效版"
+
+
+async def test_successful_new_version_becomes_active_and_archives_old(
+    shared_db: tuple[AsyncSession, AsyncEngine],
+) -> None:
+    """摄取成功后：新版本成为生效版，旧版转归档。
+
+    **在哪种错误实现下也会通过**：只切新版本不归档旧版的实现会撞
+    部分唯一索引（组内至多一条生效版）而报错——所以这条顺带验证了
+    「先归档后激活」的顺序。
+    """
+    from app.models import SourceGroup
+
+    db_session, vec_engine = shared_db
+    user = await _make_user(db_session)
+    group = SourceGroup(user_id=user.id)
+    db_session.add(group)
+    await db_session.commit()
+    await db_session.refresh(group)
+    # 存 int 而不是 ORM 对象：后面 expire_all() 会让对象的属性全部过期，
+    # 再读 group.id 会触发隐式 SELECT——async 场景下那是 MissingGreenlet。
+    group_id = int(group.id)
+
+    old = await _make_source(
+        db_session, user, group_id=group_id, is_active=True, version_no=1
+    )
+    new = await _make_source(
+        db_session, user, group_id=group_id, is_active=False, version_no=2
+    )
+
+    await ingest(db_session, vec_engine, new, SAMPLE_TEXT.encode())
+
+    db_session.expire_all()
+    states = {
+        row.id: row.is_active
+        for row in (
+            await db_session.execute(
+                select(Source).where(Source.group_id == group_id)
+            )
+        ).scalars().all()
+    }
+    assert states[new.id] is True
+    assert states[old.id] is False
