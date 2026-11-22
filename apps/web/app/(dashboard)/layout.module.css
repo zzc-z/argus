@@ -467,7 +467,8 @@
   padding-top: 3.5rem;
   background-color: var(--token-surface, #f8f9fa);
   min-height: 100vh;
-  /* 视口 < 1396 时 .mainInner 撑出 main，由 main 横向滚；body 不参与 */
+  /* 表格类内容自带 overflow-x: auto 的 wrapper，横向滚由它们接管；
+     这里保留 auto 作兜底，避免任何漏网的宽内容把 body 撑出横向滚动条 */
   overflow-x: auto;
   min-width: 0;
 }
@@ -478,9 +479,6 @@
   width: 100%;
   padding-inline: 1.5rem;
   padding-bottom: 2rem;
-  /* dashboard layout 最小宽：sidebar 330 + 列表最小 1010 + padding-inline 48 = 1388
-     视口 < 1388 时由 .main 横向滚；视口 ≥ 1388 时 layout 自然 fill */
-  min-width: 1388px;
 }
 
 @keyframes pulse {
