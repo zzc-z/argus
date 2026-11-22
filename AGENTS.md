@@ -9,7 +9,10 @@
 
 - **项目**：Argus — 多智能体深度研报平台
 - **前端**：pnpm + Turborepo（monorepo）+ Next.js 16.3.7 + React 19.3 + Tailwind v3.4.19 + shadcn/ui（new-york 风格）+ Geist / GeistSans 字体
-- **后端**：Python ≥3.12 + uv + FastAPI + SQLite（`sqlite+aiosqlite`）+ sqlite-vec
+- **后端**：Python ≥3.12 且 <3.15（实际 **3.14**，由 `apps/api/.python-version` 固定）
+  + uv + FastAPI + SQLite（`sqlite+aiosqlite`）+ sqlite-vec
+  - **为什么卡 <3.15**：`ormsgpack`（`langgraph-checkpoint` 的传递依赖）只发到
+    cp314 的 wheel，3.15 上回退源码编译会被 maturin/PyO3 拒——`uv sync` 直接失败。
   - **不是** Supabase / pgvector——dev 环境没有 Postgres，向量层用 sqlite-vec 扩展。
     换 pgvector 只改 `app/services/vectorstore.py`，调用方不动。
 - **设计 token**：50 个 color + 11 个 fontFamily + 11 个 fontSize（precision_technical_light 集）

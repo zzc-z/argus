@@ -4,16 +4,26 @@
 
 ## 1. 环境要求
 
-- **Python** ≥ 3.12（实际用 3.14）
+- **Python** ≥3.12 且 <3.15（实际用 **3.14**，由 `.python-version` 固定）
 - **uv** ≥ 0.4（包管理）
 - **无外部数据库**——用的是 SQLite（`apps/api/argus.db`）+ sqlite-vec 扩展，
   随 `uv sync` 装进虚拟表，不需要起 Postgres/Redis
+
+**为什么卡 <3.15**：`ormsgpack`（`langgraph-checkpoint` 的传递依赖）目前只发到
+**cp314** 的 wheel。3.15 上没有预编译轮子，`uv sync` 会回退源码编译，然后被
+maturin / PyO3 拒绝（`PYO3_PYTHON=cpython-3.15` 编译失败）——**装依赖这一步
+就炸**，不是运行时才炸。`pyproject.toml` 的 `requires-python` 因此写成
+`>=3.12,<3.15`，避免允许一种装不上的环境。
+
+`.python-version`（`3.14`）是真正决定本机与 CI 用哪个版本的地方——`uv sync`
+不带 `--python` 时读它；CI 的 `setup-uv` 额外用 `python-version: "3.14"`
+显式 pin 一遍（优先级高于 `.python-version`），防止 runner 默认版本漂移。
 
 ## 2. 安装
 
 ```bash
 cd apps/api
-uv sync        # 装 pyproject.toml 列出的依赖
+uv sync        # 装 pyproject.toml 列出的依赖（自动按 .python-version 选 Python）
 uv run pre-commit install   # 装 pre-commit
 ```
 
@@ -201,11 +211,12 @@ SQLite 的两个坑：
 - [prd/rag-pipeline.md](../../prd/rag-pipeline.md)
 - [prd/risk-and-compliance.md](../../prd/risk-and-compliance.md)
 
-## 12. 特殊配置文件作用（后端 6 个）
+## 12. 特殊配置文件作用（后端 7 个）
 
 | 文件 | 作用 | 谁维护 |
 |---|---|---|
 | `pyproject.toml` | uv 项目清单：dependencies（FastAPI / Pydantic / SQLAlchemy+aiosqlite / sqlite-vec / anthropic / openai / tavily-python / httpx / httpx2 / pyjwt / alembic）+ devDeps（ruff / mypy / pytest / pre-commit）+ `[tool.ruff]` / `[tool.mypy]` / `[tool.pytest.ini_options]` / `[tool.coverage]` 配置。**注意**：`langgraph` / `langchain-core` / `redis` / `asyncpg` 声明了但代码里一处没用——是计划遗留，别以为装了就等于用上了 | 改 Python 依赖时 |
+| `.python-version` | uv 读它决定用哪个 Python（当前 `3.14`）。**没有它，`uv sync` 会取 latest（3.15）并因 ormsgpack 无 cp315 轮子而失败** | 升 Python 版本时 |
 | `.ruff.toml` | ruff 独立配置（保留以便 pre-commit 单独跑 ruff）：target-version py312 / line-length 100 / select E F W I B UP SIM PT C4 RUF ASYNC / ignore E501 B008 | 改 ruff 规则时 |
 | `.pre-commit-config.yaml` | pre-commit hooks：trailing-whitespace / end-of-file-fixer / check-yaml / check-toml / check-added-large-files + ruff（check + format）+ mypy + pytest smoke | 改 pre-commit 时 |
 | `py.typed` | PEP 561 标记：本包对外提供类型注解（mypy 可识别） | 永远不需要改 |

@@ -6,7 +6,7 @@ Argus reads your documents and the open web, then writes research reports where 
 claim is traceable back to the source it came from — and says so when it cannot find
 the evidence.
 
-[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](<>)
+[![Python](https://img.shields.io/badge/python-3.14-blue)](<>)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141-teal)](<>)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](<>)
 [![React](https://img.shields.io/badge/React-19-61dafb)](<>)
@@ -98,7 +98,7 @@ still driven by L2 and the return-value semantics are unchanged.
 
 | Layer      | Choice                                                                             |
 | ---------- | ---------------------------------------------------------------------------------- |
-| Backend    | Python 3.12+, FastAPI, SQLAlchemy (async), Pydantic v2, Alembic                    |
+| Backend    | Python 3.14 (>=3.12,<3.15), FastAPI, SQLAlchemy (async), Pydantic v2, Alembic      |
 | Retrieval  | sqlite-vec (vector KNN) + SQLite FTS5 (BM25), fused with RRF                       |
 | Embeddings | Alibaba Cloud Bailian `text-embedding-v4`, OpenAI-compatible endpoint, 1536-dim    |
 | Agent loop | Hand-written supervisor/agent orchestration — no LangGraph, no LangChain agent     |
@@ -127,6 +127,10 @@ accident.
 | Test runtime    | 14s wall clock (parallel, `-n 4 --dist=worksteal`) |
 
 ## Running it
+
+Requires **Node 26** (see `.nvmrc`), **pnpm 9**, and **Python 3.14** (pinned by
+`apps/api/.python-version`; needs `>=3.12,<3.15` — see
+[`apps/api/CONTRIBUTING.md §1`](./apps/api/CONTRIBUTING.md)).
 
 Backend:
 

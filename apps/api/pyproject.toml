@@ -3,7 +3,11 @@ name = "argus-api"
 version = "0.1.0"
 description = "Argus 多智能体深度研报平台 · 后端 API"
 readme = "README.md"
-requires-python = ">=3.12"
+# 上限锁到 <3.15：ormsgpack（langgraph-checkpoint 的传递依赖）目前只发到
+# cp314 的 wheel，3.15 上会回退源码编译并被 maturin/PyO3 拒绝——
+# `uv sync` 直接失败。放开上限等于允许一种装不上的环境。
+# 实际开发/CI 版本由 apps/api/.python-version 固定（3.14）。
+requires-python = ">=3.12,<3.15"
 authors = [{ name = "Argus Team" }]
 license = { text = "Proprietary" }
 

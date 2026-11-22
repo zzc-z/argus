@@ -24,6 +24,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          # 显式 pin 3.14：setup-uv 默认装 latest（当前 3.15），而 ormsgpack
+          # 只发到 cp314 的 wheel，3.15 上回退源码编译会被 maturin 拒绝。
+          # 与 apps/api/.python-version 保持一致。
+          python-version: "3.14"
 
       - name: 装依赖
         run: uv sync --extra dev
@@ -86,7 +90,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 26（Lithium）= Active LTS（2026-10-28 起 LTS，EOL 2029-04-30）。
+          # 原先写 20，但 Node 20 已于 2026-04-30 EOL，不再收安全补丁；
+          # 且 lint-staged@17 要求 >=22.22.1、@commitlint/cli@21 要求 >=22.12.0
+          # —— 声明的 engines 与实际依赖要求本来就不一致。
+          node-version: 26
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
 
@@ -121,6 +129,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          # 显式 pin 3.14：setup-uv 默认装 latest（当前 3.15），而 ormsgpack
+          # 只发到 cp314 的 wheel，3.15 上回退源码编译会被 maturin 拒绝。
+          # 与 apps/api/.python-version 保持一致。
+          python-version: "3.14"
 
       - name: 装依赖
         run: uv sync --extra dev
