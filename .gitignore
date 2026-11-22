@@ -92,3 +92,9 @@ now-*.png
 *-desktop.png
 *-mobile*.png
 *-mobile-full.png
+
+# oil-ui 技能的临时产物：截图与一次性取证脚本。
+# .oil-ui/ 是视觉审查的截图 + report.json；.oil-*.py 是起临时服务、
+# 注入 dev cookie 的取证脚本（文件头自己写着「用完删除」）。
+.oil-ui/
+.oil-*.py

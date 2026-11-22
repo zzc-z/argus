@@ -54,6 +54,20 @@ $ git commit
 | `pnpm clean` | 删 `.next` / `.turbo` |
 | `pnpm prepare` | husky install（自动） |
 
+**husky 的 install 位置（2026-11-22 修）**：`apps/web/package.json` 的
+`prepare` 写的是 `cd ../.. && husky apps/web/.husky`，**不是**裸 `husky`。
+
+原因：husky v9 的 `index.js` 用 `f.existsSync('.git')` 判断要不要装 hook，
+而这个检查是**相对当前工作目录**的。`prepare` 在 `apps/web` 下执行，那里
+没有 `.git`（仓库根在上面两级），于是 husky 直接返回 `.git can't be found`
+并退出——`core.hooksPath` 从没被设置，**pre-commit / commit-msg 全部静默失效**，
+门禁只剩 CI 一层。
+
+改法就是先 `cd` 到仓库根（那里有 `.git`），再把 `.husky` 目录作为参数传给
+husky。验证：`git config core.hooksPath` 应输出 `apps/web/.husky/_`。
+
+**husky 的 `_` 目录是生成物**，不入仓（husky 自带 `.gitignore` 排除）。
+
 **没有** `lint:fix`、**没有** `typecheck`。类型检查要写
 `pnpm exec tsc --noEmit`——`pnpm tsc --noEmit` 是空命令（package.json 里没有
 `tsc` script），它会打印「None of the selected packages has a "tsc" script」

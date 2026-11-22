@@ -11,7 +11,7 @@
     "clean": "rm -rf .next .turbo",
     "format": "prettier --write \"**/*.{ts,tsx,css,md,json}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,css,md,json}\"",
-    "prepare": "husky"
+    "prepare": "cd ../.. && husky apps/web/.husky"
   },
   "dependencies": {
     "@argus/shared": "workspace:*",
