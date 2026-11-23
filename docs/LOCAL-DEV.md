@@ -101,9 +101,6 @@ uv sync --extra dev          # ⚠️ --extra dev 不能省
 
 ⚠️ **别让它指向临时目录**（macOS 的 `$TMPDIR`）——那目录会被系统清理，
 清掉之后 venv 就指向一个不存在的解释器，后端起不来，报错还很莫名其妙。
-VS Code 也扫不到这种 venv，会退回系统 Python，于是编辑器里满屏
-「无法解析导入 fastapi / sqlalchemy / anthropic」（**那些不是真的缺包**，
-是解释器选错了）。
 
 ### 2.2 编辑器认不出依赖时
 
@@ -115,8 +112,36 @@ uv run python -c "import fastapi"   # 能导入 = 包没问题
 ```
 
 修法：`Cmd+Shift+P` → `Python: Select Interpreter` → 输入解释器路径 →
-`apps/api/.venv/bin/python`。选解释器列表里看不到它时（uv venv 指向临时
-目录就会被跳过）就用「输入解释器路径」。
+`apps/api/.venv/bin/python`。
+
+### 2.3 工作区 `.vscode/settings.json`（2026-11-23 按官方文档核对过）
+
+编辑器认 Python 环境走四步，**优先级从高到低**（官方文档
+`code.visualstudio.com/docs/python/environments`）：
+
+| 优先级 | 来源 | 何时生效 |
+|---|---|---|
+| 1 | `python-envs.pythonProjects[]` | 按目录指定过 |
+| 2 | `python-envs.defaultEnvManager` | **仅用户显式设置时**（默认值不算） |
+| 3 | `python.defaultInterpreterPath` | 兼容旧设置 |
+| 4 | 自动发现 | 默认扫 `./**/.venv` |
+
+三个容易踩的点：
+
+- **别写 `defaultEnvManager`**——哪怕写默认值 `venv` 也算「显式设置」，
+  会锁死管理器、挡掉第 4 步的自动发现。本仓库的配置里**故意不写它**。
+- **`python-envs.pythonProjects` 的 schema 是对象数组**
+  （`[{path, envManager}]`），不是字符串数组。官方设计意图是
+  **只写环境管理器、不写死解释器路径**——路径运行时解析，
+  重建 `.venv` 也不会失效。
+- **`python.envFile` 默认是 `${workspaceFolder}/.env`**（仓库根）。
+  本项目的 `.env` 在 `apps/api/`，不显式指就注不进变量。
+
+⚠️ **「VS Code 会跳过临时目录里的 venv」这条没有依据**——2026-11-23 复查
+`ms-python.python` 与 `ms-python.vscode-python-envs` 两个扩展的打包代码，
+**没有任何按临时目录过滤 venv 的逻辑**。当时列表里看不到目标 venv，
+真正原因是 `defaultEnvManager` 被设成了 `system`（它挡在自动发现前面）。
+别再照这条去猜。
 
 ## 3. 改了数据库结构 → 先跑迁移
 
