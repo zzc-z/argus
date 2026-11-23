@@ -16,6 +16,13 @@ OpenAI 官方只收境外信用卡，国内无法开通。百炼提供 OpenAI �
 :func:`embed_texts` 在未配置时抛 :class:`EmbeddingNotConfiguredError`，
 但摄取流程由 :func:`embed_or_none` 兜底，返回 ``None`` 让流程继续——
 没有向量只是检索不到，解析出来的正文仍然入库，不至于整份资料白传。
+
+## 凭据从哪来
+
+调用方传进来的 ``credentials``（见 ``app/services/credentials.py``）——
+key、端点、模型名、维度都在里面，**本模块不查 DB、不读 env**。
+
+每个用户可以配自己的嵌入服务（见设置页），所以嵌入配置不是全局的。
 """
 
 from __future__ import annotations
@@ -25,7 +32,7 @@ from functools import lru_cache
 
 from openai import AsyncOpenAI
 
-from app.config import get_settings
+from app.services.credentials import ResolvedCredentials
 
 
 class EmbeddingError(Exception):
@@ -49,42 +56,54 @@ class DimensionMismatchError(EmbeddingError):
 MAX_BATCH_SIZE = 10
 
 
-@lru_cache(maxsize=1)
-def get_embedding_client() -> AsyncOpenAI:
-    """嵌入服务 client 单例。复用连接池，理由同 services/llm.py。"""
-    settings = get_settings()
-    key = settings.embedding_api_key
-    if key is None:
-        raise EmbeddingNotConfiguredError("EMBEDDING_API_KEY 未配置，无法生成向量")
+@lru_cache(maxsize=32)
+def _embedding_client_cached(api_key: str, base_url: str | None) -> AsyncOpenAI:
+    """按 (key, base_url) 分桶的嵌入 client。
 
-    kwargs: dict[str, object] = {"api_key": key.get_secret_value(), "max_retries": 2}
-    if settings.embedding_base_url:
-        kwargs["base_url"] = settings.embedding_base_url
+    分桶的理由同 ``services/llm.py``：用户在设置页配自己的 key 与
+    端点，缓存必须认得出「换了配置」这件事，否则改了 key 还在用旧的。
+    """
+    kwargs: dict[str, object] = {"api_key": api_key, "max_retries": 2}
+    if base_url:
+        kwargs["base_url"] = base_url
     return AsyncOpenAI(**kwargs)  # type: ignore[arg-type]
+
+
+def get_embedding_client(credentials: ResolvedCredentials) -> AsyncOpenAI:
+    """取嵌入 client。复用连接池，理由同 services/llm.py。"""
+    key = credentials.embedding_api_key
+    if not key:
+        raise EmbeddingNotConfiguredError("EMBEDDING_API_KEY 未配置，无法生成向量")
+    return _embedding_client_cached(key, credentials.embedding_base_url)
 
 
 def clear_client_cache() -> None:
     """测试重置用。与 services/llm.py 同名函数各自独立。"""
-    get_embedding_client.cache_clear()
+    _embedding_client_cached.cache_clear()
 
 
-async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
+async def embed_texts(
+    texts: Sequence[str],
+    credentials: ResolvedCredentials,
+) -> list[list[float]]:
     """把一批文本转成向量，按输入顺序返回。
 
     内部按 :data:`MAX_BATCH_SIZE` 切片并发请求——百炼单批只收 10 条，
     一份 500 片的研报要发 50 次请求。
+
+    ``credentials`` 由调用方解析好——嵌入服务的 key 与端点按用户走，
+    这里不查 DB。
     """
     if not texts:
         return []
 
-    client = get_embedding_client()
-    settings = get_settings()
-    expected = settings.embedding_dimensions
+    client = get_embedding_client(credentials)
+    expected = credentials.embedding_dimensions
 
     batches = [texts[i : i + MAX_BATCH_SIZE] for i in range(0, len(texts), MAX_BATCH_SIZE)]
     results: list[list[float]] = []
     for batch in batches:
-        results.extend(await _embed_one_batch(client, batch, expected))
+        results.extend(await _embed_one_batch(client, batch, expected, credentials.embedding_model))
     return results
 
 
@@ -92,11 +111,12 @@ async def _embed_one_batch(
     client: AsyncOpenAI,
     batch: Sequence[str],
     expected_dim: int,
+    model: str,
 ) -> list[list[float]]:
     """发一批请求并校验维度。"""
     try:
         response = await client.embeddings.create(
-            model=get_settings().embedding_model,
+            model=model,
             input=list(batch),
             # 百炼的 text-embedding-v4 默认 1024 维，实测支持显式指定
             # （2026-10-12：1536 / 1024 都返回对应维度）。
@@ -120,12 +140,15 @@ async def _embed_one_batch(
     return vectors
 
 
-async def embed_or_none(texts: Sequence[str]) -> list[list[float]] | None:
+async def embed_or_none(
+    texts: Sequence[str],
+    credentials: ResolvedCredentials,
+) -> list[list[float]] | None:
     """降级入口：未配置 key 时返回 None，让摄取流程继续。
 
     不吞掉 :class:`DimensionMismatchError`——那是真错误，重试无用。
     """
     try:
-        return await embed_texts(texts)
+        return await embed_texts(texts, credentials)
     except EmbeddingNotConfiguredError:
         return None

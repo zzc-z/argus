@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.services import citation
 from app.services.citation import Reference, ReferenceTable
+from app.services.credentials import ResolvedCredentials, resolve_env_credentials
 from app.services.embedder import EmbeddingError
 from app.services.errors import Classified, classify_embedding_error, classify_tool_error
 from app.services.errors_base import RetrievalNoMatchError
@@ -96,11 +97,16 @@ class ToolContext:
 
     ``citations`` 由 agent 循环创建并跨整轮循环持有——每次 ``local_search``
     调用都必须共用同一个，否则正文里的 ``[1]`` 在不同段落指向不同切片。
+
+    ``credentials`` 是这个用户的外部能力凭据（Tavily key、嵌入 key 等）。
+    它必须跟着 context 走——每个用户配自己的 key，工具层不能去读全局
+    配置。**必填**：缺了它，联网搜索与嵌入就会用错人的 key。
     """
 
     db: AsyncSession
     user_id: int
     citations: ReferenceTable
+    credentials: ResolvedCredentials
     vec_engine: AsyncEngine | None = None
     """向量引擎。**只有 ``local_search`` 需要它**。
 
@@ -256,7 +262,11 @@ ALL_TOOLS: tuple[ToolSpec, ...] = (TAVILY_SEARCH_SPEC, LOCAL_SEARCH_SPEC, DEDUP_
 ALL_TOOLS_NAMES: tuple[str, ...] = tuple(spec.name for spec in ALL_TOOLS)
 
 
-def available_tools(*, has_local: bool = True) -> tuple[ToolSpec, ...]:
+def available_tools(
+    *,
+    has_local: bool = True,
+    credentials: ResolvedCredentials,
+) -> tuple[ToolSpec, ...]:
     """按外部依赖是否就绪过滤工具列表。
 
     Tavily key 没配时摘掉 tavily_search，并让调用方在 system prompt 里
@@ -265,10 +275,13 @@ def available_tools(*, has_local: bool = True) -> tuple[ToolSpec, ...]:
 
     ``has_local`` 为 False 时摘掉 local_search：没有数据库连接时它必然
     执行不了，而模型看不到就不会浪费一轮去调它。
+
+    ``credentials`` 是**当前用户**的凭据——Tavily key 是按用户配的，
+    判断「这个用户能不能联网搜索」就得看他的配置，不是看部署的。
     """
     names = set(ALL_TOOLS_NAMES)
     try:
-        get_tavily_client()
+        get_tavily_client(credentials)
     except LLMNotConfiguredError:
         names.discard(TAVILY_SEARCH_SPEC.name)
     if not has_local:
@@ -505,8 +518,21 @@ async def _run_tavily_search(
 
     双重超时：SDK 的 ``TAVILY_TIMEOUT_SECONDS`` 只管 HTTP 连接，外层
     ``asyncio.wait_for`` 兜住 DNS 解析慢、建连挂起这类边缘情况。
+
+    ## 凭据从哪来
+
+    有 context 时用**这个用户**的凭据——Tavily key 是按用户配的。
+    没有 context 时用部署默认的（那时没有「这个用户」可言）。
+
+    ## 为什么 client 取得比参数校验早
+
+    「没配 key」比「参数错」更该先报——前者是用户要去设置页解决的事，
+    后者让模型自己改就能绕过。顺序反了的话，没配 key 的用户会看到
+    「参数错误」，改了参数重试十次还是同样的错。
     """
-    client = get_tavily_client()
+    client = get_tavily_client(
+        context.credentials if context is not None else resolve_env_credentials()
+    )
 
     query = str(tool_input.get("query", "")).strip()
     if not query:
@@ -711,12 +737,13 @@ async def _run_local_search(context: ToolContext, tool_input: dict[str, Any]) ->
     # 2. 判断「语义相关性判断能不能跑」
     # 之前这两处各算一次 = 两次调嵌入服务——慢，且嵌入服务欠费时
     # 整次 local_search 直接失败（用户看到「接口报错、没有内容」）。
-    query_vector = await retriever.query_vector_for(query)
+    query_vector = await retriever.query_vector_for(query, context.credentials)
     results = await retriever.retrieve(
         context.db,
         context.vec_engine,
         query,
         user_id=context.user_id,
+        credentials=context.credentials,
         limit=LOCAL_SEARCH_TOP_K,
         query_vector=query_vector,
         query_vector_given=True,
@@ -779,6 +806,7 @@ async def _empty_retrieval_outcome(
         context.vec_engine,
         query,
         context.user_id,
+        context.credentials,
         query_vector=query_vector,
         query_vector_given=query_vector is not None,
     )

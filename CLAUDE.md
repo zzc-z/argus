@@ -125,6 +125,26 @@
   `GITHUB_OAUTH_CALLBACK_URL`（**必须带 `/api/v1` 前缀**）/
   `COOKIE_SECURE=false`（默认 True，CI 走 http 时 Secure cookie 不会被送回）。
 - 改 `app/models/*.py` 之后要 `alembic revision --autogenerate` + `upgrade head`。
+- **外部能力的凭据是「每用户独立」的**（2026-11-23 加）——Anthropic /
+  Tavily / Embedding 的 key 与 base_url 存在 `provider_credentials` 表，
+  按 `user_id` 分行。**优先级：用户配的 > 环境变量里的**。
+  统一入口是 `app/services/credentials.py`——**任何地方都不许再直接读
+  `get_settings().anthropic_api_key` 之类**，那些调用点拿不到 user_id，
+  会用错人的 key。client 缓存（`llm._anthropic_client_cached` 等）按
+  `(api_key, base_url)` 分桶，不按 user_id——改了 key 必须拿到新 client。
+  **接口永不回显密钥内容**（`/api/v1/settings/credentials` 只回
+  `configured` + `source`；base_url 与模型名不是秘密，直接回显）。
+- **凭据的两条硬边界**（审查改动时重点看这两条）：
+  1. **key 与 base_url 必须成对解析**（`credentials._pair`）——用户配了
+     其中一个，两个都从用户层取。各自独立回落会把**用户的 key 发到部署的
+     中转站**，或把**部署的 key 发到用户指定的地址**，且不报错。
+  2. **base_url 是服务端出站地址**，写入时必须过
+     `credentials.validate_base_url`（协议白名单 + 拒内网/本机），
+     否则就是一条 SSRF 通道——判据与 `services/fetcher.py` 的既有
+     SSRF 政策一致。
+- **嵌入模型名是部署级的，用户不能改**——向量索引全库共享且维度写死在
+  建表 DDL 里，改模型会让两套向量坐标系混在一张表里，检索质量静默
+  下降且没有重建入口。嵌入的 key 与端点可以按用户配。
 - **前端 lint 真的会跑**：`eslint app components lib`，配置在 `apps/web/eslint.config.mjs`。
   （`next lint` 在 Next 16 已废弃，项目用的是 flat config 的 `eslint`。）
 - **主题机制**：`globals.css` 的 `:root` **不**声明 `color-scheme`，只有

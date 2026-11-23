@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from app.models.source import Source
 from app.services.citation import Reference, ReferenceTable
+from app.services.credentials import ResolvedCredentials
 from app.services.stages import Plan
 from app.services.stream import AgentEvent, ReferenceEvent, ToolCallEvent
 from app.services.tools import ToolContext, ToolSpec, execute_tool
@@ -111,6 +112,7 @@ def _build_context(
     db: AsyncSession | None,
     vec_engine: AsyncEngine | None,
     session_maker: async_sessionmaker[AsyncSession] | None = None,
+    credentials: ResolvedCredentials | None = None,
 ) -> ToolContext | None:
     """能拿到数据库就建上下文，否则返回 None（对应「无检索上下文」）。
 
@@ -129,13 +131,14 @@ def _build_context(
     ``session_maker`` 传给公开来源用——它们要另开短事务落库，不能占着
     主事务的 SQLite 写锁跑完整个研究（见 ``ToolContext.session_maker``）。
     """
-    if db is None:
+    if db is None or credentials is None:
         return None
     return ToolContext(
         db=db,
         vec_engine=vec_engine,
         user_id=user_id,
         citations=ReferenceTable(),
+        credentials=credentials,
         session_maker=session_maker,
     )
 

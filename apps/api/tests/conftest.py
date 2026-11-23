@@ -26,7 +26,8 @@ from app.gateway.auth import OAUTH_STATE_COOKIE
 from app.main import app
 from app.models import Base
 from app.services.agent import TurnChunk, TurnResult
-from app.services.llm import LLMNotConfiguredError, get_anthropic_client, get_tavily_client
+from app.services.credentials import ResolvedCredentials, resolve_env_credentials
+from app.services.llm import LLMNotConfiguredError, clear_client_cache
 from app.services.vectorstore import create_vector_engine, get_vector_engine
 
 pytest_plugins: list[str] = []
@@ -49,23 +50,34 @@ def turn_chunks(result: TurnResult) -> list[TurnChunk]:
     return chunks
 
 
-async def collect_turn(client: Any, messages: Any, tools: Any) -> TurnResult:
+async def collect_turn(
+    client: Any,
+    messages: Any,
+    tools: Any,
+    credentials: Any = None,
+) -> TurnResult:
     """跑完 ``_run_turn`` 这个生成器，返回它的 ``TurnResult``。
 
     测试大多只关心整轮结果（usage / stop_reason / content），不关心
     中间发了哪些片段——这个辅助把生成器跑到底、取出收尾的那块。
+
+    ``credentials`` 缺省时用 env 解析出的那一份——测试里通常不关心
+    用户的凭据配置，只关心「这一轮能不能跑完」。
     """
     from app.services.agent import _run_turn
 
+    if credentials is None:
+        credentials = resolve_env_credentials()
+
     result: TurnResult | None = None
-    async for chunk in _run_turn(client, messages, tools):
+    async for chunk in _run_turn(client, messages, tools, credentials):
         if chunk.kind == "result":
             result = chunk.result
     assert result is not None, "_run_turn 没有产出 result 片段"
     return result
 
 
-def _tavily_unavailable() -> object:
+def _tavily_unavailable(_credentials: object = None) -> object:
     """``get_tavily_client`` 的测试替身：永远报「未配置」。
 
     ## 覆盖范围（别当成全局保证）
@@ -112,12 +124,12 @@ def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
     ## 为什么还要 cache_clear
 
-    三个 ``lru_cache(maxsize=1)`` 单例：``get_settings``（config.py:124）
-    与 ``get_anthropic_client`` / ``get_tavily_client``（llm.py:45,70）。
-    第一次调用就把值缓存了，之后 ``monkeypatch.setenv`` 对它们**完全无效**。
+    ``get_settings``（config.py）是 ``lru_cache(maxsize=1)`` 单例。
+    第一次调用就把值缓存了，之后 ``monkeypatch.setenv`` 对它**完全无效**。
 
-    只清 ``get_settings`` 不够——``get_tavily_client`` 同样会缓存住带 key
-    的客户端，``available_tools`` 拿到的仍是「已配置」。症状是
+    只清 ``get_settings`` 不够——client 缓存（``llm._anthropic_client_cached``
+    / ``llm._tavily_client_cached``）同样会缓存住带 key 的客户端，
+    ``available_tools`` 拿到的仍是「已配置」。症状是
     ``test_tool_use_produces_tool_call_events`` 断言「搜索工具未配置」
     却拿到「工具内部错误」（它真的发了一次请求，被 Tavily 拒了）。
     config.py 早就写了「测试里 cache_clear() 可重置」，但没人真的调。
@@ -132,11 +144,10 @@ def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("APP_ENV", "test")
     monkeypatch.setenv("LOG_LEVEL", "warning")
     # 单例缓存：第一次调用就把值锁住，之后 setenv / setattr 对它无效。
-    # 三个都要清——只清 get_settings 的话 get_tavily_client 仍握着带 key
+    # 两个都要清——只清 get_settings 的话 client 缓存仍握着带 key
     # 的客户端（症状：单跑通过、全量跑失败）。
     get_settings.cache_clear()
-    get_anthropic_client.cache_clear()
-    get_tavily_client.cache_clear()
+    clear_client_cache()
     # get_tavily_client 默认抛「未配置」。这是**唯一**能让测试不联网的
     # 钩子：pydantic-settings 的配置来自文件而不是进程环境，清掉进程里的
     # TAVILY_API_KEY 对它无效；而把 env_file 整体换掉又会让 JWT_SECRET_KEY
@@ -217,6 +228,20 @@ def _stub_stage_nodes(monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRe
 
     monkeypatch.setattr("app.services.agent.plan_subtasks", _no_plan)
     monkeypatch.setattr("app.services.stages.analyze_evidence", _no_analysis)
+
+
+@pytest.fixture
+def credentials() -> ResolvedCredentials:
+    """一份按部署默认解析出来的凭据。
+
+    测试大多不关心「这个用户配了什么 key」——它们关心的是流程能不能
+    跑完。所以给一份 env 解析出来的凭据，省得每个用例自己去造。
+
+    要测「用户自己配的 key 生效」时，用例自己调
+    ``resolve_credentials(db, user_id)`` 造一份（见
+    ``tests/test_credentials.py``）。
+    """
+    return resolve_env_credentials()
 
 
 @pytest_asyncio.fixture
@@ -321,9 +346,7 @@ def github_state(client: TestClient) -> str:
     return parse_qs(urlparse(resp.headers["location"]).query)["state"][0]
 
 
-def pytest_collection_modifyitems(
-    config: pytest.Config, items: list[pytest.Item]
-) -> None:
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
     """没有真实 API key 时跳过标了 ``live`` 的用例。
 
     标 ``live`` 的测试要**真的调模型**——CI 里只有占位 key，调用会得到

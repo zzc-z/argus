@@ -1,11 +1,26 @@
-"""外部 AI 能力的 client 单例。
+"""外部 AI 能力的 client 缓存。
 
-Anthropic 与 Tavily 的客户端都做成进程内单例——它们各自内部持有一个
+Anthropic 与 Tavily 的客户端都缓存起来——它们各自内部持有一个
 连接池，每次请求新建 client 会让 TCP/TLS 握手开销远超实际收益，尤其在
 SSE 这种长连接场景下，一个研究请求要连打好几轮模型。
 
-与 ``app/config.py`` 的 ``get_settings`` 同一个模式：``lru_cache`` 缓存，
-测试里 ``cache_clear()`` 可重置。
+## 缓存的键是「凭据」而不是「用户」
+
+用户可以在设置页配自己的 API key 与中转站（见
+``app/services/credentials.py``），所以同一个部署上会有多把 key 在用。
+缓存按 ``(api_key, base_url)`` 分桶：
+
+- 同一把 key + 同一个地址 → 同一个 client（连接池复用）
+- 换了 key 或换了中转站 → 另一个 client
+
+**为什么不按 user_id 分桶**：换了 key 之后同一个 user_id 会拿到**旧的**
+client——用户改了配置，页面上说「已保存」，实际还在用老 key 调模型。
+而这种不一致不会报错，只会让测试人员以为自己的新 key 没生效。
+
+**为什么 key 直接进缓存键**：key 是敏感值，不能进日志或异常消息。
+所以缓存键**只在内存里**，不打印、不落盘、不进任何对外响应。
+（真要泄露，进程内存里本来就有这把 key——多放一份在字典键里不增加
+暴露面。）
 
 配置缺失统一抛 ``LLMNotConfiguredError``，由调用方决定怎么处理——
 是直接失败还是降级，取决于缺的是哪一项能力。
@@ -19,7 +34,7 @@ import httpx2
 from anthropic import APIConnectionError, APITimeoutError, AsyncAnthropic
 from tavily import AsyncTavilyClient
 
-from app.config import get_settings
+from app.services.credentials import ResolvedCredentials
 
 logger = logging.getLogger(__name__)
 
@@ -79,8 +94,8 @@ STREAM_INTERRUPT_RETRIES = 2
 STREAM_INTERRUPT_BACKOFF_SECONDS = 1.0
 
 
-def fallback_models() -> list[str]:
-    """解析配置的备胎模型链（按顺序尝试）。
+def fallback_models(credentials: ResolvedCredentials) -> list[str]:
+    """取备胎模型链（按顺序尝试）。
 
     ## 为什么要有备胎
 
@@ -94,15 +109,10 @@ def fallback_models() -> list[str]:
     配置项 ``ANTHROPIC_FALLBACK_MODELS``，逗号分隔的 alias 列表。
     留空表示没有备胎（保持原行为）。
     """
-    from app.config import get_settings
-
-    raw = get_settings().anthropic_fallback_models.strip()
-    if not raw:
-        return []
-    return [m.strip() for m in raw.split(",") if m.strip()]
+    return list(credentials.fallback_models)
 
 
-def model_for(role: str) -> str:
+def model_for(credentials: ResolvedCredentials, role: str) -> str:
     """取某个角色的模型。
 
     优先级（业界静态分层路由的标准做法）：
@@ -133,15 +143,7 @@ def model_for(role: str) -> str:
     跨模块 import 一个私有函数（``_model_for``）——迟早有人绕过它，
     然后两处路由就漂移了。
     """
-    from app.config import get_settings
-
-    settings = get_settings()
-    override = getattr(settings, f"anthropic_{role}_model", None)
-    if isinstance(override, str) and override:
-        return override
-    if role == "critic":
-        return settings.anthropic_complex_model
-    return settings.anthropic_default_model
+    return credentials.model_for(role)
 
 
 def assert_distinct_judge_and_writer() -> None:
@@ -173,6 +175,18 @@ def assert_distinct_judge_and_writer() -> None:
     系统性偏高会直接误导判断。
 
     ``APP_ENV=prod`` 时才强制；dev / test 只记警告。
+
+    ## 这条只管**部署默认**
+
+    用户可以在设置页配自己的模型（见 ``app/services/credentials.py``），
+    那时 critic 与 writer 是不是同一个型号由用户自己定——这条断言
+    管不到，也不该管（它管的是「部署者不知道自己在配什么」的情况，
+    而用户是明知道自己在配什么才填的）。
+
+    用户配成同一个型号时，``/settings/credentials`` 的响应里
+    ``critic_equals_writer`` 会标出来，页面据此给提示——那是**警告**
+    而不是阻断：阻断会让用户的整个研究跑不起来，而这个项目的定位是
+    给测试人员用的。
     """
     from app.config import get_settings
 
@@ -245,55 +259,66 @@ class LLMNotConfiguredError(RuntimeError):
 
 
 def _require(value: str | None, name: str) -> str:
-    """取出 SecretStr 里的明文，缺配置时抛 ``LLMNotConfiguredError``。"""
+    """取出明文，缺配置时抛 ``LLMNotConfiguredError``。"""
     if value is None or not value:
         raise LLMNotConfiguredError(f"{name} 未配置，无法调用该能力")
     return value
 
 
-@lru_cache(maxsize=1)
-def get_anthropic_client() -> AsyncAnthropic:
-    """返回进程内单例的 Anthropic async 客户端。
+@lru_cache(maxsize=32)
+def _anthropic_client_cached(api_key: str, base_url: str | None) -> AsyncAnthropic:
+    """按 (key, base_url) 分桶的 Anthropic client。
 
     ``base_url`` 传 None 时走 Anthropic 官方端点；填了则走中转站。
     不在这里判断走哪条路——配置里有没有填就是唯一的判断依据。
 
     注意中转站的 model 实际身份不一定是配置字段标称的版本，
-    ANTHROPIC_*_MODEL 填的值必须用中转站能认的 alias。
+    模型名填的值必须用中转站能认的 alias。
+
+    ``maxsize=32``：一台部署上通常只有几个测试账号，32 够用；而
+    无上限的字典会被「改了 100 次 key」的测试撑爆——每个 client
+    都持有一个连接池。
     """
-    settings = get_settings()
-    key = _require(
-        settings.anthropic_api_key.get_secret_value()
-        if settings.anthropic_api_key
-        else None,
-        "ANTHROPIC_API_KEY",
-    )
     return AsyncAnthropic(
-        api_key=key,
-        base_url=settings.anthropic_base_url,
+        api_key=api_key,
+        base_url=base_url,
         timeout=MODEL_TIMEOUT_SECONDS,
         max_retries=MODEL_MAX_RETRIES,
     )
 
 
-@lru_cache(maxsize=1)
-def get_tavily_client() -> AsyncTavilyClient:
-    """返回进程内单例的 Tavily async 客户端。
+@lru_cache(maxsize=32)
+def _tavily_client_cached(api_key: str) -> AsyncTavilyClient:
+    """按 key 分桶的 Tavily client。"""
+    return AsyncTavilyClient(api_key=api_key)
 
-    没配 TAVILY_API_KEY 时抛 ``LLMNotConfiguredError``——由调用方
+
+def get_anthropic_client(credentials: ResolvedCredentials) -> AsyncAnthropic:
+    """取这个用户的 Anthropic client。
+
+    ``credentials`` 由调用方解析好（见 ``app/services/credentials.py``）——
+    这里不查 DB：client 的创建点在请求热路径上，而凭据解析需要一次
+    SELECT，调用方解析一次传下来更省。
+
+    没配 key 时抛 ``LLMNotConfiguredError``——调用方决定是直接失败
+    还是降级。
+    """
+    key = _require(credentials.anthropic_api_key, "ANTHROPIC_API_KEY")
+    return _anthropic_client_cached(key, credentials.anthropic_base_url)
+
+
+def get_tavily_client(credentials: ResolvedCredentials) -> AsyncTavilyClient:
+    """取这个用户的 Tavily client。
+
+    没配 key 时抛 ``LLMNotConfiguredError``——由调用方
     （app/services/tools.py 的 dispatch）转成给模型看的错误字符串，
     而不是让整个 agent 流崩掉。
     """
-    settings = get_settings()
-    key = _require(
-        settings.tavily_api_key.get_secret_value() if settings.tavily_api_key else None,
-        "TAVILY_API_KEY",
-    )
-    return AsyncTavilyClient(api_key=key)
+    key = _require(credentials.tavily_api_key, "TAVILY_API_KEY")
+    return _tavily_client_cached(key)
 
 
 def clear_client_cache() -> None:
-    """清掉两个单例——测试改了配置后调用，否则拿到的是旧配置的 client。"""
-    get_anthropic_client.cache_clear()
-    get_tavily_client.cache_clear()
-
+    """清掉所有 client 缓存——测试改了配置后调用，否则拿到的是旧配置的 client。"""
+    _anthropic_client_cached.cache_clear()
+    _tavily_client_cached.cache_clear()

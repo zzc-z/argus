@@ -48,6 +48,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from app.services.credentials import resolve_env_credentials
 from app.services.faithfulness import (
     _parse_verdicts,
 )
@@ -80,9 +81,9 @@ def _cohen_kappa(pairs: Sequence[tuple[bool, bool]]) -> float:
     observed = sum(1 for e, a in pairs if e == a) / total
     expected_count = sum(1 for e, _ in pairs if e)
     actual_count = sum(1 for _, a in pairs if a)
-    p_e = (expected_count / total) * (actual_count / total) + (
-        1 - expected_count / total
-    ) * (1 - actual_count / total)
+    p_e = (expected_count / total) * (actual_count / total) + (1 - expected_count / total) * (
+        1 - actual_count / total
+    )
     if math.isclose(p_e, 1.0):
         # 两类里有一类从不出现 → 随机猜也有 100% 一致率，κ 无定义。
         # 返回 1.0 表示「无从区分」，由调用方结合 TPR/TNR 一起看。
@@ -100,9 +101,7 @@ def _wilson_interval(successes: int, total: int, z: float = 1.96) -> tuple[float
     p = successes / total
     denominator = 1 + z**2 / total
     centre = (p + z**2 / (2 * total)) / denominator
-    margin = (
-        z * math.sqrt(p * (1 - p) / total + z**2 / (4 * total**2)) / denominator
-    )
+    margin = z * math.sqrt(p * (1 - p) / total + z**2 / (4 * total**2)) / denominator
     return max(0.0, centre - margin), min(1.0, centre + margin)
 
 
@@ -138,15 +137,11 @@ async def _judge_once(
 
     # _build_user_prompt 按 (n, variant) 顺序输出；要测顺序效应就得能重排。
     # 这里直接自己拼，顺序由 order 决定。
-    source_block = "\n\n".join(
-        f"### 原文 {n}\n{case.sources[n]}" for n in sorted(case.sources)
-    )
+    source_block = "\n\n".join(f"### 原文 {n}\n{case.sources[n]}" for n in sorted(case.sources))
     sentence_blocks = []
     for n, variant_index in items:
         tag = (
-            n
-            if variant_index == 0
-            else (f"{n}b" if variant_index == 1 else f"{n}b{variant_index}")
+            n if variant_index == 0 else (f"{n}b" if variant_index == 1 else f"{n}b{variant_index}")
         )
         sentence_blocks.append(
             f"### 句子 {tag}（对应「原文 {n}」）\n{ordered_sentences[n][variant_index]}"
@@ -206,7 +201,8 @@ async def calibrate(
     check_order: bool = True,
 ) -> dict[str, Any]:
     """跑完整轮校准，产出指标。"""
-    client = get_anthropic_client()
+    # 校准脚本是**部署级**工具（不针对某个用户），用环境变量里的凭据。
+    client = get_anthropic_client(resolve_env_credentials())
 
     outcomes: list[CaseOutcome] = []
     for case in golden.cases:
@@ -252,12 +248,7 @@ async def calibrate(
     fn = sum(1 for e, a in pairs if not e and a)
     tn = sum(1 for e, a in pairs if e and a)
     fp = sum(1 for e, a in pairs if e and not a)
-    unjudged = sum(
-        1
-        for out in outcomes
-        for key in out.expected
-        if out.actual.get(key) is None
-    )
+    unjudged = sum(1 for out in outcomes for key in out.expected if out.actual.get(key) is None)
 
     tpr = tp / (tp + fn) if (tp + fn) else 0.0
     tnr = tn / (tn + fp) if (tn + fp) else 0.0
@@ -345,9 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     golden = load_golden_set()
-    result = asyncio.run(
-        calibrate(golden, repeat=args.repeat, check_order=not args.no_order_check)
-    )
+    result = asyncio.run(calibrate(golden, repeat=args.repeat, check_order=not args.no_order_check))
 
     out_path = args.out or Path(__file__).parent / "reports" / "judge_calibration.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -360,7 +349,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Cohen's κ：{result['cohen_kappa']:.3f}  （>0.7 可接受，>0.8 好）")
     print(f"混淆：{result['confusion']}")
     if result["stability"]:
-        print(f"稳定性（{result['stability']['repeat']} 次重跑）：{result['stability']['stable_ratio']:.1%}")
+        print(
+            f"稳定性（{result['stability']['repeat']} 次重跑）：{result['stability']['stable_ratio']:.1%}"
+        )
         if result["stability"]["unstable_cases"]:
             print(f"  不稳定的条目：{result['stability']['unstable_cases']}")
     if result["order_sensitivity"]:

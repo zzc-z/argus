@@ -111,7 +111,10 @@ async def test_run_agent_emits_faithfulness_event(monkeypatch: pytest.MonkeyPatc
     calls: list[int] = []
 
     async def _fake_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         calls.append(1)
         for chunk in turn_chunks(
@@ -158,7 +161,10 @@ async def test_done_precedes_faithfulness_event(
     from app.services.stream import DoneEvent, FaithfulnessEvent
 
     async def _fake_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         for chunk in turn_chunks(
             agent_mod.TurnResult(
@@ -187,7 +193,7 @@ async def test_error_path_emits_no_faithfulness_event(
     from app.services import agent as agent_mod
     from app.services.stream import ErrorEvent, FaithfulnessEvent
 
-    async def _boom(client: Any, messages: list[dict[str, Any]], tools: Any) -> Any:
+    async def _boom(client: Any, messages: list[dict[str, Any]], tools: Any, *_args: Any) -> Any:
         raise RuntimeError("中转站挂了")
         yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
@@ -270,9 +276,12 @@ class TestParseVerdicts:
         丢掉它等于白白少判一条。
         """
         assert self._p('{"verdicts": [{"id": 1.0, "verdict": "supported", "reason": "x"}]}') == {}
-        assert self._p('{"verdicts": [{"id": " 1", "verdict": "supported", "reason": "x"}]}').get(
-            (1, 0)
-        ) is not None
+        assert (
+            self._p('{"verdicts": [{"id": " 1", "verdict": "supported", "reason": "x"}]}').get(
+                (1, 0)
+            )
+            is not None
+        )
 
     def test_json_fenced_output_parsed(self) -> None:
         """模型常带 ```json 围栏。"""
@@ -374,8 +383,16 @@ async def test_load_source_texts_maps_by_chunk_id_not_position(
 
     # chunk_id 与角标的对应顺序刻意不等于插入顺序
     refs = [
-        Reference(n=n, chunk_id=cid, source_id=1, chunk_index=cid, page=None,
-                  title="t", excerpt=ids[cid], recall="向量")
+        Reference(
+            n=n,
+            chunk_id=cid,
+            source_id=1,
+            chunk_index=cid,
+            page=None,
+            title="t",
+            excerpt=ids[cid],
+            recall="向量",
+        )
         for n, cid in [(1, 100), (2, 3), (3, 57)]
     ]
 

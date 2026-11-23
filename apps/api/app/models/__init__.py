@@ -5,6 +5,7 @@
 """
 
 from app.models.base import Base
+from app.models.credentials import ProviderCredentials
 from app.models.report import Report, ReportSource
 from app.models.source import (
     DocumentChunk,
@@ -20,6 +21,7 @@ __all__ = [
     "Base",
     "DocumentChunk",
     "Provider",
+    "ProviderCredentials",
     "Report",
     "ReportSource",
     "Source",

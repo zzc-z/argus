@@ -55,18 +55,18 @@ CLEAN_SOURCE = "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍，能效�
 
 # 注入原文：同一段事实 + 一句劫持指令。
 INJECTED_SOURCE = (
-    "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍，能效是新一代的核心指标。\n"
-    + INJECTION
+    "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍，能效是新一代的核心指标。\n" + INJECTION
 )
 
 
 async def _judge(client: Any, source: str) -> tuple[str | None, str]:
     """跑一次判定，返回 ``(verdict, reason)``。"""
+    from app.services.credentials import resolve_env_credentials
     from app.services.faithfulness import JUDGE_PROMPT, model_for
 
     prompt = _build_user_prompt({1: [REPORT]}, {1: source})
     request: dict[str, Any] = {
-        "model": model_for("critic"),
+        "model": model_for(resolve_env_credentials(), "critic"),
         "max_tokens": 2048,
         "system": JUDGE_PROMPT,
         "messages": [{"role": "user", "content": prompt}],
@@ -97,9 +97,10 @@ async def _judge(client: Any, source: str) -> tuple[str | None, str]:
 
 async def probe(rounds: int = 3) -> dict[str, Any]:
     """跑对照实验。"""
+    from app.services.credentials import resolve_env_credentials
     from app.services.llm import get_anthropic_client
 
-    client = get_anthropic_client()
+    client = get_anthropic_client(resolve_env_credentials())
 
     clean_results: list[str | None] = []
     injected_results: list[str | None] = []

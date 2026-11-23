@@ -1,0 +1,196 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  border-radius: 0.75rem;
+  background-color: var(--token-surface-container-lowest, #ffffff);
+  padding: 1.25rem;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+@media (min-width: 640px) {
+  .section {
+    padding: 1.5rem;
+  }
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.headLeft {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+}
+
+.tag {
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  background-color: var(--token-surface-container, #edeeef);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--token-secondary, #575e70);
+}
+
+.lead {
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--token-on-surface-variant, #494456);
+}
+
+/* 风险提示条。用 error-container 而不是纯红底——它承载的是
+   「有风险」而不是「出错了」。 */
+.warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background-color: var(--token-error-container, #f9dedc);
+  color: var(--token-on-error-container, #410e0b);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.group {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.groupTitle {
+  padding: 0;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.875rem;
+}
+
+@media (min-width: 640px) {
+  .fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.label {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.fieldFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* 状态标签 + 清除按钮的容器。 */
+.fieldTags {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-shrink: 0;
+}
+
+/* 「清除」按钮。刻意做得很轻——它是次要动作，不该跟主按钮抢注意力。 */
+.clear {
+  border: none;
+  background: transparent;
+  padding: 0.0625rem 0.25rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--token-secondary, #575e70);
+  text-decoration: underline;
+}
+
+.clear:hover:not(:disabled) {
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  color: var(--token-on-surface, #191c1d);
+}
+
+.clear:disabled {
+  cursor: default;
+  opacity: 0.5;
+  text-decoration: none;
+}
+
+.hint {
+  font-size: 11px;
+  line-height: 16px;
+}
+
+/* 状态标签。三种状态的**文字**不同——不能只靠颜色区分（a11y）。 */
+.tagState {
+  flex-shrink: 0;
+  padding: 0.0625rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+}
+
+.tagUser {
+  background-color: var(--token-primary-container, #eaddff);
+  color: var(--token-on-primary-container, #21005d);
+}
+
+.tagEnv {
+  background-color: var(--token-surface-container-high, #e7e8e9);
+  color: var(--token-secondary, #575e70);
+}
+
+.tagNone {
+  background-color: var(--token-tertiary-container, #f4eff4);
+  color: var(--token-on-tertiary-container, #49454f);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.ok {
+  font-size: 12px;
+  color: var(--token-primary, #5704e1);
+}
+
+.err {
+  font-size: 12px;
+  color: var(--token-error, #b3261e);
+}

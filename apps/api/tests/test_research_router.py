@@ -126,7 +126,9 @@ async def test_ask_rejects_overlong_question(client: TestClient, api_db: AsyncSe
 # ── SSE 帧协议 ────────────────────────────────────────────────
 
 
-async def test_stream_returns_event_stream_content_type(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_stream_returns_event_stream_content_type(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
 
@@ -136,7 +138,9 @@ async def test_stream_returns_event_stream_content_type(client: TestClient, monk
         resp.read()
 
 
-async def test_stream_disables_proxy_buffering(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_stream_disables_proxy_buffering(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """X-Accel-Buffering: no 必须在——不关会被反代攒成一坨，流式失效。"""
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
@@ -146,7 +150,9 @@ async def test_stream_disables_proxy_buffering(client: TestClient, monkeypatch: 
         resp.read()
 
 
-async def test_stream_frames_are_valid_json(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_stream_frames_are_valid_json(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
 
@@ -159,7 +165,9 @@ async def test_stream_frames_are_valid_json(client: TestClient, monkeypatch: pyt
         assert "v" in frame
 
 
-async def test_frame_types_in_expected_order(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_frame_types_in_expected_order(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """事件顺序：run（第一帧）→ 节点切换 → 正文 → 收尾。
 
     ``run`` 帧必须在**最前面**：前端拿到 run id 才能在刷新后接回这一轮，
@@ -184,7 +192,9 @@ async def test_run_frame_carries_run_id_and_question(
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
 
-    with client.stream("POST", "/api/v1/research/ask", json={"question": "什么是向量数据库"}) as resp:
+    with client.stream(
+        "POST", "/api/v1/research/ask", json={"question": "什么是向量数据库"}
+    ) as resp:
         frames = _frames(resp)
 
     run_frame = frames[0]
@@ -193,7 +203,9 @@ async def test_run_frame_carries_run_id_and_question(
     assert run_frame["v"]["question"] == "什么是向量数据库"
 
 
-async def test_done_carries_session_and_tokens(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_done_carries_session_and_tokens(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
 
@@ -205,7 +217,9 @@ async def test_done_carries_session_and_tokens(client: TestClient, monkeypatch: 
     assert done["v"]["turns"] == 1
 
 
-async def test_delta_text_is_chinese_not_escaped(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_delta_text_is_chinese_not_escaped(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """中文不能是 \\uXXXX——前端要拿到可读文本。"""
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
@@ -217,7 +231,9 @@ async def test_delta_text_is_chinese_not_escaped(client: TestClient, monkeypatch
     assert "\\u" not in raw
 
 
-async def test_tool_call_event_reaches_client(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_tool_call_event_reaches_client(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """工具调用事件要能穿过端点——前端要显示「正在搜索」。"""
 
     async def _with_tool(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
@@ -225,9 +241,7 @@ async def test_tool_call_event_reaches_client(client: TestClient, monkeypatch: p
         yield ToolCallEvent(
             call_id="t1", phase="end", name="tavily_search", ok=True, elapsed_ms=2100
         )
-        yield DoneEvent(
-            session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1
-        )
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
 
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _with_tool)
@@ -261,9 +275,7 @@ async def test_reference_event_reaches_client(
             ]
         )
         yield DeltaEvent(node_id="writer", text="数据中心收入 392 亿美元 [1]")
-        yield DoneEvent(
-            session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1
-        )
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
 
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _with_ref)
@@ -285,9 +297,7 @@ async def test_reference_precedes_delta(
     async def _with_ref(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
         yield ReferenceEvent(references=[{"n": 1, "chunk_id": 7}])
         yield DeltaEvent(node_id="writer", text="答案 [1]")
-        yield DoneEvent(
-            session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1
-        )
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
 
     await _login(client, api_db)
     monkeypatch.setattr(research_module, "run_agent", _with_ref)
@@ -301,7 +311,9 @@ async def test_reference_precedes_delta(
 # ── 开流后的错误（改不了状态码，只能走事件）──────────────────
 
 
-async def test_error_event_when_agent_crashes(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_error_event_when_agent_crashes(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """agent 抛异常要变成 error 事件，而不是 500 或裸断连接。"""
 
     async def _boom(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
@@ -406,9 +418,7 @@ async def test_slot_released_before_citation_validation(
         if on_llm_done is not None:
             on_llm_done()
             released_at.append("llm_done")
-        yield DoneEvent(
-            session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1
-        )
+        yield DoneEvent(session_id="s", elapsed_ms=1, turns=1, input_tokens=1, output_tokens=1)
         # 校验阶段「还在跑」——这段时间槽位必须已经还回去了。
         released_at.append("validating")
 
@@ -463,9 +473,7 @@ async def test_slot_state_releases_only_once() -> None:
     state.release()
     after = research_module._slots._value
 
-    assert after == before + 1, (
-        f"重复 release 应只还一次槽位（计数 +1），实际 {after - before}"
-    )
+    assert after == before + 1, f"重复 release 应只还一次槽位（计数 +1），实际 {after - before}"
 
 
 async def test_agent_gets_the_override_session(
@@ -504,9 +512,7 @@ async def test_agent_gets_the_override_session(
 
     agent_db = seen["db"]
     assert isinstance(agent_db, AsyncSession)
-    assert agent_db.bind is api_db.bind, (
-        "agent 拿到的 session 不在测试库上——override 被绕过了"
-    )
+    assert agent_db.bind is api_db.bind, "agent 拿到的 session 不在测试库上——override 被绕过了"
 
 
 async def test_agent_session_is_usable_during_stream(
@@ -543,7 +549,9 @@ async def test_agent_session_is_usable_during_stream(
     assert rows == [1], "生成器里 session 已经不能用了"
 
 
-async def test_error_is_last_frame(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_error_is_last_frame(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """error 必须是最后一帧——前端靠它把界面收尾。"""
 
     async def _boom(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
@@ -559,7 +567,9 @@ async def test_error_is_last_frame(client: TestClient, monkeypatch: pytest.Monke
     assert frames[-1]["type"] == "error"
 
 
-async def test_agent_error_event_passes_through(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_agent_error_event_passes_through(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """agent 自己发的 ErrorEvent 原样透传，不被端点重复包装。"""
 
     async def _fail(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
@@ -580,7 +590,9 @@ async def test_agent_error_event_passes_through(client: TestClient, monkeypatch:
 # ── 开流前的服务端配置错误 ────────────────────────────────────
 
 
-async def test_ask_returns_400_when_llm_unconfigured(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_ask_returns_400_when_llm_unconfigured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """模型没配置要在开流前拒——开流后就只能发事件了。
 
     **用 400 而不是 503**：503 的语义是「服务暂时不可用，稍后重试」，
@@ -588,7 +600,7 @@ async def test_ask_returns_400_when_llm_unconfigured(client: TestClient, monkeyp
     里，前端没法区分「该等」还是「该改配置」。
     """
 
-    def _raise() -> None:
+    def _raise(*_args: object) -> None:
         raise LLMNotConfiguredError("ANTHROPIC_API_KEY 未配置")
 
     await _login(client, api_db)
@@ -597,6 +609,37 @@ async def test_ask_returns_400_when_llm_unconfigured(client: TestClient, monkeyp
     resp = client.post("/api/v1/research/ask", json={"question": "问题"})
     assert resp.status_code == 400
     assert "模型服务未配置" in resp.json()["detail"]
+
+
+async def test_slot_is_released_when_credential_resolution_fails(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
+    """**凭据解析失败时，并发槽位必须还回去。**
+
+    回归场景：``_reject_if_llm_unconfigured`` 里那次 DB 查询（解析凭据）
+    失败（库被锁、连接断了）。异常若直接冒出去，槽位就永久漏掉——
+    之后**每个**研究请求都 503「并发已满」，而实际上一个研究都没在跑。
+
+    这条测试用「连续失败 N+1 次后仍能拿到 400（而不是 503）」来验证
+    槽位没泄漏：MAX_CONCURRENT_STREAMS 是 4，失败 5 次就一定会撞上
+    泄漏的槽位。
+    """
+    from sqlalchemy.exc import OperationalError
+
+    async def _boom(*_args: object, **_kwargs: object) -> None:
+        raise OperationalError("SELECT ...", {}, Exception("database is locked"))
+
+    await _login(client, api_db)
+    monkeypatch.setattr(research_module, "resolve_credentials", _boom)
+
+    # 失败次数超过槽位总数——真泄漏的话，第 5 次就会因为「槽位已满」
+    # 而返回 503，而不是抛原来的那个 DB 错误。
+    for i in range(research_module.MAX_CONCURRENT_STREAMS + 1):
+        with pytest.raises(OperationalError):
+            # TestClient 默认 raise_server_exceptions=True，未捕获的异常
+            # 直接冒到测试里（生产上是 500）。
+            client.post("/api/v1/research/ask", json={"question": "问题"})
+        assert not research_module._slots.locked(), f"第 {i + 1} 次后槽位泄漏了"
 
 
 async def test_concurrency_limit_returns_503(
@@ -624,7 +667,9 @@ async def test_concurrency_limit_returns_503(
             research_module._slots.release()
 
 
-async def test_slots_released_after_stream(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_slots_released_after_stream(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """流结束后槽位必须归还，否则跑几次之后就永久 503。"""
     monkeypatch.setattr(research_module, "run_agent", _fake_agent_success)
 
@@ -637,7 +682,9 @@ async def test_slots_released_after_stream(client: TestClient, monkeypatch: pyte
     assert not research_module._slots.locked()
 
 
-async def test_slots_released_even_when_agent_crashes(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_slots_released_even_when_agent_crashes(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """agent 崩了也要归还槽位。"""
 
     async def _boom(question: str, *, user_id: int, **_: Any) -> AsyncIterator[AgentEvent]:
@@ -656,7 +703,9 @@ async def test_slots_released_even_when_agent_crashes(client: TestClient, monkey
 # ── 端到端：真实 run_agent 走一遍（打桩 LLM）──────────────────
 
 
-async def test_end_to_end_with_stubbed_llm(client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession) -> None:
+async def test_end_to_end_with_stubbed_llm(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, api_db: AsyncSession
+) -> None:
     """不打桩端点这层，用打桩后的真实 agent 跑通全链路。
 
     验证两件最要紧的：节点不变量在穿过端点编码后依然成立，
@@ -666,7 +715,9 @@ async def test_end_to_end_with_stubbed_llm(client: TestClient, monkeypatch: pyte
 
     def _turn(text: str = "", tools: list[dict[str, Any]] | None = None) -> TurnResult:
         calls = tools or []
-        content: list[dict[str, Any]] = [{"type": "thinking", "thinking": "想一下", "signature": "S"}]
+        content: list[dict[str, Any]] = [
+            {"type": "thinking", "thinking": "想一下", "signature": "S"}
+        ]
         if text:
             content.append({"type": "text", "text": text})
         content.extend(calls)
@@ -693,7 +744,9 @@ async def test_end_to_end_with_stubbed_llm(client: TestClient, monkeypatch: pyte
         _turn(text="最终结论是：向量数据库适合高维近邻检索。"),
     ]
 
-    async def _fake_turn(cl: Any, messages: Any, tools: Any) -> AsyncIterator[TurnChunk]:
+    async def _fake_turn(
+        cl: Any, messages: Any, tools: Any, *_args: Any
+    ) -> AsyncIterator[TurnChunk]:
         for chunk in turn_chunks(script.pop(0)):
             yield chunk
 

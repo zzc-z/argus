@@ -16,6 +16,11 @@ from typing import Any
 import pytest
 
 from app.services import stages
+from app.services.credentials import resolve_env_credentials
+
+# 测试用的凭据。按部署默认解析——本文件测的是调用链的行为，
+# 不是「用户配了什么 key」。
+_CREDS = resolve_env_credentials()
 
 # ── 测试替身 ──────────────────────────────────────────────────
 
@@ -58,7 +63,7 @@ async def test_plan_parses_subtasks() -> None:
     """正常返回：子任务被解析出来。"""
     client = _FakeClient(['{"subtasks": ["查市场规模", "查主要玩家"]}'])
 
-    plan = await stages.plan_subtasks(client, "市场规模多大？", has_local=True)
+    plan = await stages.plan_subtasks(client, "市场规模多大？", has_local=True, credentials=_CREDS)
 
     assert plan.subtasks == ["查市场规模", "查主要玩家"]
 
@@ -67,7 +72,7 @@ async def test_plan_reports_token_usage() -> None:
     """token 必须能拿到——调用方要记进用量账本。"""
     client = _FakeClient(['{"subtasks": ["a"]}'])
 
-    plan = await stages.plan_subtasks(client, "q", has_local=True)
+    plan = await stages.plan_subtasks(client, "q", has_local=True, credentials=_CREDS)
 
     assert plan.input_tokens == 10
     assert plan.output_tokens == 5
@@ -80,7 +85,7 @@ async def test_plan_degrades_on_model_error() -> None:
     """
     client = _FakeClient([RuntimeError("上游炸了")])
 
-    plan = await stages.plan_subtasks(client, "q", has_local=True)
+    plan = await stages.plan_subtasks(client, "q", has_local=True, credentials=_CREDS)
 
     assert plan.subtasks == []
 
@@ -89,7 +94,7 @@ async def test_plan_degrades_on_invalid_json() -> None:
     """模型返回的不是 JSON 时降级，不抛。"""
     client = _FakeClient(["这不是 JSON，只是一段话。"])
 
-    plan = await stages.plan_subtasks(client, "q", has_local=True)
+    plan = await stages.plan_subtasks(client, "q", has_local=True, credentials=_CREDS)
 
     assert plan.subtasks == []
 
@@ -101,7 +106,7 @@ async def test_plan_ignores_non_string_items() -> None:
     """
     client = _FakeClient(['{"subtasks": ["好的", 123, null, "  ", "也好"]}'])
 
-    plan = await stages.plan_subtasks(client, "q", has_local=True)
+    plan = await stages.plan_subtasks(client, "q", has_local=True, credentials=_CREDS)
 
     assert plan.subtasks == ["好的", "也好"]
 
@@ -110,7 +115,7 @@ async def test_plan_mentions_missing_local_search() -> None:
     """没有私有资料时，提示里必须说明——否则模型会规划依赖私有库的子任务。"""
     client = _FakeClient(['{"subtasks": []}'])
 
-    await stages.plan_subtasks(client, "q", has_local=False)
+    await stages.plan_subtasks(client, "q", has_local=False, credentials=_CREDS)
 
     prompt = client.messages.calls[0]["messages"][0]["content"]
     assert "无法检索用户的私有资料" in prompt
@@ -120,7 +125,7 @@ async def test_plan_caps_subtask_count() -> None:
     """子任务最多 5 个——再多就是模型在划水。"""
     client = _FakeClient(['{"subtasks": ["1","2","3","4","5","6","7"]}'])
 
-    plan = await stages.plan_subtasks(client, "q", has_local=True)
+    plan = await stages.plan_subtasks(client, "q", has_local=True, credentials=_CREDS)
 
     assert len(plan.subtasks) == 5
 
@@ -139,7 +144,7 @@ async def test_analysis_finds_conflicts() -> None:
     """正常返回：矛盾被解析出来。"""
     client = _FakeClient(['{"conflicts": ["A 说 2024，B 说 2023"], "synthesis": "年份存疑"}'])
 
-    analysis = await stages.analyze_evidence(client, _evidence(2))
+    analysis = await stages.analyze_evidence(client, _evidence(2), credentials=_CREDS)
 
     assert analysis.conflicts == ["A 说 2024，B 说 2023"]
     assert analysis.synthesis == "年份存疑"
@@ -152,7 +157,7 @@ async def test_analysis_skips_single_evidence() -> None:
     """
     client = _FakeClient(['{"conflicts": [], "synthesis": ""}'])
 
-    analysis = await stages.analyze_evidence(client, _evidence(1))
+    analysis = await stages.analyze_evidence(client, _evidence(1), credentials=_CREDS)
 
     assert analysis.conflicts == []
     # 关键：根本没调模型
@@ -163,7 +168,7 @@ async def test_analysis_degrades_on_model_error() -> None:
     """模型报错时降级成空结果，不抛。"""
     client = _FakeClient([RuntimeError("上游炸了")])
 
-    analysis = await stages.analyze_evidence(client, _evidence(3))
+    analysis = await stages.analyze_evidence(client, _evidence(3), credentials=_CREDS)
 
     assert analysis.conflicts == []
     assert analysis.synthesis == ""
@@ -172,7 +177,7 @@ async def test_analysis_degrades_on_model_error() -> None:
 async def test_analysis_degrades_on_invalid_json() -> None:
     client = _FakeClient(["完全不是 JSON"])
 
-    analysis = await stages.analyze_evidence(client, _evidence(3))
+    analysis = await stages.analyze_evidence(client, _evidence(3), credentials=_CREDS)
 
     assert analysis.conflicts == []
 
@@ -181,7 +186,7 @@ async def test_analysis_accepts_empty_conflicts() -> None:
     """没有矛盾是正常结果——不能当成失败。"""
     client = _FakeClient(['{"conflicts": [], "synthesis": "证据一致"}'])
 
-    analysis = await stages.analyze_evidence(client, _evidence(3))
+    analysis = await stages.analyze_evidence(client, _evidence(3), credentials=_CREDS)
 
     assert analysis.conflicts == []
     assert analysis.synthesis == "证据一致"
@@ -190,7 +195,7 @@ async def test_analysis_accepts_empty_conflicts() -> None:
 async def test_analysis_reports_token_usage() -> None:
     client = _FakeClient(['{"conflicts": [], "synthesis": "x"}'])
 
-    analysis = await stages.analyze_evidence(client, _evidence(3))
+    analysis = await stages.analyze_evidence(client, _evidence(3), credentials=_CREDS)
 
     assert analysis.input_tokens == 10
     assert analysis.output_tokens == 5
@@ -235,6 +240,7 @@ async def test_analysis_excerpt_is_truncated() -> None:
             stages.Evidence(n=1, title="t", excerpt=long_text),
             stages.Evidence(n=2, title="t", excerpt="y"),
         ],
+        credentials=_CREDS,
     )
 
     prompt = client.messages.calls[0]["messages"][0]["content"]
@@ -252,7 +258,7 @@ async def test_uses_configured_model_override() -> None:
         settings.anthropic_analyst_model = "some-other-model"
         client = _FakeClient(['{"conflicts": [], "synthesis": ""}'])
 
-        await stages.analyze_evidence(client, _evidence(2))
+        await stages.analyze_evidence(client, _evidence(2), credentials=resolve_env_credentials())
 
         assert client.messages.calls[0]["model"] == "some-other-model"
     finally:
@@ -286,7 +292,7 @@ async def test_falls_back_to_default_model_config() -> None:
         settings.anthropic_analyst_model = None
         client = _FakeClient(['{"conflicts": [], "synthesis": ""}'])
 
-        await stages.analyze_evidence(client, _evidence(2))
+        await stages.analyze_evidence(client, _evidence(2), credentials=resolve_env_credentials())
 
         assert client.messages.calls[0]["model"] == "configured-default-model"
     finally:
@@ -314,7 +320,7 @@ async def test_switches_to_fallback_model_on_failure() -> None:
         # 主模型失败 → 备胎 1 成功
         client = _FakeClient([RuntimeError("上游炸了"), '{"conflicts": [], "synthesis": ""}'])
 
-        await stages.analyze_evidence(client, _evidence(2))
+        await stages.analyze_evidence(client, _evidence(2), credentials=resolve_env_credentials())
 
         assert len(client.messages.calls) == 2
         assert client.messages.calls[0]["model"] != "backup-model-1"
@@ -336,7 +342,9 @@ async def test_fallback_chain_exhausted_returns_none() -> None:
         settings.anthropic_fallback_models = "backup-1"
         client = _FakeClient([RuntimeError("a"), RuntimeError("b")])
 
-        result = await stages.analyze_evidence(client, _evidence(2))
+        result = await stages.analyze_evidence(
+            client, _evidence(2), credentials=resolve_env_credentials()
+        )
 
         assert result is None or not result.conflicts
         # 主模型 + 1 个备胎，两次尝试

@@ -22,7 +22,6 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.db import get_session
 from app.gateway.deps import CurrentUser
 from app.models.report import Report
@@ -34,6 +33,7 @@ from app.schemas.dashboard import (
     VectorIndexV,
 )
 from app.schemas.report import ReportSummaryV
+from app.services.credentials import ResolvedCredentials, resolve_credentials
 from app.services.vectorstore import count_embeddings
 
 router = APIRouter(prefix="/api/v1", tags=["dashboard"])
@@ -114,9 +114,14 @@ async def read_settings_status(user: CurrentUser, db: DbSession) -> SettingsStat
     **只说「配了没有」，不返回任何密钥内容**——``detail`` 是给人看的一句话。
 
     鉴权沿用 CurrentUser：这个接口要按 user_id 统计向量索引规模（别人的
-    资料不该出现在你的设置页里）。配置状态本身是全局的，但混在一个响应里
-    就不再拆了。
+    资料不该出现在你的设置页里）。
+
+    **配置状态也是按 user_id 的**（2026-11-23 改）——用户在设置页配了
+    自己的 key，别人没配不代表他不能用（见 ``app/services/credentials.py``）。
     """
+    # 凭据按 user_id 解析——报的是**这个用户**的外部能力配置状态。
+    credentials = await resolve_credentials(db, user.id)
+
     source_count = (
         # **排除公开来源**（``source_type="web"``）——它们是联网搜索的
         # 结果，不是用户上传的资料。用户看到「我的资料 6 份」而实际只
@@ -146,7 +151,7 @@ async def read_settings_status(user: CurrentUser, db: DbSession) -> SettingsStat
         embedded = 0
 
     return SettingsStatusResponse(
-        providers=_provider_statuses(),
+        providers=_provider_statuses(credentials),
         vector_index=VectorIndexV(
             source_count=source_count,
             chunk_count=int(chunk_count),
@@ -155,27 +160,24 @@ async def read_settings_status(user: CurrentUser, db: DbSession) -> SettingsStat
     )
 
 
-def _provider_statuses() -> list[ProviderStatusV]:
+def _provider_statuses(credentials: ResolvedCredentials) -> list[ProviderStatusV]:
     """列出各外部能力的配置状态。
 
-    **只判断「有没有配」，不碰密钥内容。** 密钥是 SecretStr，取它就够
-    判空；把它写进响应是安全事故。
-    """
-    settings = get_settings()
+    **只判断「有没有配」，不碰密钥内容。** 凭据里的 key 是明文字符串，
+    但这里只取它的真假——把它写进响应是安全事故。
 
-    anthropic_ok = bool(
-        settings.anthropic_api_key and settings.anthropic_api_key.get_secret_value()
-    )
-    tavily_ok = bool(settings.tavily_api_key and settings.tavily_api_key.get_secret_value())
-    embedding_ok = bool(
-        settings.embedding_api_key and settings.embedding_api_key.get_secret_value()
-    )
+    **报的是「这个用户」的配置**，不是部署的——用户在设置页配了自己的
+    key，别人没配不代表他不能用（见 ``app/services/credentials.py``）。
+    """
+    anthropic_ok = bool(credentials.anthropic_api_key)
+    tavily_ok = bool(credentials.tavily_api_key)
+    embedding_ok = bool(credentials.embedding_api_key)
 
     anthropic_detail = "已配置"
     if not anthropic_ok:
         anthropic_detail = "未配置 ANTHROPIC_API_KEY"
-    elif settings.anthropic_base_url:
-        anthropic_detail = f"已配置（经中转站 {settings.anthropic_base_url}）"
+    elif credentials.anthropic_base_url:
+        anthropic_detail = f"已配置（经中转站 {credentials.anthropic_base_url}）"
 
     return [
         ProviderStatusV(

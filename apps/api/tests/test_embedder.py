@@ -6,12 +6,14 @@
 2. 维度不校验 → 写入索引失败或检索全乱
 """
 
+import dataclasses
 from typing import Any
 
 import pytest
 
 from app.config import Settings, get_settings
 from app.services import embedder
+from app.services.credentials import ResolvedCredentials, resolve_env_credentials
 from app.services.embedder import (
     DimensionMismatchError,
     EmbeddingError,
@@ -21,6 +23,24 @@ from app.services.embedder import (
     embed_texts,
     get_embedding_client,
 )
+
+# 测试用的凭据。按部署默认解析——本文件测的是嵌入的**行为**，
+# 不是「用户配了什么 key」。
+_CREDS = resolve_env_credentials()
+
+
+def _creds_without_key() -> ResolvedCredentials:
+    """一份没有嵌入 key 的凭据。"""
+    return dataclasses.replace(_CREDS, embedding_api_key=None)
+
+
+def _creds_with_key() -> ResolvedCredentials:
+    """一份指向假端点、带假 key 的凭据。"""
+    return dataclasses.replace(
+        _CREDS,
+        embedding_api_key="sk-test",
+        embedding_base_url="https://bailian.test/v1",
+    )
 
 
 class FakeItem:
@@ -79,7 +99,7 @@ def _vec(dim: int, seed: float = 1.0) -> list[float]:
 
 
 def _patch(monkeypatch: pytest.MonkeyPatch, client: FakeClient) -> FakeEmbeddings:
-    monkeypatch.setattr(embedder, "get_embedding_client", lambda: client)
+    monkeypatch.setattr(embedder, "get_embedding_client", lambda _credentials: client)
     return client.embeddings
 
 
@@ -88,7 +108,7 @@ async def test_returns_vector_per_input(monkeypatch: pytest.MonkeyPatch) -> None
     dim = get_settings().embedding_dimensions
     _patch(monkeypatch, _fixed([FakeItem(0, _vec(dim))]))
 
-    out = await embed_texts(["一段中文"])
+    out = await embed_texts(["一段中文"], _CREDS)
 
     assert len(out) == 1
     assert len(out[0]) == dim
@@ -98,7 +118,7 @@ async def test_empty_input_skips_api(monkeypatch: pytest.MonkeyPatch) -> None:
     """空输入不该发请求——省一次网络往返，也避免 0 条批次报错。"""
     fake = _patch(monkeypatch, _fixed([]))
 
-    assert await embed_texts([]) == []
+    assert await embed_texts([], _CREDS) == []
     assert fake.calls == []
 
 
@@ -106,7 +126,7 @@ async def test_sends_configured_model(monkeypatch: pytest.MonkeyPatch) -> None:
     dim = get_settings().embedding_dimensions
     fake = _patch(monkeypatch, _fixed([FakeItem(0, _vec(dim))]))
 
-    await embed_texts(["x"])
+    await embed_texts(["x"], _CREDS)
 
     assert fake.calls[0]["model"] == get_settings().embedding_model
 
@@ -121,7 +141,7 @@ async def test_sends_explicit_dimensions(monkeypatch: pytest.MonkeyPatch) -> Non
     dim = get_settings().embedding_dimensions
     fake = _patch(monkeypatch, _fixed([FakeItem(0, _vec(dim))]))
 
-    await embed_texts(["x"])
+    await embed_texts(["x"], _CREDS)
 
     assert fake.calls[0]["dimensions"] == dim
 
@@ -145,7 +165,7 @@ async def test_sorts_response_by_index(monkeypatch: pytest.MonkeyPatch) -> None:
         ),
     )
 
-    out = await embed_texts(["a", "b", "c"])
+    out = await embed_texts(["a", "b", "c"], _CREDS)
 
     assert [v[0] for v in out] == [0.0, 1.0, 2.0]
 
@@ -160,7 +180,7 @@ async def test_sorts_actually_reorders_shuffled_response(
         _fixed([FakeItem(2, [2.0] * dim), FakeItem(0, [0.0] * dim), FakeItem(1, [1.0] * dim)]),
     )
 
-    out = await embed_texts(["a", "b", "c"])
+    out = await embed_texts(["a", "b", "c"], _CREDS)
 
     assert [v[0] for v in out] == [0.0, 1.0, 2.0]
     assert fake.calls  # 确认真的发了请求
@@ -179,7 +199,7 @@ async def test_splits_large_batches(monkeypatch: pytest.MonkeyPatch) -> None:
 
     fake = _patch(monkeypatch, FakeClient(make=_make))
 
-    out = await embed_texts([f"文本 {i}" for i in range(count)])
+    out = await embed_texts([f"文本 {i}" for i in range(count)], _CREDS)
 
     assert len(out) == count
     assert len(fake.calls) == 3  # 10 + 10 + 3
@@ -197,7 +217,7 @@ async def test_batches_preserve_global_order(monkeypatch: pytest.MonkeyPatch) ->
 
     _patch(monkeypatch, FakeClient(make=_make))
 
-    out = await embed_texts([f"文本 {i}" for i in range(count)])
+    out = await embed_texts([f"文本 {i}" for i in range(count)], _CREDS)
 
     assert [v[0] for v in out] == [float(i) for i in range(count)]
 
@@ -208,7 +228,7 @@ async def test_rejects_wrong_dimension(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _patch(monkeypatch, _fixed([FakeItem(0, [0.1] * 42)]))
 
     with pytest.raises(DimensionMismatchError, match="维度"):
-        await embed_texts(["x"])
+        await embed_texts(["x"], _CREDS)
     assert fake.calls
 
 
@@ -222,12 +242,12 @@ async def test_dimension_mismatch_is_not_retryable_error() -> None:
 async def test_embed_or_none_returns_none_when_unconfigured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def _raise() -> None:
+    def _raise(*_args: object) -> None:
         raise EmbeddingNotConfiguredError("未配置")
 
     monkeypatch.setattr(embedder, "get_embedding_client", _raise)
 
-    assert await embed_or_none(["x"]) is None
+    assert await embed_or_none(["x"], _CREDS) is None
 
 
 async def test_embed_or_none_still_raises_dimension_error(
@@ -238,51 +258,45 @@ async def test_embed_or_none_still_raises_dimension_error(
     monkeypatch.setattr(
         embedder,
         "get_embedding_client",
-        lambda: _fixed([FakeItem(0, [0.1] * (expected + 1))]),
+        lambda _credentials: _fixed([FakeItem(0, [0.1] * (expected + 1))]),
     )
 
     with pytest.raises(DimensionMismatchError):
-        await embed_or_none(["x"])
+        await embed_or_none(["x"], _CREDS)
 
 
 # ── client 构造 ────────────────────────────────────────────
-def test_client_requires_key(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_client_requires_key() -> None:
     clear_client_cache()
-    monkeypatch.setattr(
-        "app.services.embedder.get_settings",
-        lambda: Settings(embedding_api_key=None),
-    )
 
     with pytest.raises(EmbeddingNotConfiguredError, match="EMBEDDING_API_KEY"):
-        get_embedding_client()
+        get_embedding_client(_creds_without_key())
 
     clear_client_cache()
 
 
-def test_client_is_singleton(monkeypatch: pytest.MonkeyPatch) -> None:
-    """复用连接池——每次 new 会让 TCP/TLS 握手开销超过实际收益。"""
-    clear_client_cache()
-    monkeypatch.setattr(
-        "app.services.embedder.get_settings",
-        lambda: Settings(embedding_api_key="sk-test", embedding_base_url="https://x.test/v1"),
-    )
+def test_client_is_singleton() -> None:
+    """复用连接池——每次 new 会让 TCP/TLS 握手开销超过实际收益。
 
-    first = get_embedding_client()
-    second = get_embedding_client()
+    **显式造凭据**而不是用 ``_CREDS``——那份是从环境变量解析的，
+    CI 上没有 ``EMBEDDING_API_KEY``（.env 不进仓库），用它会直接抛
+    「未配置」。
+    """
+    clear_client_cache()
+
+    creds = _creds_with_key()
+    first = get_embedding_client(creds)
+    second = get_embedding_client(creds)
 
     assert first is second
     clear_client_cache()
 
 
-def test_client_uses_configured_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
-    """换服务商只改 .env，不改代码。"""
+def test_client_uses_configured_base_url() -> None:
+    """换服务商只改凭据，不改代码。"""
     clear_client_cache()
-    monkeypatch.setattr(
-        "app.services.embedder.get_settings",
-        lambda: Settings(embedding_api_key="sk-test", embedding_base_url="https://bailian.test/v1"),
-    )
 
-    client = get_embedding_client()
+    client = get_embedding_client(_creds_with_key())
 
     assert "bailian.test" in str(client.base_url)
     clear_client_cache()

@@ -12,9 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.models import DocumentChunk, Source, SourceGroup, SourceStatus, SourceType, User
 from app.services import bm25, retriever, vectorstore
 from app.services.bm25 import Bm25Hit
+from app.services.credentials import resolve_env_credentials
 from app.services.ingest import ensure_index_tables
 from app.services.retriever import RRF_K, Retrieved, _rrf_fuse
 from app.services.vectorstore import create_vector_engine
+
+# 测试用的凭据。按部署默认解析——本文件测的是检索逻辑，
+# 不是「用户配了什么 key」。
+_CREDS = resolve_env_credentials()
 
 CHINESE_DOCS = [
     "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍，能效是新一代的核心指标",
@@ -26,7 +31,7 @@ CHINESE_DOCS = [
 def _patch_embed(monkeypatch: pytest.MonkeyPatch, vectors: list[list[float]] | None) -> None:
     """打桩嵌入。``None`` 表示模拟未配置 key。"""
 
-    async def _fake(_texts):  # type: ignore[no-untyped-def]
+    async def _fake(_texts, _credentials=None):  # type: ignore[no-untyped-def]
         if vectors is None:
             from app.services.embedder import EmbeddingNotConfiguredError
 
@@ -115,9 +120,7 @@ def test_rrf_records_which_list_hit() -> None:
 
 
 # ── 端到端 helper ──────────────────────────────────────────
-async def _seed(
-    db: AsyncSession, contents: Sequence[str]
-) -> tuple[int, int, list[DocumentChunk]]:
+async def _seed(db: AsyncSession, contents: Sequence[str]) -> tuple[int, int, list[DocumentChunk]]:
     """建一个用户 + 一份资料 + N 条切片，返回 (user_id, source_id, chunks)。"""
     uid, sid = await _seed_user_and_source(db, "seed@t.local")
     rows = [
@@ -135,9 +138,7 @@ async def _index(engine: AsyncEngine, rows: Sequence[DocumentChunk]) -> None:
     """同时建 BM25 与向量两路索引。"""
     await ensure_index_tables(engine)
     await bm25.index_chunks(engine, [(r.id, r.content) for r in rows])
-    await vectorstore.upsert_embeddings(
-        engine, [(r.id, [0.5] * 1536) for r in rows]
-    )
+    await vectorstore.upsert_embeddings(engine, [(r.id, [0.5] * 1536) for r in rows])
 
 
 # ── 端到端 ────
@@ -150,7 +151,9 @@ async def test_retrieve_returns_chunks(
     await _index(vec_engine, rows)
     _patch_embed(monkeypatch, [[0.5] * 1536])
 
-    got = await retriever.retrieve(db_session, vec_engine, "能效", user_id=uid, limit=5)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "能效", user_id=uid, limit=5, credentials=_CREDS
+    )
 
     assert got
     assert all(isinstance(r, Retrieved) for r in got)
@@ -175,7 +178,9 @@ async def test_retrieve_isolates_users(
     _patch_embed(monkeypatch, [[0.5] * 1536])
 
     # 我的账号一条资料都没有 → 什么都检索不到，更拿不到他的
-    got = await retriever.retrieve(db_session, vec_engine, "能效", user_id=my_id, limit=10)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "能效", user_id=my_id, limit=10, credentials=_CREDS
+    )
 
     assert got == []
     assert theirs.id not in [r.chunk.id for r in got]
@@ -201,7 +206,9 @@ async def test_retrieve_excludes_other_users_chunks(
     await _index(vec_engine, [mine, theirs])
     _patch_embed(monkeypatch, [[0.5] * 1536])
 
-    got = await retriever.retrieve(db_session, vec_engine, "能效", user_id=my_id, limit=10)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "能效", user_id=my_id, limit=10, credentials=_CREDS
+    )
 
     assert [r.chunk.id for r in got] == [mine.id]
 
@@ -222,7 +229,10 @@ async def test_retrieve_empty_for_user_without_sources(
 
     monkeypatch.setattr("app.services.embedder.embed_texts", _boom)
 
-    assert await retriever.retrieve(db_session, vec_engine, "x", user_id=user.id) == []
+    assert (
+        await retriever.retrieve(db_session, vec_engine, "x", user_id=user.id, credentials=_CREDS)
+        == []
+    )
 
 
 async def test_retrieve_survives_missing_embedding_key(
@@ -235,7 +245,7 @@ async def test_retrieve_survives_missing_embedding_key(
     await _index(vec_engine, rows)
     _patch_embed(monkeypatch, None)
 
-    got = await retriever.retrieve(db_session, vec_engine, "能效", user_id=uid)
+    got = await retriever.retrieve(db_session, vec_engine, "能效", user_id=uid, credentials=_CREDS)
 
     assert [r.chunk.id for r in got] == [rows[0].id]
     assert got[0].vector_rank is None
@@ -247,13 +257,13 @@ async def test_retrieve_limit_respected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     db_session, vec_engine = shared_db
-    uid, _sid, rows = await _seed(
-        db_session, [f"能效 第 {i} 段" for i in range(5)]
-    )
+    uid, _sid, rows = await _seed(db_session, [f"能效 第 {i} 段" for i in range(5)])
     await _index(vec_engine, rows)
     _patch_embed(monkeypatch, None)
 
-    got = await retriever.retrieve(db_session, vec_engine, "能效", user_id=uid, limit=2)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "能效", user_id=uid, limit=2, credentials=_CREDS
+    )
 
     assert len(got) <= 2
 
@@ -291,12 +301,12 @@ async def test_bm25_rescues_proper_noun_missed_by_vector(
     await bm25.index_chunks(vec_engine, [(r.id, r.content) for r in rows])
     # 文档向量与查询向量同向（第 0 维都是正数），只是模长不同——
     # 余弦距离为 0，向量路认为三条都相关、无区分度。
-    await vectorstore.upsert_embeddings(
-        vec_engine, [(r.id, _vec(0.5)) for r in rows]
-    )
+    await vectorstore.upsert_embeddings(vec_engine, [(r.id, _vec(0.5)) for r in rows])
     _patch_embed(monkeypatch, [_vec(0.55)])
 
-    got = await retriever.retrieve(db_session, vec_engine, "H100", user_id=uid, limit=3)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "H100", user_id=uid, limit=3, credentials=_CREDS
+    )
 
     assert got[0].chunk.id == rows[1].id
     assert got[0].bm25_rank == 1
@@ -360,7 +370,9 @@ async def test_retrieve_returns_nothing_when_all_hits_are_irrelevant(
     # 查询向量离文档向量很远（L2 = 1.5 > 0.89），BM25 也不命中
     _patch_embed(monkeypatch, [_vec(1.0)])
 
-    got = await retriever.retrieve(db_session, vec_engine, "折叠屏手机质量", user_id=uid, limit=5)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "折叠屏手机质量", user_id=uid, limit=5, credentials=_CREDS
+    )
 
     assert got == []
 
@@ -377,7 +389,9 @@ async def test_retrieve_returns_relevant_chunks(
     uid, rows = await _seed_and_index(db_session, vec_engine, ["医保接口说明 第 1 段"], [0.95])
     _patch_embed(monkeypatch, [_vec(1.0)])
 
-    got = await retriever.retrieve(db_session, vec_engine, "折叠屏手机质量", user_id=uid, limit=5)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "折叠屏手机质量", user_id=uid, limit=5, credentials=_CREDS
+    )
 
     assert [r.chunk.id for r in got] == [rows[0].id]
 
@@ -409,7 +423,9 @@ async def test_retrieve_drops_bm25_hits_that_are_too_far(
     _patch_embed(monkeypatch, [_vec(1.0)])
 
     # 「手机」命中两条（OR 语义），但它们的向量距离是 1.5 / 1.6 —— 全都不相关
-    got = await retriever.retrieve(db_session, vec_engine, "手机 质量 参数", user_id=uid, limit=12)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "手机 质量 参数", user_id=uid, limit=12, credentials=_CREDS
+    )
 
     assert got == [], f"BM25 命中的无关切片漏进来了：{got}"
 
@@ -438,7 +454,9 @@ async def test_retrieve_keeps_only_the_relevant_bm25_hits(
     _patch_embed(monkeypatch, [_vec(1.0)])
 
     # 「医保」「手机」两个 token，OR 匹配 → 三条都进 BM25 候选
-    got = await retriever.retrieve(db_session, vec_engine, "医保 手机", user_id=uid, limit=12)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "医保 手机", user_id=uid, limit=12, credentials=_CREDS
+    )
 
     assert [r.chunk.id for r in got] == [rows[0].id]
 
@@ -463,7 +481,7 @@ async def test_retrieve_keeps_relevant_bm25_hits(
     _patch_embed(monkeypatch, [_vec(1.0)])
 
     got = await retriever.retrieve(
-        db_session, vec_engine, "医保结算清单 接口", user_id=uid, limit=12
+        db_session, vec_engine, "医保结算清单 接口", user_id=uid, limit=12, credentials=_CREDS
     )
 
     assert [r.chunk.id for r in got] == [rows[0].id, rows[1].id, rows[2].id]
@@ -498,7 +516,9 @@ async def test_retrieve_dedupes_identical_content(
     )
     _patch_embed(monkeypatch, [_vec(1.0)])
 
-    got = await retriever.retrieve(db_session, vec_engine, "zzzqqqxyz", user_id=uid, limit=5)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "zzzqqqxyz", user_id=uid, limit=5, credentials=_CREDS
+    )
 
     # 第 1 条与第 3 条正文相同 → 只留第 1 条（距离最近，融合分数最高）
     assert [r.chunk.id for r in got] == [rows[0].id, rows[1].id]
@@ -522,7 +542,9 @@ async def test_retrieve_dedups_before_truncating_to_limit(
     )
     _patch_embed(monkeypatch, [_vec(1.0)])
 
-    got = await retriever.retrieve(db_session, vec_engine, "zzzqqqxyz", user_id=uid, limit=2)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "zzzqqqxyz", user_id=uid, limit=2, credentials=_CREDS
+    )
 
     assert len(got) == 2, "去重后要能补足到 limit 条"
     assert [r.chunk.id for r in got] == [rows[0].id, rows[2].id]
@@ -548,7 +570,9 @@ async def test_retrieve_dedup_key_is_the_full_content(
     )
     _patch_embed(monkeypatch, [_vec(1.0)])
 
-    got = await retriever.retrieve(db_session, vec_engine, "zzzqqqxyz", user_id=uid, limit=5)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "zzzqqqxyz", user_id=uid, limit=5, credentials=_CREDS
+    )
 
     assert [r.chunk.id for r in got] == [rows[0].id, rows[1].id]
 
@@ -606,8 +630,12 @@ async def test_retrieve_excludes_archived_version(
     archived_id = archived.id
 
     rows = [
-        DocumentChunk(source_id=active_id, chunk_index=0, content="新版正文 能效提升的关键路径", page=1),
-        DocumentChunk(source_id=archived_id, chunk_index=0, content="旧版正文 能效提升的历史结论", page=1),
+        DocumentChunk(
+            source_id=active_id, chunk_index=0, content="新版正文 能效提升的关键路径", page=1
+        ),
+        DocumentChunk(
+            source_id=archived_id, chunk_index=0, content="旧版正文 能效提升的历史结论", page=1
+        ),
     ]
     db_session.add_all(rows)
     await db_session.commit()
@@ -618,7 +646,9 @@ async def test_retrieve_excludes_archived_version(
     await vectorstore.upsert_embeddings(vec_engine, [(r.id, _vec(0.95)) for r in rows])
     _patch_embed(monkeypatch, [_vec(1.0)])
 
-    got = await retriever.retrieve(db_session, vec_engine, "能效", user_id=uid, limit=10)
+    got = await retriever.retrieve(
+        db_session, vec_engine, "能效", user_id=uid, limit=10, credentials=_CREDS
+    )
 
     assert [r.chunk.id for r in got] == [rows[0].id], "归档版本的切片不该被召回"
     assert archived_id not in [r.chunk.id for r in got]

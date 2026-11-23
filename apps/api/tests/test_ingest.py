@@ -60,7 +60,7 @@ async def _make_source(db: AsyncSession, user: User, **kw: Any) -> Source:
 def _patch_embed(monkeypatch: pytest.MonkeyPatch, value: Any) -> None:
     """把 embed_or_none 换成固定返回值。``value`` 若是 list 则原样返回。"""
 
-    async def _fake(texts: Any) -> Any:
+    async def _fake(texts: Any, _credentials: Any = None) -> Any:
         if isinstance(value, Exception):
             raise value
         if value == "no_vectors":
@@ -620,12 +620,8 @@ async def test_failed_new_version_keeps_old_version_active(
     # 再读 group.id 会触发隐式 SELECT——async 场景下那是 MissingGreenlet。
     group_id = int(group.id)
 
-    old = await _make_source(
-        db_session, user, group_id=group_id, is_active=True, version_no=1
-    )
-    new = await _make_source(
-        db_session, user, group_id=group_id, is_active=False, version_no=2
-    )
+    old = await _make_source(db_session, user, group_id=group_id, is_active=True, version_no=1)
+    new = await _make_source(db_session, user, group_id=group_id, is_active=False, version_no=2)
 
     # 让嵌入服务失败——这是摄取失败最常见的真实成因。
     _patch_embed(monkeypatch, RuntimeError("上游炸了"))
@@ -636,11 +632,9 @@ async def test_failed_new_version_keeps_old_version_active(
     db_session.expire_all()
     states = {
         row.id: row.is_active
-        for row in (
-            await db_session.execute(
-                select(Source).where(Source.group_id == group_id)
-            )
-        ).scalars().all()
+        for row in (await db_session.execute(select(Source).where(Source.group_id == group_id)))
+        .scalars()
+        .all()
     }
     assert states[old.id] is True, "旧版被归档了——新版本还没建好，用户会一份都搜不到"
     assert states[new.id] is False, "摄取失败的新版本不该是生效版"
@@ -667,23 +661,17 @@ async def test_successful_new_version_becomes_active_and_archives_old(
     # 再读 group.id 会触发隐式 SELECT——async 场景下那是 MissingGreenlet。
     group_id = int(group.id)
 
-    old = await _make_source(
-        db_session, user, group_id=group_id, is_active=True, version_no=1
-    )
-    new = await _make_source(
-        db_session, user, group_id=group_id, is_active=False, version_no=2
-    )
+    old = await _make_source(db_session, user, group_id=group_id, is_active=True, version_no=1)
+    new = await _make_source(db_session, user, group_id=group_id, is_active=False, version_no=2)
 
     await ingest(db_session, vec_engine, new, SAMPLE_TEXT.encode())
 
     db_session.expire_all()
     states = {
         row.id: row.is_active
-        for row in (
-            await db_session.execute(
-                select(Source).where(Source.group_id == group_id)
-            )
-        ).scalars().all()
+        for row in (await db_session.execute(select(Source).where(Source.group_id == group_id)))
+        .scalars()
+        .all()
     }
     assert states[new.id] is True
     assert states[old.id] is False

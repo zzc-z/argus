@@ -541,7 +541,7 @@ async def test_cancelled_run_persists_the_partial_report(
 
     release = threading.Event()
 
-    async def _fake_turn(cl: Any, messages: Any, tools: Any) -> AsyncIterator[Any]:
+    async def _fake_turn(cl: Any, messages: Any, tools: Any, *_args: Any) -> AsyncIterator[Any]:
         yield TurnChunk(kind="text", text="这是取消前已经写好的一段正文。")
         await asyncio.to_thread(release.wait, 10.0)
 

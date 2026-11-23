@@ -20,6 +20,7 @@ from app.models import DocumentChunk, Source, SourceStatus, SourceType, User
 from app.services import bm25, retriever, vectorstore
 from app.services import tools as tools_module
 from app.services.citation import MAX_REFERENCES, ReferenceTable
+from app.services.credentials import resolve_env_credentials
 from app.services.ingest import ensure_index_tables
 from app.services.tools import ToolContext, execute_tool
 
@@ -29,7 +30,9 @@ DOCS = [
 ]
 
 
-async def _seed(db: AsyncSession, email: str, contents: list[str]) -> tuple[int, list[DocumentChunk]]:
+async def _seed(
+    db: AsyncSession, email: str, contents: list[str]
+) -> tuple[int, list[DocumentChunk]]:
     user = User(email=email, display_name="t")
     db.add(user)
     await db.flush()
@@ -77,7 +80,7 @@ def _stub_embed(monkeypatch: pytest.MonkeyPatch) -> None:
     ——这样向量那一路有区分度，排序不��全靠 BM25 兜。
     """
 
-    async def _fake(texts: list[str]) -> list[list[float]]:
+    async def _fake(texts: list[str], _credentials: Any = None) -> list[list[float]]:
         query = [0.1] * 1536
         query[0] = 0.9
         return [list(query) for _ in texts]
@@ -96,7 +99,7 @@ def _stub_embed_irrelevant(monkeypatch: pytest.MonkeyPatch) -> None:
     余弦距离都是 0，压根区分不出来（见 :func:`_stub_embed` 的说明）。
     """
 
-    async def _fake(texts: list[str]) -> list[list[float]]:
+    async def _fake(texts: list[str], _credentials: Any = None) -> list[list[float]]:
         query = [-0.1] * 1536
         query[0] = -0.9
         return [list(query) for _ in texts]
@@ -112,7 +115,7 @@ def _no_embed(monkeypatch: pytest.MonkeyPatch) -> None:
     top-K，压根不管距离多远，所以「检索不到」只在 BM25 也没命中时成立。
     """
 
-    async def _fake(texts: list[str]) -> list[list[float]]:
+    async def _fake(texts: list[str], _credentials: Any = None) -> list[list[float]]:
         from app.services.embedder import EmbeddingNotConfiguredError
 
         raise EmbeddingNotConfiguredError("未配置")
@@ -121,7 +124,13 @@ def _no_embed(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _context(db: AsyncSession, engine: AsyncEngine, user_id: int) -> ToolContext:
-    return ToolContext(db=db, vec_engine=engine, user_id=user_id, citations=ReferenceTable())
+    return ToolContext(
+        db=db,
+        vec_engine=engine,
+        user_id=user_id,
+        citations=ReferenceTable(),
+        credentials=resolve_env_credentials(),
+    )
 
 
 # ── 基本路径 ──────────────────────────────────────────────────
@@ -258,7 +267,7 @@ async def test_local_search_survives_embedding_service_failure(
     """
     from app.services.embedder import EmbeddingError
 
-    async def _boom(texts: list[str]) -> list[list[float]]:
+    async def _boom(texts: list[str], _credentials: Any = None) -> list[list[float]]:
         raise EmbeddingError("调用嵌入服务失败：BalanceInsufficient")
 
     monkeypatch.setattr("app.services.embedder.embed_texts", _boom)

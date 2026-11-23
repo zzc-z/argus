@@ -84,7 +84,7 @@ async def test_web_search_result_gets_a_citation_number_and_is_verified(
     from app.services import tools as tools_module
 
     # conftest 把 ``get_tavily_client`` 桩成「未配置」——这里要真的能调。
-    monkeypatch.setattr(tools_module, "get_tavily_client", lambda: object())
+    monkeypatch.setattr(tools_module, "get_tavily_client", lambda _credentials: object())
     monkeypatch.setattr(tools_module, "_search", _fake_search)
 
     # 模型：第一轮调搜索，第二轮写带角标的正文
@@ -103,7 +103,10 @@ async def test_web_search_result_gets_a_citation_number_and_is_verified(
     ]
 
     async def _fake_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         result = script.pop(0)
         if result.text:
@@ -115,7 +118,9 @@ async def test_web_search_result_gets_a_citation_number_and_is_verified(
     # critic 的校验：记录它拿到的原文
     verified_sources: dict[int, str] = {}
 
-    async def _fake_verify(client: Any, report_text: str, sources: dict[int, str]) -> Any:
+    async def _fake_verify(
+        client: Any, report_text: str, sources: dict[int, str], *_args: Any
+    ) -> Any:
         verified_sources.update(sources)
         from app.services.faithfulness import FaithfulnessReport
 
@@ -190,7 +195,7 @@ async def test_public_source_text_is_actually_persisted(
     from app.services import tools as tools_module
 
     # conftest 把 ``get_tavily_client`` 桩成「未配置」——这里要真的能调。
-    monkeypatch.setattr(tools_module, "get_tavily_client", lambda: object())
+    monkeypatch.setattr(tools_module, "get_tavily_client", lambda _credentials: object())
     monkeypatch.setattr(tools_module, "_search", _fake_search)
 
     script = [
@@ -208,7 +213,10 @@ async def test_public_source_text_is_actually_persisted(
     ]
 
     async def _fake_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         result = script.pop(0)
         if result.text:
@@ -217,7 +225,9 @@ async def test_public_source_text_is_actually_persisted(
 
     monkeypatch.setattr(agent_module, "_run_turn", _fake_run_turn)
 
-    async def _fake_verify(client: Any, report_text: str, sources: dict[int, str]) -> Any:
+    async def _fake_verify(
+        client: Any, report_text: str, sources: dict[int, str], *_args: Any
+    ) -> Any:
         from app.services.faithfulness import FaithfulnessReport
 
         return FaithfulnessReport(checked=0, supported=0, unsupported=[], missing=[], skipped=True)

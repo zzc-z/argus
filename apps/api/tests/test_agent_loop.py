@@ -20,6 +20,7 @@ from app.services.agent import (
     TurnResult,
     run_agent,
 )
+from app.services.credentials import resolve_env_credentials
 from app.services.stream import (
     AgentEvent,
     DeltaEvent,
@@ -28,6 +29,10 @@ from app.services.stream import (
     NodeEvent,
     ToolCallEvent,
 )
+
+# 测试用的凭据。按部署默认解析——本文件测的是主循环的行为，
+# 不是「用户配了什么 key」。
+_CREDS = resolve_env_credentials()
 
 # ── 测试替身 ──────────────────────────────────────────────────
 
@@ -77,7 +82,10 @@ def _stub_turns(
     remaining = list(script)
 
     async def _fake_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         calls.append([dict(m) for m in messages])
         if not remaining:
@@ -211,8 +219,12 @@ async def test_tool_result_packed_into_single_user_message(
     # 第二轮请求时，tool_result 应该已经在一条 user 消息里
     second_round = calls[1]
     tool_messages = [m for m in second_round if m["role"] == "user"]
-    packed = [m for m in tool_messages if isinstance(m["content"], list)
-              and all(c.get("type") == "tool_result" for c in m["content"])]
+    packed = [
+        m
+        for m in tool_messages
+        if isinstance(m["content"], list)
+        and all(c.get("type") == "tool_result" for c in m["content"])
+    ]
     assert len(packed) == 1, "多个 tool_result 必须合并为一条 user 消息"
     assert len(packed[0]["content"]) == 2
 
@@ -275,7 +287,10 @@ async def test_reset_only_clears_current_turn(monkeypatch: pytest.MonkeyPatch) -
     turn_no = 0
 
     async def _fake_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         nonlocal turn_no
         calls.append(messages)
@@ -333,8 +348,7 @@ async def test_on_llm_done_hook_fires_after_done_frame(
     _stub_turns(monkeypatch, [_turn(text="这是答案。")])
 
     events = [
-        event
-        async for event in run_agent(question="测试问题", user_id=1, on_llm_done=_on_llm_done)
+        event async for event in run_agent(question="测试问题", user_id=1, on_llm_done=_on_llm_done)
     ]
 
     assert fired_at, "钩子没被调用——槽位会一直占着直到协程结束"
@@ -380,7 +394,10 @@ async def test_persisted_report_matches_what_user_saw(
     turn_no = 0
 
     async def _fake_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         nonlocal turn_no
         calls.append(messages)
@@ -425,10 +442,7 @@ async def test_tool_error_feeds_back_and_continues(monkeypatch: pytest.MonkeyPat
     tool_end = next(e for e in events if isinstance(e, ToolCallEvent) and e.phase == "end")
     assert tool_end.ok is False
 
-    packed = [
-        m for m in calls[1]
-        if m["role"] == "user" and isinstance(m["content"], list)
-    ]
+    packed = [m for m in calls[1] if m["role"] == "user" and isinstance(m["content"], list)]
     assert packed[0]["content"][0]["is_error"] is True
 
 
@@ -539,7 +553,7 @@ def test_request_has_separate_thinking_budget() -> None:
     反例实现：不带 thinking 参数 —— 这条会红。
     """
     request = agent_module._build_turn_request(
-        [{"role": "user", "content": "测试"}], agent_module.no_tools
+        [{"role": "user", "content": "测试"}], agent_module.no_tools, _CREDS
     )
 
     thinking = request.get("thinking")
@@ -565,7 +579,9 @@ async def test_error_paths_stop_at_the_failing_node(monkeypatch: pytest.MonkeyPa
     _stub_turns(monkeypatch, [_turn(text="")])
     empty = _node_sequence(await _collect())
 
-    async def _boom(client: Any, messages: list[Any], tools: Any) -> AsyncIterator[TurnChunk]:
+    async def _boom(
+        client: Any, messages: list[Any], tools: Any, *_args: Any
+    ) -> AsyncIterator[TurnChunk]:
         raise ConnectionError("中转站不可达")
         yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
@@ -590,7 +606,9 @@ async def test_error_paths_stop_at_the_failing_node(monkeypatch: pytest.MonkeyPa
 async def test_llm_failure_emits_error_not_crash(monkeypatch: pytest.MonkeyPatch) -> None:
     """模型挂掉要变成 error 事件，不能抛异常炸掉 SSE 流。"""
 
-    async def _boom(client: Any, messages: list[Any], tools: Any) -> AsyncIterator[TurnChunk]:
+    async def _boom(
+        client: Any, messages: list[Any], tools: Any, *_args: Any
+    ) -> AsyncIterator[TurnChunk]:
         raise ConnectionError("中转站不可达")
         yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
 
@@ -615,7 +633,7 @@ async def test_failure_still_reports_consumed_tokens(monkeypatch: pytest.MonkeyP
     ]
 
     async def _fail_on_third(
-        client: Any, messages: list[Any], tools: Any
+        client: Any, messages: list[Any], tools: Any, *_args: Any
     ) -> AsyncIterator[TurnChunk]:
         if not script:
             raise ConnectionError("第 3 轮挂掉")
@@ -640,7 +658,7 @@ async def test_failure_still_reports_consumed_tokens(monkeypatch: pytest.MonkeyP
 async def test_missing_api_key_emits_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """没配 API key 时给出明确的 llm_not_configured 错误。"""
 
-    def _raise() -> None:
+    def _raise(*_args: object) -> None:
         raise RuntimeError("ANTHROPIC_API_KEY 未配置")
 
     monkeypatch.setattr(agent_module, "get_anthropic_client", _raise)
@@ -858,7 +876,9 @@ async def test_text_is_emitted_before_the_upstream_stream_ends() -> None:
 
     async def _drive() -> None:
         nonlocal finished
-        async for chunk in agent_module._run_turn(client, [{"role": "user", "content": "q"}], ()):
+        async for chunk in agent_module._run_turn(
+            client, [{"role": "user", "content": "q"}], (), _CREDS
+        ):
             if chunk.kind == "text":
                 seen.append(chunk.text)
             if chunk.kind == "result":

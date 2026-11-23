@@ -44,6 +44,7 @@ from app.db import get_session, get_sessionmaker
 from app.gateway.deps import CurrentUser
 from app.schemas.research import AskRequest
 from app.services.agent import run_agent
+from app.services.credentials import resolve_credentials
 from app.services.errors import classify_unknown_error
 from app.services.llm import LLMNotConfiguredError, get_anthropic_client
 from app.services.runs import Run, get_run_registry, subscribe_run
@@ -124,7 +125,7 @@ async def ask(
             "当前并发查询已满，请稍后重试",
             headers={"Retry-After": "5"},
         )
-    _reject_if_llm_unconfigured()
+    await _reject_if_llm_unconfigured(user.id, db)
 
     registry = get_run_registry()
     # 提新问题时取消**上一轮**。生成现在跑在服务端，不取消的话它会继续烧
@@ -307,7 +308,7 @@ def _release_slot_once(state: _SlotState) -> None:
     state.release()
 
 
-def _reject_if_llm_unconfigured() -> None:
+async def _reject_if_llm_unconfigured(user_id: int, db: AsyncSession) -> None:
     """模型未配置时直接拒，同样要赶在开流之前。
 
     注意它跑在 ``_try_acquire_slot()`` **之后**：抛异常时槽位已经被占了，
@@ -316,15 +317,35 @@ def _reject_if_llm_unconfigured() -> None:
     **用 400 而不是 503**：503 的语义是「服务暂时不可用，稍后重试」，
     而「模型未配置」是部署问题——重试一万次也一样，必须去改配置。
     两者混在同一个状态码里，前端就没法区分「等一会儿」和「去改配置」。
+
+    **判的是「这个用户」有没有配 key**——用户在设置页可以配自己的
+    API key（见 ``app/services/credentials.py``）。查的是他的配置，
+    不是部署的默认配置：别人配了不代表他能用。
+
+    ## 槽位必须在**任何**异常下都还回去
+
+    ``resolve_credentials`` 是一次 DB 查询，它可能失败（库被锁、连接断了）。
+    那个异常若直接冒出去，槽位就永久漏掉——之后**每个**研究请求都
+    503「并发已满」，而实际上一个研究都没在跑。
+
+    所以两条失败路径都要还槽位：``LLMNotConfiguredError``（模型没配）
+    与「凭据解析本身炸了」（DB 错误）。后者用 ``except Exception``
+    兜住——它不改变异常的类型，只是保证槽位还回去。
     """
     try:
-        get_anthropic_client()
+        credentials = await resolve_credentials(db, user_id)
+        get_anthropic_client(credentials)
     except LLMNotConfiguredError as exc:
         _slots.release()
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "模型服务未配置：缺少 ANTHROPIC_API_KEY",
+            "模型服务未配置：请在设置页配置 ANTHROPIC_API_KEY",
         ) from exc
+    except Exception:
+        # 凭据解析失败（DB 错误等）——槽位必须还，否则整个研究闸门
+        # 永久卡死（原异常照原样冒出去，不该被这个 400 掩盖）。
+        _slots.release()
+        raise
 
 
 async def _drive_run(

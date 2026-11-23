@@ -12,7 +12,7 @@ from app.models import Account, Base, Provider, User
 
 
 def test_metadata_registers_all_tables() -> None:
-    """Base.metadata 收录全部七张表。
+    """Base.metadata 收录全部八张表。
 
     Alembic autogenerate 靠遍历这份注册表比对实际结构，少 import 一个模块
     就等于该表不进迁移——所以这里断言的是全集，不只是新增的那几张。
@@ -20,6 +20,7 @@ def test_metadata_registers_all_tables() -> None:
     assert sorted(Base.metadata.tables) == [
         "accounts",
         "document_chunks",
+        "provider_credentials",
         "report_sources",
         "reports",
         "source_groups",

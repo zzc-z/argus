@@ -51,6 +51,7 @@ from app.services.citation import (
     extract_cited_sentences,
     extract_footnote_numbers,
 )
+from app.services.credentials import ResolvedCredentials
 from app.services.llm import model_for
 from app.services.numeric_check import check_numeric_consistency
 
@@ -359,6 +360,7 @@ async def verify_citations(
     client: AsyncAnthropic,
     report_text: str,
     sources: dict[int, str],
+    credentials: ResolvedCredentials,
 ) -> FaithfulnessReport:
     """校验报告正文里的引用是否被原文支撑。
 
@@ -439,7 +441,7 @@ async def verify_citations(
         # ``ANTHROPIC_WRITER_MODEL=claude-sonnet-5`` 时，judge 与 writer
         # 会静默变成同模型，自偏好偏差让通过率系统性偏高，而代码层面
         # 没有任何提示。现在统一路由 + 启动即断言（见 llm.assert_distinct_...）。
-        "model": model_for("critic"),
+        "model": model_for(credentials, "critic"),
         "max_tokens": max_tokens,
         "system": JUDGE_PROMPT,
         "messages": [

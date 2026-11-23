@@ -66,6 +66,11 @@ from app.services.agent_turn import (
     _to_turn_result,
 )
 from app.services.citation import Reference
+from app.services.credentials import (
+    ResolvedCredentials,
+    resolve_credentials,
+    resolve_env_credentials,
+)
 from app.services.errors import classify_llm_error
 from app.services.faithfulness import (
     FaithfulnessReport,
@@ -191,12 +196,22 @@ async def run_agent(
     tracker = NodeTracker()
 
     yield tracker.activate(Stage.SUPERVISOR)
-    context = _build_context(user_id, db, vec_engine, session_maker)
+
+    # **凭据先解析**：key、base_url、模型路由全在这里定下来，之后整轮
+    # 研究都用这一份。
+    #
+    # 没有 db 时（测试里大量场景不接数据库）退回部署默认配置——那时
+    # 也无从查「这个用户配了什么」。
+    credentials = (
+        await resolve_credentials(db, user_id) if db is not None else resolve_env_credentials()
+    )
+
+    context = _build_context(user_id, db, vec_engine, session_maker, credentials)
     # ``has_local`` 指的是「能不能做本地检索」——那要**向量引擎**，
     # 不只是 db。联网搜索结果落成可引用来源只需要 db，所以「有 context」
     # 与「能本地检索」是两件事（见 ``_build_context`` 的说明）。
     has_local = context is not None and context.vec_engine is not None
-    tools = available_tools(has_local=has_local)
+    tools = available_tools(has_local=has_local, credentials=credentials)
     # Critic 校验要用两样东西：
     #
     # collected_refs —— 每轮工具产出的引用。
@@ -211,7 +226,7 @@ async def run_agent(
     # supervisor 已经被标成「完成」——DAG 上打勾的「通过」配着一句红横幅，
     # 自相矛盾。
     try:
-        client = get_anthropic_client()
+        client = get_anthropic_client(credentials)
     except Exception as exc:
         logger.warning("模型客户端不可用，流程中止", exc_info=exc)
         for event in _fail(tracker, "模型服务不可用"):
@@ -247,7 +262,7 @@ async def run_agent(
     # 这个洞是新开出来的。所以这里要有自己的取消分支：落盘 + 发 done +
     # 重抛（与主循环的取消分支同语义）。
     try:
-        plan = await plan_subtasks(client, question, has_local=has_local)
+        plan = await plan_subtasks(client, question, has_local=has_local, credentials=credentials)
     except asyncio.CancelledError:
         logger.info("研究在拆解阶段被取消")
         ledger = ledger.mark_truncated()
@@ -319,7 +334,7 @@ async def run_agent(
             # writer，顺序反了。
             writer_active = False
             current_turn_text = []
-            async for chunk in _run_turn(client, messages, tools):
+            async for chunk in _run_turn(client, messages, tools, credentials):
                 if chunk.kind == "text":
                     if not writer_active:
                         writer_active = True
@@ -429,6 +444,7 @@ async def run_agent(
                 collected_refs,
                 seen_evidence_keys,
                 analyst_out,
+                credentials,
             ):
                 yield analyst_event
             analyst_ran = analyst_ran or analyst_out.ran
@@ -463,7 +479,9 @@ async def run_agent(
                 # 这一轮。和主循环同语义——「崩了也算」。
                 ledger = ledger.begin_turn()
                 out = _FinalizeOut(ledger=ledger)
-                async for finalize_event in _finalize(client, ledger, messages, tracker, out):
+                async for finalize_event in _finalize(
+                    client, ledger, messages, tracker, out, credentials
+                ):
                     yield finalize_event
                 ledger = out.ledger
                 # 追加**整段** final.text，与主循环同粒度。不能用 DeltaEvent
@@ -575,7 +593,12 @@ async def run_agent(
         on_llm_done()
 
     async for settle_event in _settle(
-        tracker, client, "\n".join(report_body), sources, analyst_ran=analyst_ran
+        tracker,
+        client,
+        "\n".join(report_body),
+        sources,
+        credentials,
+        analyst_ran=analyst_ran,
     ):
         yield settle_event
 
@@ -586,6 +609,7 @@ async def _finalize(
     messages: list[dict[str, Any]],
     tracker: NodeTracker,
     out: _FinalizeOut,
+    credentials: ResolvedCredentials,
 ) -> AsyncIterator[AgentEvent]:
     """轮数用尽后的强制收尾：关掉工具，再基于已有信息作答。
 
@@ -606,7 +630,7 @@ async def _finalize(
     """
     final: TurnResult | None = None
     writer_active = False
-    async for chunk in _run_turn(client, messages, no_tools):
+    async for chunk in _run_turn(client, messages, no_tools, credentials):
         if chunk.kind == "text":
             if not writer_active:
                 writer_active = True
@@ -629,6 +653,7 @@ async def _settle(
     client: AsyncAnthropic,
     report_text: str,
     sources: dict[int, str],
+    credentials: ResolvedCredentials,
     *,
     analyst_ran: bool,
 ) -> AsyncIterator[AgentEvent]:
@@ -678,7 +703,7 @@ async def _settle(
 
     # **校验在 critic 节点窗口内部**。见上面的说明。
     try:
-        report = await verify_citations(client, report_text, sources)
+        report = await verify_citations(client, report_text, sources, credentials)
     except JudgeTruncated as exc:
         # 截断是**配置问题**（max_tokens 不够），不是「模型判不了」。
         # 两者都归到 skipped，但文案必须能区分——否则排查时会往

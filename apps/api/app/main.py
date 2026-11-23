@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.gateway import (
     auth_router,
+    credentials_router,
     dashboard_router,
     health_router,
     reports_router,
@@ -130,3 +131,4 @@ app.include_router(research_router)
 app.include_router(sources_router)
 app.include_router(reports_router)
 app.include_router(dashboard_router)
+app.include_router(credentials_router)

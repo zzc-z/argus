@@ -49,7 +49,7 @@ def _tmp_upload_dir(tmp_path: Path) -> None:
 def _no_vectors(monkeypatch: pytest.MonkeyPatch) -> None:
     """没有 embedding key 时摄取照样走完（只少向量），不引入网络调用。"""
 
-    async def _none(_texts: Any) -> None:
+    async def _none(_texts: Any, _credentials: Any = None) -> None:
         return None
 
     monkeypatch.setattr("app.services.ingest.embed_or_none", _none)

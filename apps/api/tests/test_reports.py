@@ -23,6 +23,7 @@ from app.models.report import Report, ReportSource
 from app.services import agent as agent_mod
 from app.services import persistence as persistence_mod
 from app.services.citation import Reference
+from app.services.credentials import resolve_env_credentials
 from app.services.stream import DoneEvent
 from tests.conftest import turn_chunks
 
@@ -87,7 +88,7 @@ def _auth(client: TestClient, user: User | int) -> None:
 
 
 async def _fake_turn(
-    client: Any, messages: list[dict[str, Any]], tools: Any
+    client: Any, messages: list[dict[str, Any]], tools: Any, *_args: Any
 ) -> AsyncIterator[agent_mod.TurnChunk]:
     """一轮就产出正文的假模型。"""
     from app.services import agent as agent_mod
@@ -105,7 +106,7 @@ async def _fake_turn(
         yield chunk
 
 
-async def _fake_verify(client: Any, report_text: str, sources: dict[int, str]) -> Any:
+async def _fake_verify(client: Any, report_text: str, sources: dict[int, str], *_args: Any) -> Any:
     """跳过 critic 的 LLM 判定，返回「未校验」。
 
     落盘与校验是两件事，这个用例只关心前者。让真 judge 跑既慢又会
@@ -148,7 +149,7 @@ async def test_report_persisted_with_citations(
     calls = {"n": 0}
 
     async def _two_turns(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any, messages: list[dict[str, Any]], tools: Any, *_args: Any
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         """第一轮请求工具，第二轮产出正文。
 
@@ -208,6 +209,7 @@ async def test_report_persisted_with_citations(
             vec_engine=None,
             user_id=1,
             citations=ReferenceTable(),
+            credentials=resolve_env_credentials(),
         )
 
     monkeypatch.setattr(agent_mod, "_build_context", _fake_context)
@@ -419,7 +421,7 @@ async def test_finalize_text_is_persisted_without_slicer_newlines(
     calls = {"n": 0}
 
     async def _all_tool_turns(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any, messages: list[dict[str, Any]], tools: Any, *_args: Any
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         """每轮都要工具，直到第 MAX_TURNS 轮才作答——逼出 `_finalize`。
 
@@ -481,6 +483,7 @@ async def test_finalize_text_is_persisted_without_slicer_newlines(
             vec_engine=None,
             user_id=1,
             citations=ReferenceTable(),
+            credentials=resolve_env_credentials(),
         )
 
     monkeypatch.setattr(agent_mod, "_build_context", _fake_context)
@@ -527,7 +530,7 @@ async def test_dangling_citation_does_not_lose_the_whole_report(
     calls = {"n": 0}
 
     async def _fake_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any, messages: list[dict[str, Any]], tools: Any, *_args: Any
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         """第一轮请求工具、第二轮产出正文。
 
@@ -947,7 +950,7 @@ async def test_crash_still_persists_partial_report(
     ]
 
     async def _boom(
-        client: Any, messages: list[Any], tools: Any
+        client: Any, messages: list[Any], tools: Any, *_args: Any
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         if script:
             for chunk in turn_chunks(script.pop(0)):
@@ -999,7 +1002,7 @@ async def test_crash_with_no_text_does_not_persist_empty_report(
     user = await _user(db_session, "crash-empty@report.test")
 
     async def _boom(
-        client: Any, messages: list[Any], tools: Any
+        client: Any, messages: list[Any], tools: Any, *_args: Any
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         raise ConnectionError("第 1 轮就挂掉")
         yield  # pragma: no cover —— 生成器函数需要 unreachable 的 yield
@@ -1045,7 +1048,7 @@ async def test_crash_path_persist_timeout_is_shorter(
     ]
 
     async def _boom(
-        client: Any, messages: list[Any], tools: Any
+        client: Any, messages: list[Any], tools: Any, *_args: Any
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         if script:
             for chunk in turn_chunks(script.pop(0)):
@@ -1067,9 +1070,7 @@ async def test_crash_path_persist_timeout_is_shorter(
     monkeypatch.setattr(agent_mod, "_run_turn", _boom)
     monkeypatch.setattr(agent_mod, "_run_tools", _no_tools)
     # persist_report 现在住在 agent_failures 模块里（那条路径被拆出去了）
-    monkeypatch.setattr(
-        "app.services.agent_failures.persist_report", _spy
-    )
+    monkeypatch.setattr("app.services.agent_failures.persist_report", _spy)
 
     _ = [e async for e in agent_mod.run_agent("问题", user_id=user.id, db=db_session)]
 
@@ -1209,7 +1210,7 @@ async def test_crash_persisted_report_is_marked_truncated(
     ]
 
     async def _run(
-        client: Any, messages: list[Any], tools: Any
+        client: Any, messages: list[Any], tools: Any, *_args: Any
     ) -> AsyncIterator[agent_mod.TurnChunk]:
         if script:
             for chunk in turn_chunks(script.pop(0)):

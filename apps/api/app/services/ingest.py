@@ -34,6 +34,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from app.models import DocumentChunk, Source, SourceStatus, SourceType
 from app.services import bm25, grouping
 from app.services.chunker import Chunk, ChunkingError, TextChunker
+from app.services.credentials import resolve_credentials
 from app.services.embedder import EmbeddingError, embed_or_none
 from app.services.errors import classify_embedding_error
 from app.services.parser import (
@@ -82,10 +83,24 @@ async def ingest(
     ``source`` 必须已经在库里且属于调用方（调用方负责校验）。
     无论成功失败都会更新它的 status——成功是 ``indexed``，
     失败是 ``failed`` + error_message。
+
+    嵌入用的凭据从 ``source.user_id`` 解析——每个用户配自己的嵌入服务，
+    所以摄取时用的是**资料所有者**的那把 key，不是部署的默认那把。
+    ``source`` 已被调用方校验过归属（见 ``sources.py`` 的 ``_owned``），
+    所以这里的 ``user_id`` 是可信的。
+
+    ## 凭据解析在 ``try`` **里面**
+
+    它是一次 DB 查询，理论上会失败（连接断了、库锁了）。放在 ``try``
+    外面的话，异常会绕过 ``mark_failed`` 直接冒到网关层——而网关层
+    那个宽兜底只记日志，不写 ``error_message``。于是这份资料永远停在
+    ``pending``，用户看到「一直在处理中」，且没有任何错误提示。
     """
     chunker = chunker or TextChunker()
 
     try:
+        credentials = await resolve_credentials(db, source.user_id)
+
         # 解析与切片是纯 CPU 的同步调用，必须挪出事件循环线程。
         # 不用 run_in_executor 的后果不是「慢一点」：摄取由
         # `_schedule_ingest` 用 `asyncio.create_task` 起，跑在 API 进程的事件
@@ -98,7 +113,7 @@ async def ingest(
         await _set_status(db, source, SourceStatus.CHUNKING, chunk_count=len(chunks))
 
         await _set_status(db, source, SourceStatus.EMBEDDING)
-        vectors = await embed_or_none([c.text for c in chunks])
+        vectors = await embed_or_none([c.text for c in chunks], credentials)
         await _store(db, vec_engine, source, chunks, vectors)
     except (ParseError, ChunkingError, IngestError) as exc:
         # 统一抛 IngestError 而非原样 raise：调用方（HTTP 层）靠这一个类型

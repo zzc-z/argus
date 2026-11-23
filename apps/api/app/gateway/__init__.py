@@ -6,6 +6,7 @@
 """
 
 from app.gateway.auth import router as auth_router
+from app.gateway.credentials import router as credentials_router
 from app.gateway.dashboard import router as dashboard_router
 from app.gateway.health import router as health_router
 from app.gateway.reports import router as reports_router
@@ -15,6 +16,7 @@ from app.gateway.users import router as users_router
 
 __all__ = [
     "auth_router",
+    "credentials_router",
     "dashboard_router",
     "health_router",
     "reports_router",

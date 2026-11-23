@@ -48,6 +48,7 @@ import jiter
 
 from app.services.agent_nodes import NodeTracker, Stage, _close
 from app.services.citation import Reference
+from app.services.credentials import ResolvedCredentials
 from app.services.llm import fallback_models
 from app.services.stream import NodeEvent
 
@@ -143,6 +144,7 @@ async def plan_subtasks(
     question: str,
     *,
     has_local: bool,
+    credentials: ResolvedCredentials,
 ) -> Plan:
     """拆解用户问题，产出检索子任务。
 
@@ -158,9 +160,10 @@ async def plan_subtasks(
 
     call = await _call_structured(
         client,
-        model=_model_for("supervisor"),
+        model=_model_for(credentials, "supervisor"),
         system=SUPERVISOR_PROMPT,
         user_prompt=prompt,
+        credentials=credentials,
     )
     if call is None:
         return Plan()
@@ -285,6 +288,7 @@ class Analysis:
 async def analyze_evidence(
     client: AsyncAnthropic,
     evidence: list[Evidence],
+    credentials: ResolvedCredentials,
 ) -> Analysis:
     """交叉核对检索到的证据。
 
@@ -313,9 +317,10 @@ async def analyze_evidence(
 
     call = await _call_structured(
         client,
-        model=_model_for("analyst"),
+        model=_model_for(credentials, "analyst"),
         system=ANALYST_PROMPT,
         user_prompt="\n\n".join(blocks),
+        credentials=credentials,
     )
     if call is None:
         return Analysis(degraded=True, skipped_reason="模型调用失败")
@@ -377,7 +382,7 @@ def _json_part(raw: str) -> str:
     return "" if start == -1 else raw[start:]
 
 
-def _model_for(role: str) -> str:
+def _model_for(credentials: ResolvedCredentials, role: str) -> str:
     """取某个角色的模型。**已移到** ``app.services.llm.model_for``。
 
     模型路由是跨模块的（supervisor / analyst 在这里，critic 在
@@ -386,7 +391,7 @@ def _model_for(role: str) -> str:
     """
     from app.services.llm import model_for
 
-    return model_for(role)
+    return model_for(credentials, role)
 
 
 @dataclass(frozen=True, slots=True)
@@ -404,6 +409,7 @@ async def _call_structured(
     model: str,
     system: str,
     user_prompt: str,
+    credentials: ResolvedCredentials,
 ) -> _Call | None:
     """调一次模型，拿到原始文本输出与用量。
 
@@ -431,7 +437,7 @@ async def _call_structured(
         "system": system,
         "messages": [{"role": "user", "content": user_prompt}],
     }
-    candidates = [model, *fallback_models()]
+    candidates = [model, *fallback_models(credentials)]
     last_exc: Exception | None = None
     for candidate in candidates:
         request["model"] = candidate
@@ -522,6 +528,7 @@ async def _run_analyst(
     collected_refs: list[Reference],
     seen: set[tuple[str, object]],
     out: _AnalystOut,
+    credentials: ResolvedCredentials,
 ) -> AsyncIterator[NodeEvent]:
     """跑 Analyst 的证据核对。
 
@@ -602,7 +609,7 @@ async def _run_analyst(
     yield tracker.activate(Stage.ANALYST)
     out.ran = True
 
-    analysis = await analyze_evidence(client, evidence)
+    analysis = await analyze_evidence(client, evidence, credentials)
     out.text = analysis.as_prompt_block()
     out.input_tokens = analysis.input_tokens
     out.output_tokens = analysis.output_tokens

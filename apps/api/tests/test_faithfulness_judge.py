@@ -32,10 +32,15 @@ from typing import Any
 
 import pytest
 
+from app.services.credentials import resolve_env_credentials
 from app.services.faithfulness import (
     JudgeTruncated,
     verify_citations,
 )
+
+# 测试用的凭据。按部署默认解析——本文件测的是调用链的行为，
+# 不是「用户配了什么 key」。
+_CREDS = resolve_env_credentials()
 
 # ── 测试替身 ──────────────────────────────────────────────────
 
@@ -105,6 +110,7 @@ class TestVerifyCitationsCounting:
             client,  # type: ignore[arg-type]
             "能效提升 2.5 倍[1]。工艺是台积电[2]。",
             {1: "Blackwell 能效提升 2.5 倍", 2: "工艺由三星代工"},
+            _CREDS,
         )
 
         assert report.skipped is False
@@ -121,6 +127,7 @@ class TestVerifyCitationsCounting:
             _client("{}"),  # type: ignore[arg-type]
             "没有任何引用的报告。",
             {1: "原文"},
+            _CREDS,
         )
 
         assert report.skipped is True
@@ -134,7 +141,8 @@ class TestVerifyCitationsCounting:
         report = await verify_citations(
             _client("{}"),  # type: ignore[arg-type]
             "引用了 [1]。",
-            {},  # 引用表是空的
+            {},  # 引用表是空的,
+            _CREDS,
         )
 
         assert report.skipped is True
@@ -154,6 +162,7 @@ class TestVerifyCitationsCounting:
             client,  # type: ignore[arg-type]
             "有据的一句[1]。编造的一句[9]。",
             {1: "原文"},
+            _CREDS,
         )
 
         assert report.missing == [9]
@@ -184,6 +193,7 @@ class TestVerifyCitationsMultipleSentences:
             client,  # type: ignore[arg-type]
             "营收增长 2.5 倍[1]。营收增长 100 倍[1]。",
             {1: "营收增长 2.5 倍"},
+            _CREDS,
         )
 
         assert report.skipped is False
@@ -208,6 +218,7 @@ class TestVerifyCitationsMultipleSentences:
             client,  # type: ignore[arg-type]
             "营收增长 2.5 倍[1]。营收增长 100 倍[1]。",
             {1: "营收增长 2.5 倍"},
+            _CREDS,
         )
 
         assert report.checked == 2
@@ -251,6 +262,7 @@ class TestVerifyCitationsMultipleSentences:
             client,  # type: ignore[arg-type]
             "营收增长 25%[1]。营收增长 100%[1]。海外增长放缓[1]。",
             {1: "2025 年营收同比增长 25%，华东区是主要增长来源。"},
+            _CREDS,
         )
 
         assert report.checked == 3, "三句都要计入分母"
@@ -276,6 +288,7 @@ class TestVerifyCitationsDenominator:
             client,  # type: ignore[arg-type]
             "第一句[1]。第二句[2]。",
             {1: "原文一", 2: "原文二"},
+            _CREDS,
         )
 
         assert report.checked == 1, "没判出的那条不进分母"
@@ -289,6 +302,7 @@ class TestVerifyCitationsDenominator:
             _client('{"verdicts": []}'),  # type: ignore[arg-type]
             "第一句[1]。",
             {1: "原文"},
+            _CREDS,
         )
 
         assert report.skipped is True
@@ -309,6 +323,7 @@ class TestVerifyCitationsDegradation:
             client,  # type: ignore[arg-type]
             "一句话[1]。",
             {1: "原文"},
+            _CREDS,
         )
 
         assert report.skipped is True
@@ -329,6 +344,7 @@ class TestVerifyCitationsDegradation:
                 client,  # type: ignore[arg-type]
                 "一句话[1]。",
                 {1: "原文"},
+                _CREDS,
             )
 
         assert "截断" in str(excinfo.value)
@@ -345,6 +361,7 @@ class TestVerifyCitationsDegradation:
             _client("这不是 JSON"),  # type: ignore[arg-type]
             "一句话[1]。",
             {1: "原文"},
+            _CREDS,
         )
 
         assert report.skipped is True
@@ -357,6 +374,7 @@ class TestVerifyCitationsDegradation:
             _client('{"verdicts": []}'),  # type: ignore[arg-type]
             "一句话[1]。",
             {1: "原文"},
+            _CREDS,
         )
 
         assert report.skipped is True
@@ -378,7 +396,7 @@ class TestVerifyCitationsMaxTokens:
         report = "句子[1]。句子[2]。句子[3]。句子[4]。句子[5]。" * 4
         sources = dict.fromkeys(range(1, 21), "原文")
 
-        await verify_citations(client, report, sources)  # type: ignore[arg-type]
+        await verify_citations(client, report, sources, _CREDS)  # type: ignore[arg-type]
 
         sent = client.messages.calls[0]
         assert sent["max_tokens"] > 2048, "20 条引用时 max_tokens 必须大于 2048"
@@ -387,7 +405,7 @@ class TestVerifyCitationsMaxTokens:
         """条目少时也不能低于下限。"""
         client = _client("{}")
 
-        await verify_citations(client, "一句话[1]。", {1: "原文"})  # type: ignore[arg-type]
+        await verify_citations(client, "一句话[1]。", {1: "原文"}, _CREDS)  # type: ignore[arg-type]
 
         assert client.messages.calls[0]["max_tokens"] >= 2048
 
@@ -415,6 +433,7 @@ class TestNumericChannelWiring:
             client,  # type: ignore[arg-type]
             "能效提升 100 倍[1]。",
             {1: "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍。"},
+            _CREDS,
         )
 
         assert report.skipped is False
@@ -442,6 +461,7 @@ class TestNumericChannelWiring:
                 1: "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍。",
                 2: "该工艺由三星代工。",
             },
+            _CREDS,
         )
 
         assert report.checked == 2, "两条都要进分母"
@@ -461,6 +481,7 @@ class TestNumericChannelWiring:
             client,  # type: ignore[arg-type]
             "营收增长 100 倍[1]。营收增长 2.5 倍[1]。",
             {1: "营收增长 2.5 倍"},
+            _CREDS,
         )
 
         # 第 1 句（100 倍）被确定性通道判掉，第 2 句进 LLM。
@@ -482,6 +503,7 @@ class TestNumericChannelWiring:
             client,  # type: ignore[arg-type]
             "营收同比增长 25%[1]。",
             {1: "公司本季度营业收入 32.1 亿美元，同比增长 22%。"},
+            _CREDS,
         )
 
         assert len(client.messages.calls) == 1, "判不出的必须进 LLM"
@@ -499,6 +521,7 @@ class TestNumericChannelWiring:
             client,  # type: ignore[arg-type]
             "能效提升 100 倍[1]。",
             {1: "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍。"},
+            _CREDS,
         )
 
         assert client.messages.calls == [], "没有要问模型的就不该调模型"
@@ -518,6 +541,7 @@ class TestNumericChannelWiring:
             client,  # type: ignore[arg-type]
             "营收 32.1 亿美元[1][2]。",
             {1: "公司本季度营业收入 32.1 亿美元。", 2: "净利润 8.2 亿美元。"},
+            _CREDS,
         )
 
         assert report.unsupported == [], "另一条原文提供的数字不该被当成编造"
@@ -534,6 +558,7 @@ class TestNumericChannelWiring:
             client,  # type: ignore[arg-type]
             "能效提升 100 倍[1]。",
             {1: "NVIDIA Blackwell 架构能效比 Hopper 提升 2.5 倍。"},
+            _CREDS,
         )
 
         reason = report.unsupported[0].reason

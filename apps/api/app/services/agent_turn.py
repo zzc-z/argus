@@ -24,7 +24,7 @@ from typing import Any, cast
 
 from anthropic import AsyncAnthropic
 
-from app.config import get_settings
+from app.services.credentials import ResolvedCredentials
 from app.services.llm import (
     STREAM_INTERRUPT_BACKOFF_SECONDS,
     STREAM_INTERRUPT_RETRIES,
@@ -122,6 +122,7 @@ async def _run_turn(
     client: AsyncAnthropic,
     messages: list[dict[str, Any]],
     tools: tuple[ToolSpec, ...],
+    credentials: ResolvedCredentials,
 ) -> AsyncIterator[TurnChunk]:
     """跑一轮流式请求，**边收边发**。
 
@@ -159,7 +160,7 @@ async def _run_turn(
     发一个 ``reset`` 标记，让前端把这一轮已收到的正文清零——少了它，
     用户会看到同一段正文出现两遍。
     """
-    request = _build_turn_request(messages, tools)
+    request = _build_turn_request(messages, tools, credentials)
     last_exc: BaseException | None = None
     # 这一轮是否已经往用户那里发过正文。断流重发时要靠它决定
     # 要不要发 reset 标记。
@@ -171,7 +172,7 @@ async def _run_turn(
     # **同一个模型重发大概率还是断**。换模型才有机会成。
     # 业界模型路由的标准做法（Oracle / AWS / MLflow）：
     # pre-configured fallback，主模型失败自动切备胎。
-    candidates = [request["model"], *fallback_models()]
+    candidates = [request["model"], *fallback_models(credentials)]
 
     for attempt in range(STREAM_INTERRUPT_RETRIES + 1):
         # 第 n 次尝试用链上的第 n 个模型（超出链长就还用最后一个）。
@@ -285,6 +286,7 @@ async def _stream_turn_once(
 def _build_turn_request(
     messages: list[dict[str, Any]],
     tools: tuple[ToolSpec, ...],
+    credentials: ResolvedCredentials,
 ) -> dict[str, Any]:
     """拼出一轮请求的载荷。空 tools 时不带 tools 参数。
 
@@ -319,9 +321,8 @@ def _build_turn_request(
     （实测每次都是）：它表示「总输出触顶」，在 thinking 有独立预算后**不再
     等于失败**。判据是「有没有正文」，不是 stop_reason。
     """
-    settings = get_settings()
     request: dict[str, Any] = {
-        "model": settings.anthropic_complex_model,
+        "model": credentials.anthropic_complex_model,
         "max_tokens": MAX_OUTPUT_TOKENS,
         "system": SYSTEM_PROMPT,
         "messages": messages,

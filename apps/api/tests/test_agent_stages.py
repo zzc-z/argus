@@ -92,7 +92,10 @@ def _stub_turns(monkeypatch: pytest.MonkeyPatch, script: list[TurnResult]) -> No
     remaining = list(script)
 
     async def _fake_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         if not remaining:
             raise AssertionError("agent 调用轮数超出脚本预期")
@@ -150,7 +153,9 @@ async def test_critic_elapsed_includes_the_verification_call(
     """
     _stub_turns(monkeypatch, [_turn(text="答案")])
 
-    async def _slow_verify(client: Any, report_text: str, sources: dict[int, str]) -> Any:
+    async def _slow_verify(
+        client: Any, report_text: str, sources: dict[int, str], *_args: Any
+    ) -> Any:
         await asyncio.sleep(0.3)
         return stages_faithfulness_report()
 
@@ -214,7 +219,7 @@ async def test_critic_runs_before_the_faithfulness_frame(
     assert kinds.index("critic") < kinds.index("faithfulness"), kinds
 
 
-async def _slow_no_cite(client: Any, report_text: str, sources: dict[int, str]) -> Any:
+async def _slow_no_cite(client: Any, report_text: str, sources: dict[int, str], *_args: Any) -> Any:
     return stages_faithfulness_report()
 
 
@@ -252,7 +257,10 @@ async def test_analyst_result_reaches_the_next_turn(
     script = [_turn(tool_calls=[_tool_call()]), _turn(text="答案")]
 
     async def _recording_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         seen_messages.append([dict(m) for m in messages])
         result = script.pop(0)
@@ -284,7 +292,7 @@ async def test_analyst_skipped_without_evidence(monkeypatch: pytest.MonkeyPatch)
 
     called = False
 
-    async def _tracking_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _tracking_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         nonlocal called
         called = True
         return stages.Analysis()
@@ -324,7 +332,10 @@ async def test_analyst_analysis_is_in_the_same_user_message(
     script = [_turn(tool_calls=[_tool_call()]), _turn(text="答案")]
 
     async def _recording_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         seen_messages.append([dict(m) for m in messages])
         result = script.pop(0)
@@ -346,7 +357,7 @@ async def test_analyst_analysis_is_in_the_same_user_message(
 def _stub_analyst(monkeypatch: pytest.MonkeyPatch, conflicts: list[str]) -> None:
     """桩掉 analyst 的核对，让它返回指定的矛盾。"""
 
-    async def _fake_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _fake_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         return stages.Analysis(
             conflicts=conflicts,
             synthesis="综合",
@@ -376,7 +387,7 @@ async def test_analyst_note_is_always_present(monkeypatch: pytest.MonkeyPatch) -
     # 模型既没给矛盾也没给综合结论
     _stub_analyst(monkeypatch, conflicts=[])
 
-    async def _empty_analysis(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _empty_analysis(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         return stages.Analysis(conflicts=[], synthesis="")
 
     monkeypatch.setattr(stages, "analyze_evidence", _empty_analysis)
@@ -410,7 +421,7 @@ async def test_analyst_note_says_failed_not_no_conflict(
     )
     _stub_tools(monkeypatch, [_reference(1), _reference(2, chunk_id=2)])
 
-    async def _failing_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _failing_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         return stages.Analysis(degraded=True, skipped_reason="模型调用失败")
 
     monkeypatch.setattr(stages, "analyze_evidence", _failing_analyze)
@@ -476,7 +487,7 @@ async def test_evidence_outside_the_window_is_still_checked_later(
 
     checked_rounds: list[list[int]] = []
 
-    async def _tracking_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _tracking_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         checked_rounds.append([e.n for e in evidence])
         return stages.Analysis(synthesis="x")
 
@@ -534,7 +545,7 @@ async def test_evidence_outside_the_window_is_checked_on_the_next_round(
 
     monkeypatch.setattr(agent_module, "_run_tools", _fake_run_tools)
 
-    async def _tracking_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _tracking_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         checked_rounds.append([e.n for e in evidence])
         return stages.Analysis(synthesis="x")
 
@@ -584,7 +595,7 @@ async def test_analyst_note_reports_the_total_when_some_are_not_checked(
     many = [_reference(i, chunk_id=i) for i in range(1, 16)]
     _stub_tools(monkeypatch, many)
 
-    async def _tracking_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _tracking_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         return stages.Analysis(synthesis="x")
 
     monkeypatch.setattr(stages, "analyze_evidence", _tracking_analyze)
@@ -626,7 +637,9 @@ async def test_cancel_during_supervisor_emits_done(
 
     entered = asyncio.Event()
 
-    async def _hanging_plan(client: Any, question: str, *, has_local: bool) -> stages.Plan:
+    async def _hanging_plan(
+        client: Any, question: str, *, has_local: bool, **_kw: Any
+    ) -> stages.Plan:
         entered.set()
         await asyncio.sleep(30)
         return stages.Plan()
@@ -689,7 +702,7 @@ async def test_analyst_does_not_rerun_without_new_evidence(
     """
     calls = 0
 
-    async def _counting_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _counting_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         nonlocal calls
         calls += 1
         return stages.Analysis(synthesis="综合")
@@ -755,7 +768,7 @@ async def test_web_evidence_reaches_the_analyst(monkeypatch: pytest.MonkeyPatch)
     """
     seen: list[list[Any]] = []
 
-    async def _fake_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _fake_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         seen.append(evidence)
         return stages.Analysis(synthesis="综合")
 
@@ -804,7 +817,7 @@ async def test_web_evidence_alone_triggers_the_analyst(
     """**只有**联网证据（没有本地资料）时，Analyst 也要跑。"""
     seen: list[list[Any]] = []
 
-    async def _fake_analyze(client: Any, evidence: list[Any]) -> stages.Analysis:
+    async def _fake_analyze(client: Any, evidence: list[Any], *_args: Any) -> stages.Analysis:
         seen.append(evidence)
         return stages.Analysis(synthesis="综合")
 
@@ -876,7 +889,10 @@ async def test_active_frame_carries_the_accumulated_baseline(
     first = True
 
     async def _slow_first_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         nonlocal first
         if first:
@@ -931,7 +947,10 @@ async def test_repeated_researcher_elapsed_is_accumulated(
     ]
 
     async def _slow_first_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         if delays:
             await asyncio.sleep(delays.pop(0))
@@ -976,7 +995,7 @@ async def test_supervisor_note_reports_subtask_count(
 ) -> None:
     """supervisor 的摘要说明拆解出几个子任务。"""
 
-    async def _fake_plan(client: Any, question: str, *, has_local: bool) -> stages.Plan:
+    async def _fake_plan(client: Any, question: str, *, has_local: bool, **_kw: Any) -> stages.Plan:
         return stages.Plan(subtasks=["a", "b", "c"], input_tokens=30, output_tokens=15)
 
     monkeypatch.setattr(agent_module, "plan_subtasks", _fake_plan)
@@ -1013,7 +1032,10 @@ async def test_supervisor_subtasks_reach_the_model_prompt(
     seen_messages: list[list[dict[str, Any]]] = []
 
     async def _recording_run_turn(
-        client: Any, messages: list[dict[str, Any]], tools: Any
+        client: Any,
+        messages: list[dict[str, Any]],
+        tools: Any,
+        *args,
     ) -> AsyncIterator[TurnChunk]:
         seen_messages.append([dict(m) for m in messages])
         yield TurnChunk(
@@ -1021,7 +1043,7 @@ async def test_supervisor_subtasks_reach_the_model_prompt(
             result=_turn(text="答案"),
         )
 
-    async def _fake_plan(client: Any, question: str, *, has_local: bool) -> stages.Plan:
+    async def _fake_plan(client: Any, question: str, *, has_local: bool, **_kw: Any) -> stages.Plan:
         return stages.Plan(subtasks=["查市场规模", "查主要玩家"])
 
     monkeypatch.setattr(agent_module, "plan_subtasks", _fake_plan)
@@ -1041,7 +1063,7 @@ async def test_stage_token_usage_is_recorded(monkeypatch: pytest.MonkeyPatch) ->
     不记的话用量统计系统性偏低——用户按账估算成本会算错。
     """
 
-    async def _fake_plan(client: Any, question: str, *, has_local: bool) -> stages.Plan:
+    async def _fake_plan(client: Any, question: str, *, has_local: bool, **_kw: Any) -> stages.Plan:
         return stages.Plan(subtasks=["a"], input_tokens=30, output_tokens=15)
 
     monkeypatch.setattr(agent_module, "plan_subtasks", _fake_plan)

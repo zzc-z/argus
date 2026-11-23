@@ -39,6 +39,7 @@ from anthropic import APIConnectionError, APITimeoutError
 
 from app.services import agent as agent_module
 from app.services.agent import _run_turn
+from app.services.credentials import resolve_env_credentials
 from app.services.errors import error_event_for
 from app.services.llm import (
     STREAM_INTERRUPT_BACKOFF_SECONDS,
@@ -47,6 +48,10 @@ from app.services.llm import (
     is_timeout,
 )
 from tests.conftest import collect_turn
+
+# 测试用的凭据。按部署默认解析——本文件测的是断流重发的行为，
+# 不是「用户配了什么 key」。
+_CREDS = resolve_env_credentials()
 
 # ── 上游的替身 ────────────────────────────────────────────────
 
@@ -123,7 +128,9 @@ class _FlakyStream:
 
 
 class _FlakyMessages:
-    def __init__(self, message: _FakeMessage, fail_times: int, exc: Exception | None = None) -> None:
+    def __init__(
+        self, message: _FakeMessage, fail_times: int, exc: Exception | None = None
+    ) -> None:
         self._message = message
         self._counter = [fail_times]
         self._exc = exc
@@ -137,7 +144,9 @@ class _FlakyMessages:
 
 
 class _FlakyClient:
-    def __init__(self, message: _FakeMessage, fail_times: int, exc: Exception | None = None) -> None:
+    def __init__(
+        self, message: _FakeMessage, fail_times: int, exc: Exception | None = None
+    ) -> None:
         self.messages = _FlakyMessages(message, fail_times, exc)
 
 
@@ -345,7 +354,7 @@ async def test_retry_resets_already_sent_text() -> None:
 
     kinds: list[str] = []
     texts: list[str] = []
-    async for chunk in _run_turn(client, [{"role": "user", "content": "q"}], ()):
+    async for chunk in _run_turn(client, [{"role": "user", "content": "q"}], (), _CREDS):
         kinds.append(chunk.kind)
         if chunk.kind == "text":
             texts.append(chunk.text)
@@ -368,7 +377,7 @@ async def test_no_reset_when_nothing_was_sent() -> None:
     client = _FlakyClient(_FakeMessage("答案"), fail_times=1)
 
     kinds: list[str] = []
-    async for chunk in _run_turn(client, [{"role": "user", "content": "q"}], ()):
+    async for chunk in _run_turn(client, [{"role": "user", "content": "q"}], (), _CREDS):
         kinds.append(chunk.kind)
 
     assert "reset" not in kinds, f"没发过正文就不该有 reset，实际：{kinds}"

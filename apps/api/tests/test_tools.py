@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 
 from app.services import tools as tools_module
+from app.services.credentials import resolve_env_credentials
 from app.services.llm import LLMNotConfiguredError
 from app.services.tools import (
     ToolOutcome,
@@ -19,14 +20,18 @@ from app.services.tools import (
     tool_schemas,
 )
 
+# 测试用的凭据。按部署默认解析——本文件测的是工具分发的逻辑，
+# 不是「用户配了什么 key」。
+_CREDS = resolve_env_credentials()
+
 
 @pytest.fixture
 def _with_tavily_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """让 get_tavily_client 返回真客户端（配置齐全的场景）。"""
-    monkeypatch.setattr(tools_module, "get_tavily_client", lambda: object())
+    monkeypatch.setattr(tools_module, "get_tavily_client", lambda _credentials: object())
 
 
-def _raise_not_configured() -> object:
+def _raise_not_configured(_credentials: object = None) -> object:
     raise LLMNotConfiguredError("TAVILY_API_KEY 未配置")
 
 
@@ -132,7 +137,7 @@ async def test_tavily_search_without_key_returns_error(monkeypatch: pytest.Monke
     文案带上具体缺哪个配置项。
     """
 
-    def _raise() -> None:
+    def _raise(*_args: object) -> None:
         raise LLMNotConfiguredError("TAVILY_API_KEY 未配置，无法调用该能力")
 
     monkeypatch.setattr(tools_module, "get_tavily_client", _raise)
@@ -268,11 +273,11 @@ async def test_max_results_garbage_falls_back(
 def test_available_tools_excludes_tavily_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """key 没配时 tavily_search 不出现——模型看不到就不会调它。"""
 
-    def _raise() -> None:
+    def _raise(*_args: object) -> None:
         raise LLMNotConfiguredError("TAVILY_API_KEY 未配置")
 
     monkeypatch.setattr(tools_module, "get_tavily_client", _raise)
-    names = [spec.name for spec in available_tools()]
+    names = [spec.name for spec in available_tools(credentials=_CREDS)]
     assert "tavily_search" not in names
     assert "dedup" in names
 
@@ -280,7 +285,7 @@ def test_available_tools_excludes_tavily_without_key(monkeypatch: pytest.MonkeyP
 def test_available_tools_includes_all_when_configured(
     monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
 ) -> None:
-    assert {t.name for t in available_tools()} == {
+    assert {t.name for t in available_tools(credentials=_CREDS)} == {
         "tavily_search",
         "local_search",
         "dedup",
@@ -291,7 +296,7 @@ def test_available_tools_drops_local_without_db(
     monkeypatch: pytest.MonkeyPatch, _with_tavily_key: None
 ) -> None:
     """没有数据库连接时摘掉 local_search——模型看不到就不会浪费一轮去调它。"""
-    names = {t.name for t in available_tools(has_local=False)}
+    names = {t.name for t in available_tools(has_local=False, credentials=_CREDS)}
     assert "local_search" not in names
     assert "tavily_search" in names
 
@@ -299,7 +304,7 @@ def test_available_tools_drops_local_without_db(
 def test_available_tools_drops_tavily_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
     """Tavily 没配时摘掉搜索工具，但本地检索要留着。"""
     monkeypatch.setattr(tools_module, "get_tavily_client", _raise_not_configured)
-    names = {t.name for t in available_tools(has_local=True)}
+    names = {t.name for t in available_tools(has_local=True, credentials=_CREDS)}
     assert names == {"local_search", "dedup"}
 
 
@@ -308,15 +313,15 @@ def test_available_tools_order_is_stable(
 ) -> None:
     """工具顺序必须固定——set 的迭代顺序随 PYTHONHASHSEED 变，
     同一份配置两次启动给出不同的 tools 数组会让 prompt 缓存失效。"""
-    first = [t.name for t in available_tools()]
-    second = [t.name for t in available_tools()]
+    first = [t.name for t in available_tools(credentials=_CREDS)]
+    second = [t.name for t in available_tools(credentials=_CREDS)]
     assert first == second
     assert first == ["tavily_search", "local_search", "dedup"]
 
 
 def test_tool_schemas_shape() -> None:
     """转成 API 格式后每个工具都有 name/description/input_schema。"""
-    schemas = tool_schemas(available_tools())
+    schemas = tool_schemas(available_tools(credentials=_CREDS))
     for schema in schemas:
         assert set(schema) == {"name", "description", "input_schema"}
         assert schema["input_schema"]["type"] == "object"
@@ -368,14 +373,16 @@ def test_tavily_search_schema_survives_without_key(
 ) -> None:
     """``tavily_search`` 的 schema 形状必须单独验——它不随环境变。
 
-    ``test_tool_schemas_shape`` 走 ``available_tools()``，而 conftest 的
+    ``test_tool_schemas_shape`` 走 ``available_tools(credentials=_CREDS)``，而 conftest 的
     autouse 隔离让那函数恒返回 ``{local_search, dedup}``。于是
     ``tavily_search`` 的 ``input_schema.properties`` 自 2026-10-13 起因
     「环境里没 key」就再没被任何测试碰到——这正是模型能不能正确传参
     的地方，漏了不会有任何报错。
     """
     schema = next(
-        s for s in tool_schemas(available_tools(has_local=True)) if s["name"] == "tavily_search"
+        s
+        for s in tool_schemas(available_tools(has_local=True, credentials=_CREDS))
+        if s["name"] == "tavily_search"
     )
     props = schema["input_schema"]["properties"]
     assert "query" in props

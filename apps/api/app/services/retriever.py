@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from app.models import DocumentChunk, Source
 from app.services import bm25, embedder, vectorstore
+from app.services.credentials import ResolvedCredentials
 from app.services.ingest import ensure_index_tables
 
 # Cormack et al. 2009 的原始取值。改这个数会改变头部排名的敏感度。
@@ -63,6 +64,7 @@ async def retrieve(
     vec_engine: AsyncEngine,
     question: str,
     user_id: int,
+    credentials: ResolvedCredentials,
     limit: int = 10,
     query_vector: list[float] | None = None,
     query_vector_given: bool = False,
@@ -105,7 +107,7 @@ async def retrieve(
     await ensure_index_tables(vec_engine)
     # 查询向量只算一次，两路共用——不额外调嵌入服务。
     if not query_vector_given:
-        query_vector = await _query_vector(question)
+        query_vector = await _query_vector(question, credentials)
     vector_hits = await _vector_recall(vec_engine, query_vector, source_ids)
     bm25_hits = await _bm25_recall(vec_engine, question, query_vector, source_ids)
 
@@ -164,6 +166,7 @@ async def explain_no_result(
     vec_engine: AsyncEngine,
     question: str,
     user_id: int,
+    credentials: ResolvedCredentials,
     query_vector: list[float] | None = None,
     query_vector_given: bool = False,
 ) -> NoResultReason:
@@ -194,7 +197,7 @@ async def explain_no_result(
     if not source_ids:
         return NoResultReason.NO_MATERIAL
     if not query_vector_given:
-        query_vector = await _query_vector(question)
+        query_vector = await _query_vector(question, credentials)
     if query_vector is None:
         # 算不出查询向量 → 相关性没法评估。
         return NoResultReason.NOT_EVALUATED
@@ -268,7 +271,10 @@ def semantic_filter_active(query_vector: list[float] | None) -> bool:
     return query_vector is not None
 
 
-async def _query_vector(question: str) -> list[float] | None:
+async def _query_vector(
+    question: str,
+    credentials: ResolvedCredentials,
+) -> list[float] | None:
     """把问题变成向量。算不出来时返回 None——那一路静默跳过，不报错。
 
     **捕获全部嵌入异常**，不只是「未配置 key」：嵌入服务欠费、超时、
@@ -279,7 +285,7 @@ async def _query_vector(question: str) -> list[float] | None:
     整次提问直接报错、没有任何内容。）
     """
     try:
-        vectors = await embedder.embed_texts([question])
+        vectors = await embedder.embed_texts([question], credentials)
     except embedder.EmbeddingError:
         return None
     if not vectors:
@@ -287,7 +293,10 @@ async def _query_vector(question: str) -> list[float] | None:
     return vectors[0]
 
 
-async def query_vector_for(question: str) -> list[float] | None:
+async def query_vector_for(
+    question: str,
+    credentials: ResolvedCredentials,
+) -> list[float] | None:
     """算查询向量，**算不出来时返回 None 而不是抛异常**。
 
     给 :mod:`app.services.tools` 用——它需要这个向量做两件事：
@@ -297,7 +306,7 @@ async def query_vector_for(question: str) -> list[float] | None:
     算不出来时（没配 key / 欠费 / 超时）返回 None，检索降级成纯 BM25，
     **不该让整次提问失败**。
     """
-    return await _query_vector(question)
+    return await _query_vector(question, credentials)
 
 
 async def _vector_recall(

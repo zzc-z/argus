@@ -21,10 +21,21 @@ from __future__ import annotations
 import pytest
 
 from app.config import get_settings
+from app.services.credentials import resolve_env_credentials
 from app.services.llm import (
     assert_distinct_judge_and_writer,
     model_for,
 )
+
+
+def _creds() -> object:
+    """按**当前** settings 重新解析一份凭据。
+
+    这些用例改的是 ``settings``（模型覆盖 / 默认模型），而凭据里的
+    ``role_models`` 是解析时算好的——模块级的快照不会跟着 settings 变，
+    所以每次都要重新解析。
+    """
+    return resolve_env_credentials()
 
 
 class TestModelFor:
@@ -34,7 +45,7 @@ class TestModelFor:
         original = settings.anthropic_analyst_model
         try:
             settings.anthropic_analyst_model = "some-other-model"
-            assert model_for("analyst") == "some-other-model"
+            assert model_for(_creds(), "analyst") == "some-other-model"
         finally:
             settings.anthropic_analyst_model = original
 
@@ -44,9 +55,9 @@ class TestModelFor:
         original = settings.anthropic_analyst_model
         try:
             settings.anthropic_analyst_model = None
-            assert model_for("analyst") == settings.anthropic_default_model
+            assert model_for(_creds(), "analyst") == settings.anthropic_default_model
             settings.anthropic_analyst_model = ""
-            assert model_for("analyst") == settings.anthropic_default_model
+            assert model_for(_creds(), "analyst") == settings.anthropic_default_model
         finally:
             settings.anthropic_analyst_model = original
 
@@ -61,7 +72,7 @@ class TestModelFor:
         original = settings.anthropic_critic_model
         try:
             settings.anthropic_critic_model = None
-            assert model_for("critic") == settings.anthropic_complex_model
+            assert model_for(_creds(), "critic") == settings.anthropic_complex_model
         finally:
             settings.anthropic_critic_model = original
 

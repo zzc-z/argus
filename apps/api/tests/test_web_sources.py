@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.source import WEB_SOURCE_TYPE, DocumentChunk, Source
 from app.models.user import User
 from app.services.citation import Reference, ReferenceTable
+from app.services.credentials import resolve_env_credentials
 from app.services.retriever import _user_source_ids
 from app.services.web_sources import (
     ToolEvidence,
@@ -370,7 +371,7 @@ async def test_production_call_site_passes_the_session_maker(
         return {"results": [{"title": "报道", "url": "https://x.test/1", "content": "内容"}]}
 
     monkeypatch.setattr(tools_module, "_search", _fake_search)
-    monkeypatch.setattr(tools_module, "get_tavily_client", lambda: object())
+    monkeypatch.setattr(tools_module, "get_tavily_client", lambda _credentials: object())
 
     from app.services.citation import ReferenceTable
 
@@ -379,6 +380,7 @@ async def test_production_call_site_passes_the_session_maker(
         vec_engine=None,
         user_id=1,
         citations=ReferenceTable(),
+        credentials=resolve_env_credentials(),
         # **有工厂**——模拟生产
         session_maker=object(),  # type: ignore[arg-type]
     )
