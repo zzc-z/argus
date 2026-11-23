@@ -80,6 +80,44 @@ Next 16 要求 `next/font/google` 只有**一处** import。字体的 CSS 变量
 
 前端是 Next.js dev server，有热更新，不用管。
 
+## 2.1 重建 Python 环境（venv 坏了 / 换机器）
+
+```bash
+cd apps/api
+uv sync --extra dev          # ⚠️ --extra dev 不能省
+```
+
+**`--extra dev` 不能省**：pytest / mypy / ruff 都在
+`[project.optional-dependencies].dev`（`pyproject.toml:65`），而 `uv sync`
+默认**只装主依赖**。漏掉它的症状是 `uv run pytest` 报
+`ModuleNotFoundError: No module named 'pytest'`。
+
+日常用 `uv run xxx` 不用管这些（`uv run` 会按需补装）；只有**重建环境**
+时才要显式带 `--extra dev`。
+
+**解释器装在哪**：uv 托管的 Python 默认在 `~/.local/share/uv/python/`
+（持久目录，`uv python dir` 可查）。venv 里的 `.venv/bin/python` 是指向它的
+符号链接。
+
+⚠️ **别让它指向临时目录**（macOS 的 `$TMPDIR`）——那目录会被系统清理，
+清掉之后 venv 就指向一个不存在的解释器，后端起不来，报错还很莫名其妙。
+VS Code 也扫不到这种 venv，会退回系统 Python，于是编辑器里满屏
+「无法解析导入 fastapi / sqlalchemy / anthropic」（**那些不是真的缺包**，
+是解释器选错了）。
+
+### 2.2 编辑器认不出依赖时
+
+诊断里出现「无法解析导入 XXX」但 `uv run pytest` 是绿的 → **解释器选错了**，
+不是缺包。
+
+```bash
+uv run python -c "import fastapi"   # 能导入 = 包没问题
+```
+
+修法：`Cmd+Shift+P` → `Python: Select Interpreter` → 输入解释器路径 →
+`apps/api/.venv/bin/python`。选解释器列表里看不到它时（uv venv 指向临时
+目录就会被跳过）就用「输入解释器路径」。
+
 ## 3. 改了数据库结构 → 先跑迁移
 
 ```bash
