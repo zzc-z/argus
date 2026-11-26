@@ -340,6 +340,12 @@ function applyEventInner(event: SseEvent, h: RunHandlers): void {
         message: err.message,
         retryable: err.retryable,
       })
+      // error 是终态（后端发完 error 就结束），但部分失败路径只发 error、
+      // 不发 done（如拆解阶段连不上模型）。不在这里收尾，页面会一直停在
+      // 「运行中」、输入框保持禁用。校验结论也不会再来了，与连接出错时
+      // （reportStreamError）同样处理。
+      h.setFaithfulness((prev) => (prev.kind === 'pending' ? { kind: 'abort' } : prev))
+      h.setRunState('completed')
       break
     }
     case 'done': {

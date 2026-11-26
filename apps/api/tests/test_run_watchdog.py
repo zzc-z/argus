@@ -50,6 +50,9 @@ async def test_silent_agent_ends_with_timeout_error(monkeypatch: pytest.MonkeyPa
 
     assert isinstance(events[-1], ErrorEvent), events
     assert events[-1].code == "llm_timeout"
+    # 中转站挂住时「缩小问题范围」毫无用处，文案要指向真正该查的地方。
+    assert "没有收到模型输出" in events[-1].message, events[-1].message
+    assert "缩小问题范围" not in events[-1].message
 
 
 async def test_steady_events_keep_the_run_alive(monkeypatch: pytest.MonkeyPatch) -> None:

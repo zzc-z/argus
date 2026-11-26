@@ -45,7 +45,7 @@ from app.gateway.deps import CurrentUser
 from app.schemas.research import AskRequest
 from app.services.agent import run_agent
 from app.services.credentials import resolve_credentials
-from app.services.errors import classify_llm_error, classify_unknown_error
+from app.services.errors import classify_run_stalled, classify_unknown_error
 from app.services.llm import LLMNotConfiguredError, get_anthropic_client
 from app.services.runs import Run, get_run_registry, subscribe_run
 from app.services.stream import AgentEvent, DoneEvent, ErrorEvent, RunEvent, encode_frame
@@ -401,11 +401,11 @@ async def _drive_run(
                             on_llm_done=slot.release,
                         ),
                     )
-                except _IdleTimeoutError as exc:
+                except _IdleTimeoutError:
                     logger.warning(
                         "研究连续 %.0f 秒没有新事件，判定卡住并中止", RUN_IDLE_TIMEOUT_SECONDS
                     )
-                    classified = classify_llm_error(exc.__cause__ or exc)
+                    classified = classify_run_stalled(RUN_IDLE_TIMEOUT_SECONDS)
                     await run.publish(
                         ErrorEvent(
                             code=classified.code,
