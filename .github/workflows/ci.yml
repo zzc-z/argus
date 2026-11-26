@@ -66,6 +66,20 @@ jobs:
           COOKIE_SECURE: "false"
         run: uv run pytest tests/ -q --no-header -p no:cacheprovider
 
+      # 按 OpenAPI 文档自动乱打接口，抓 5xx。没装 schemathesis 时上一步会跳过
+      # 这个文件，所以这里单独装、单独跑。--maxfail=0：一次看全所有坏接口。
+      - name: schemathesis
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder-not-a-real-key
+          JWT_SECRET_KEY: ci-placeholder-secret-0123456789abcdef  # gitleaks:allow -- CI 占位值,非真实密钥
+          GITHUB_OAUTH_CLIENT_ID: ci-placeholder-client-id
+          GITHUB_OAUTH_CLIENT_SECRET: ci-placeholder-client-secret
+          GITHUB_OAUTH_CALLBACK_URL: http://localhost:8000/api/v1/auth/github/callback
+          COOKIE_SECURE: "false"
+        run: >
+          uv run --with "schemathesis==4.34.2"
+          pytest tests/test_api_fuzz.py -q --no-header -p no:cacheprovider --maxfail=0
+
       - name: ruff format 检查（只查本次改动的文件）
         # 全库 format --check 现状是红的（ruff 版本差异导致，见
         # docs/LOCAL-DEV.md §5），所以只查改动的文件。
@@ -73,6 +87,45 @@ jobs:
           git diff --name-only origin/master...HEAD -- 'apps/api/*.py' \
             | sed 's|apps/api/||' \
             | xargs -r uv run ruff format --check
+
+  # 独立 job：漏洞库每天在变，红了要能一眼看出是依赖问题、不是本次改动。
+  # 忽略清单是存量，逐条登记在 docs/TODO-code-quality.md B2；升级后删掉对应行，
+  # 不要整体关闭，也不要用 continue-on-error。
+  audit:
+    name: 后端依赖漏洞
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 装 uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.14"
+
+      - name: 导出锁定的生产依赖
+        run: uv export --frozen --no-dev --no-hashes --no-emit-project -q -o "$RUNNER_TEMP/requirements.txt"
+
+      - name: pip-audit
+        run: >
+          uvx "pip-audit==2.10.1" -r "$RUNNER_TEMP/requirements.txt"
+          --no-deps --disable-pip --progress-spinner off
+          --ignore-vuln PYSEC-2026-4355
+          --ignore-vuln PYSEC-2026-4356
+          --ignore-vuln PYSEC-2026-4357
+          --ignore-vuln PYSEC-2026-4358
+          --ignore-vuln PYSEC-2026-4359
+          --ignore-vuln PYSEC-2026-4360
+          --ignore-vuln CVE-2026-96760
+          --ignore-vuln CVE-2026-116672
+          --ignore-vuln PYSEC-2026-4320
+          --ignore-vuln CVE-2026-119284
+          --ignore-vuln CVE-2026-118667
+          --ignore-vuln CVE-2026-114603
+          --ignore-vuln CVE-2026-126360
 
   web:
     name: 前端门禁
