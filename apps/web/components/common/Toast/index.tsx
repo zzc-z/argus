@@ -1,12 +1,18 @@
 'use client'
 
-import * as React from 'react'
+import { useEffect, useRef } from 'react'
 
 import { IconSpan } from '@/components/common/IconSpan'
 
 import styles from './index.module.css'
 
 export type ToastTone = 'success' | 'info' | 'error'
+
+const ICONS: Record<ToastTone, string> = {
+  success: 'check_circle',
+  info: 'info',
+  error: 'error',
+}
 
 export interface ToastProps {
   /** 提示文案。为 null 时不显示卡片（live region 仍在）。 */
@@ -53,23 +59,25 @@ export interface ToastProps {
  * 每次渲染都会重置计时器，提示永远不消失。所以回调走 ref。
  */
 export function Toast({ message, tone = 'success', duration = 3000, onDismiss }: ToastProps) {
-  const dismissRef = React.useRef(onDismiss)
-  React.useEffect(() => {
+  const dismissRef = useRef(onDismiss)
+  useEffect(() => {
     dismissRef.current = onDismiss
   })
 
-  React.useEffect(() => {
-    if (!message) return
-    const timer = window.setTimeout(() => dismissRef.current?.(), duration)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (message) dismissRef.current?.()
+    }, duration)
     return () => window.clearTimeout(timer)
   }, [message, duration])
 
   const isError = tone === 'error'
-  const icon = isError ? 'error' : tone === 'info' ? 'info' : 'check_circle'
+  const icon = ICONS[tone]
 
   return (
     <div className={styles.viewport}>
-      <div role="status" aria-live="polite" aria-atomic="true">
+      {/* <output> 自带 role="status"。 */}
+      <output className={styles.region} aria-live="polite" aria-atomic="true">
         {message && !isError ? (
           <div className={styles.card}>
             <span className={styles.icon}>
@@ -78,7 +86,7 @@ export function Toast({ message, tone = 'success', duration = 3000, onDismiss }:
             <span className={styles.text}>{message}</span>
           </div>
         ) : null}
-      </div>
+      </output>
       <div role="alert" aria-atomic="true">
         {message && isError ? (
           <div className={styles.card}>

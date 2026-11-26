@@ -59,6 +59,7 @@ logging.disable(logging.CRITICAL)
 
 from app.db import SessionLocal  # noqa: E402
 from app.models.credentials import SCOPE_DEFAULT, ProviderCredentials  # noqa: E402
+from app.services.credentials import InvalidBaseUrlError, validate_base_url  # noqa: E402
 from app.services.secret_store import encrypt_secret  # noqa: E402
 
 # key 字段 → 加密后写入。其余字段（base_url / 模型名）明文存。
@@ -95,36 +96,56 @@ _FIELD_MAP = {
 }
 
 
+class _UsageError(Exception):
+    """命令行参数有误。消息直接打给用户。"""
+
+
+def _cleared_columns(names: list[str]) -> list[str]:
+    """``--clear`` 指名的字段 → 列名。字段名不认识就报错。"""
+    unknown = [raw for raw in names if raw.strip() not in _FIELD_MAP]
+    if unknown:
+        raise _UsageError(
+            f"未知的字段名：{', '.join(unknown)}\n可用：{', '.join(sorted(_FIELD_MAP))}"
+        )
+    return [_FIELD_MAP[raw.strip()][0] for raw in names]
+
+
+def _stored_value(column: str, is_secret: bool, raw: str) -> str | None:
+    """传入的值 → 落库的值：key 加密；base_url 过 SSRF 校验。"""
+    if is_secret:
+        return encrypt_secret(raw)
+    # base_url 是服务端出站地址：与设置页的写入路径同一道 SSRF 校验
+    # （协议白名单 + 拒内网/本机），否则这个脚本就是绕过校验的后门。
+    try:
+        return validate_base_url(raw)
+    except InvalidBaseUrlError as exc:
+        raise _UsageError(f"{column} 不合法：{exc}") from exc
+
+
+def _collect_updates(args: argparse.Namespace) -> dict[str, str | None]:
+    """把命令行参数收成「要写的列 → 值」。值为 None 表示清空。
+
+    **「清空」优先于传值**：``--clear tavily_key --tavily-key sk-new`` 时
+    清空生效，否则传值会把它覆盖掉（--clear 就白写了）。
+    空串按「没传」跳过（不是清空）。
+    """
+    cleared = dict.fromkeys(_cleared_columns(args.clear))
+    provided = {
+        column: _stored_value(column, is_secret, value)
+        for arg_name, (column, is_secret) in _FIELD_MAP.items()
+        if column not in cleared and (value := (getattr(args, arg_name, None) or "").strip())
+    }
+    return {**cleared, **provided}
+
+
 async def main() -> int:
     args = parse_args()
 
-    updates: dict[str, str | None] = {}
-
-    # 先处理「清空」——显式优先于传值。
-    for raw in args.clear:
-        key = raw.strip()
-        if key not in _FIELD_MAP:
-            print(f"未知的字段名：{raw}", file=sys.stderr)
-            print(f"可用：{', '.join(sorted(_FIELD_MAP))}", file=sys.stderr)
-            return 2
-        column, _ = _FIELD_MAP[key]
-        updates[column] = None
-
-    # 再处理传值——空串按「没传」跳过（不是清空）。
-    #
-    # **已被 `--clear` 指名的字段跳过**——「显式优先于传值」：
-    # `--clear tavily_key --tavily-key sk-new` 时，清空优先，
-    # 否则传值会在后面把它覆盖掉（--clear 就白写了）。
-    for arg_name, (column, is_secret) in _FIELD_MAP.items():
-        if column in updates:
-            continue
-        value = getattr(args, arg_name, None)
-        if value is None:
-            continue
-        stripped = value.strip()
-        if not stripped:
-            continue
-        updates[column] = encrypt_secret(stripped) if is_secret else stripped
+    try:
+        updates = _collect_updates(args)
+    except _UsageError as exc:
+        print(exc, file=sys.stderr)
+        return 2
 
     if not updates:
         print("没有要写入的字段。用 --help 看用法。")

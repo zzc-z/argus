@@ -167,27 +167,33 @@ def _load_or_create_key() -> tuple[str, str]:
 
     # 3. 自动生成并写盘。
     key = Fernet.generate_key().decode("ascii")
-    _write_key_file(path, key)
+    stored = _write_key_file(path, key)
+    if stored != key:
+        # 另一个进程抢先写入了，用它那把——两边才能互相解密。
+        return stored, "file"
     logger.info("已生成凭据加密主密钥：%s（请与数据库一起备份）", path)
     return key, "generated"
 
 
-def _write_key_file(path: Path, key: str) -> None:
-    """把主密钥写进文件，权限 0600。
+def _write_key_file(path: Path, key: str) -> str:
+    """把主密钥写进文件（权限 0600），返回**最终落盘的那把** key。
 
-    ## 为什么临时文件名要唯一
+    ## 为什么不能覆盖已有文件
 
-    冷启动时多个 worker 并发跑到这里（多 worker 部署 + 第一次调用）。
-    固定临时名（``path.with_suffix(".key.tmp")``）会让它们抢同一个文件：
-    一个写完改名，另一个再改名 —— **后一个用自己那份 key 覆盖了前一个
-    已经写进库的密文所用的 key**，那把 key 就永久解不开了。
+    冷启动时多个进程可能同时走到这里（多 worker、后端与脚本同时首次运行），
+    各自生成一把 key。若后写的一方覆盖先写的，先写那一方已经用自己的 key
+    加密入库的密文就永久解不开。
 
-    所以用 ``mkstemp`` 生成唯一名（原子创建，天然互斥）。
+    所以落盘用 ``os.link``：目标已存在时它直接失败（原子的「不存在才创建」），
+    这时改读已有的那把并返回，调用方用它。``replace`` 做不到这一点——它会覆盖。
+
+    ## 为什么先写临时文件
+
+    直接写目标文件，中途崩溃会留下半截内容，下次启动被当成有效 key 读进去。
+    临时文件用 ``mkstemp`` 取唯一名，多个进程不会写到同一个临时文件上。
     """
     tmp_path: Path | None = None
     try:
-        # 先写临时文件再改名——避免中途崩溃留下半截文件
-        # （半截文件会被当成「有效 key」读进去，然后所有密文都解不开）。
         fd, tmp_name = tempfile.mkstemp(
             dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp"
         )
@@ -195,16 +201,21 @@ def _write_key_file(path: Path, key: str) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
             handle.write(key)
         tmp_path.chmod(0o600)
-        tmp_path.replace(path)
+        try:
+            os.link(tmp_path, path)
+        except FileExistsError:
+            return path.read_text(encoding="utf-8").strip()
+        return key
     except OSError as exc:
-        # 失败时清掉临时文件——留着它会让下次启动以为「写过了」，
-        # 而它其实是一把**没人知道**的 key：库里的密文从此解不开。
-        if tmp_path is not None:
-            tmp_path.unlink(missing_ok=True)
         raise SecretCryptoError(
             f"无法写入凭据加密主密钥文件 {path}：{exc}。"
             "可以改用环境变量 CREDENTIALS_ENCRYPTION_KEY 提供主密钥。"
         ) from exc
+    finally:
+        # 无论成败都删掉临时文件：成功时目标文件已通过硬链接持有同一份内容；
+        # 失败时留着它，下次启动会多出一把没人知道的 key。
+        if tmp_path is not None:
+            tmp_path.unlink(missing_ok=True)
 
 
 def is_encrypted(value: str | None) -> bool:

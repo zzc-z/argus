@@ -624,6 +624,21 @@ async def test_tampered_ciphertext_raises(
 # ── 共享默认行 ─────────────────────────────────────────────────
 
 
+def _broken_ciphertext(plain: str) -> str:
+    """用另一把主密钥加密，模拟主密钥换过之后解不开的存量密文。"""
+    from cryptography.fernet import Fernet
+
+    import app.services.secret_store as secret_store_module
+
+    original = secret_store_module._load_or_create_key
+    other_key = Fernet.generate_key().decode()
+    try:
+        secret_store_module._load_or_create_key = lambda: (other_key, "env")
+        return secret_store_module.encrypt_secret(plain)
+    finally:
+        secret_store_module._load_or_create_key = original
+
+
 async def _write_default_row(api_db: AsyncSession, **fields: str | None) -> None:
     """直接往库里写一行共享默认凭据。"""
     row = ProviderCredentials(user_id=None, scope="default", **fields)
@@ -1054,20 +1069,8 @@ async def test_undecryptable_user_key_does_not_fall_back_to_lower_layer(
     # 共享默认行有一把可用的 key——若错误回落，它就会被用上。
     await _write_default_row(api_db, tavily_api_key=encrypt_secret("tvly-shared-default"))
 
-    # 用户行的密文用**另一把**密钥加密 → 解不开
-    from cryptography.fernet import Fernet
-
-    other_key = Fernet.generate_key().decode()
-    # 用另一把密钥加密（模拟"当时用的是旧主密钥"）
-    import app.services.secret_store as secret_store_module
-    from app.services.secret_store import encrypt_secret as _enc
-
-    original_get = secret_store_module._load_or_create_key
-    try:
-        secret_store_module._load_or_create_key = lambda: (other_key, "env")
-        ciphertext = _enc("tvly-user-real-key")
-    finally:
-        secret_store_module._load_or_create_key = original_get
+    # 用户行的密文用**另一把**密钥加密（模拟「当时用的是旧主密钥」）→ 解不开
+    ciphertext = _broken_ciphertext("tvly-user-real-key")
 
     api_db.add(
         ProviderCredentials(user_id=user_id, scope="user", tavily_api_key=ciphertext)
@@ -1126,19 +1129,7 @@ async def test_broken_default_row_still_falls_back_to_env(
         settings.tavily_api_key = SecretStr("tvly-from-env")
         user_id = await _login(client, api_db)
         # 默认行塞一段解不开的密文
-        from cryptography.fernet import Fernet
-
-        import app.services.secret_store as secret_store_module
-
-        original_get = secret_store_module._load_or_create_key
-        try:
-            secret_store_module._load_or_create_key = lambda: (
-                Fernet.generate_key().decode(),
-                "env",
-            )
-            broken = secret_store_module.encrypt_secret("tvly-default-key")
-        finally:
-            secret_store_module._load_or_create_key = original_get
+        broken = _broken_ciphertext("tvly-default-key")
 
         api_db.add(
             ProviderCredentials(user_id=user_id, scope="default", tavily_api_key=broken)
@@ -1171,19 +1162,7 @@ async def test_broken_default_row_does_not_break_other_providers(
         settings.tavily_api_key = SecretStr("tvly-from-env")
         user_id = await _login(client, api_db)
 
-        from cryptography.fernet import Fernet
-
-        import app.services.secret_store as secret_store_module
-
-        original_get = secret_store_module._load_or_create_key
-        try:
-            secret_store_module._load_or_create_key = lambda: (
-                Fernet.generate_key().decode(),
-                "env",
-            )
-            broken = secret_store_module.encrypt_secret("sk-broken-anthropic")
-        finally:
-            secret_store_module._load_or_create_key = original_get
+        broken = _broken_ciphertext("sk-broken-anthropic")
 
         api_db.add(
             ProviderCredentials(
@@ -1204,21 +1183,6 @@ async def test_broken_default_row_does_not_break_other_providers(
         assert resolved.anthropic_api_key != "sk-broken-anthropic"
     finally:
         settings.tavily_api_key = original
-
-
-def _broken_ciphertext(plain: str) -> str:
-    """用另一把主密钥加密，模拟主密钥换过之后解不开的存量密文。"""
-    from cryptography.fernet import Fernet
-
-    import app.services.secret_store as secret_store_module
-
-    original = secret_store_module._load_or_create_key
-    other_key = Fernet.generate_key().decode()
-    try:
-        secret_store_module._load_or_create_key = lambda: (other_key, "env")
-        return secret_store_module.encrypt_secret(plain)
-    finally:
-        secret_store_module._load_or_create_key = original
 
 
 async def test_own_tavily_key_wins_when_default_row_is_broken(
@@ -1328,3 +1292,51 @@ async def test_key_source_is_none_when_user_layer_has_only_a_url(
 
     assert resolved.embedding_api_key is None
     assert resolved.embedding_key_source == "none"
+
+
+def test_key_file_is_never_overwritten(tmp_path: Path) -> None:
+    """两个进程同时首次启动、各自生成主密钥时，后写的一方不能覆盖先写的。
+
+    覆盖的话，先写那一方用自己的 key 加密的密文从此永久解不开。
+    """
+    from app.services import secret_store
+
+    key_path = tmp_path / ".credentials.key"
+    key_path.write_text("key-written-by-another-process", encoding="utf-8")
+
+    stored = secret_store._write_key_file(key_path, "my-freshly-generated-key")
+
+    assert stored == "key-written-by-another-process"
+    assert key_path.read_text(encoding="utf-8") == "key-written-by-another-process"
+    assert list(tmp_path.iterdir()) == [key_path], "临时文件要清理掉"
+
+
+@pytest.mark.parametrize(
+    "flag",
+    ["--anthropic-base-url", "--embedding-base-url"],
+)
+def test_default_credentials_script_rejects_internal_base_url(tmp_path: Path, flag: str) -> None:
+    """默认凭据脚本写入的地址同样是服务端出站地址，必须过 SSRF 校验。
+
+    子进程跑在空的临时目录里：读不到开发环境的 .env，数据库也指向临时文件，
+    校验失效时也不会写到开发库。
+    """
+    import os
+    import subprocess
+    import sys
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "set_default_credentials.py"
+    env = {**os.environ, "DATABASE_URL": f"sqlite+aiosqlite:///{tmp_path / 'scratch.db'}"}
+
+    proc = subprocess.run(
+        [sys.executable, str(script), flag, "http://127.0.0.1:8080/v1"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "不合法" in proc.stderr, proc.stderr

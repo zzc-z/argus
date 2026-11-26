@@ -1,6 +1,6 @@
 'use client'
 
-import * as React from 'react'
+import { useState } from 'react'
 
 import { Button, Input, Label } from '@/components/ui'
 import { IconSpan } from '@/components/common/IconSpan'
@@ -95,43 +95,54 @@ export function CredentialsPanel({
   onNothingChanged,
   onSaveFailed,
 }: CredentialsPanelProps) {
-  const [values, setValues] = React.useState<Record<string, string>>({})
-  const [saving, setSaving] = React.useState(false)
+  const [values, setValues] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
 
-  // **用户自己配过的** base_url。改 key 时用它做配对回填（见 handleSave）。
-  //
-  // ⚠️ **不能用「当前生效的 base_url」**——那可能是共享默认层/部署层的
-  // 中转站。把用户的官方 key 绑到那个地址上就是密钥外泄。
-  //
-  // 用 useMemo：每次渲染新建对象的话，handleSave 的依赖每次都变——
-  // 那个 useCallback 就永远重建（web.md W4：没启 React Compiler 时
-  // 依赖不稳的白包反而制造问题）。
-  const currentUrls = React.useMemo<Record<string, string>>(
-    () => ({
-      anthropic_base_url: state.kind === 'ready' ? (state.data.user_anthropic_base_url ?? '') : '',
-      embedding_base_url: state.kind === 'ready' ? (state.data.user_embedding_base_url ?? '') : '',
-    }),
-    [state],
-  )
-
-  // 后端标明了哪些 key 的值是**占位串**（别人配的，不是自己的）。
-  // 必须在 handleSave 之前声明——它在那里被用到。
-  const maskedKeys = React.useMemo(
-    () =>
-      new Set(state.kind === 'ready' ? (state.data.masked_key_fields ?? []) : []),
-    [state],
-  )
-
-  const handleChange = React.useCallback((key: string, value: string) => {
+  const handleChange = (key: string, value: string) => {
     setValues((prev) => ({ ...prev, [key]: value }))
-  }, [])
+  }
 
   // 撤销对某个框的修改，回到预填值（掩码框失焦且为空时用）。
   const handleReset = (key: string) => {
     setValues((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== key)))
   }
 
-  const handleSave = React.useCallback(async () => {
+  if (state.kind === 'loading') {
+    return (
+      <section className={styles.section} aria-busy="true">
+        <p className={styles.hint}>正在加载凭据配置…</p>
+      </section>
+    )
+  }
+
+  if (state.kind === 'error') {
+    return (
+      <section className={styles.section}>
+        <p role="alert" className={styles.err}>
+          凭据配置加载失败：{state.message}
+          <button type="button" className={styles.retry} onClick={onReload}>
+            重试
+          </button>
+        </p>
+      </section>
+    )
+  }
+
+  const credentials = state.data
+
+  // 后端标明了哪些 key 的值是**占位串**（别人配的，不是自己的）。
+  const maskedKeys = new Set(credentials.masked_key_fields)
+
+  // **用户自己配过的** base_url。改 key 时用它做配对回填（见 handleSave）。
+  //
+  // ⚠️ **不能用「当前生效的 base_url」**——那可能是共享默认层/部署层的
+  // 中转站。把用户的官方 key 绑到那个地址上就是密钥外泄。
+  const currentUrls: Record<string, string> = {
+    anthropic_base_url: credentials.user_anthropic_base_url ?? '',
+    embedding_base_url: credentials.user_embedding_base_url ?? '',
+  }
+
+  const handleSave = async () => {
     const payload: CredentialsUpdate = {}
     // **三种状态要分清**（后端语义见 `app/gateway/credentials.py`）：
     //
@@ -199,36 +210,14 @@ export function CredentialsPanel({
       await saveCredentials(payload)
       setValues({})
       onSaved()
+      // 保存后重新拉取，刷新「值来自哪一层」与上面的供应商徽章。
       onReload()
     } catch (err) {
       onSaveFailed(err instanceof Error ? err.message : '保存失败')
     } finally {
       setSaving(false)
     }
-  }, [values, currentUrls, maskedKeys, onReload, onSaved, onNothingChanged, onSaveFailed])
-
-  if (state.kind === 'loading') {
-    return (
-      <section className={styles.section} aria-busy="true">
-        <p className={styles.hint}>正在加载凭据配置…</p>
-      </section>
-    )
   }
-
-  if (state.kind === 'error') {
-    return (
-      <section className={styles.section}>
-        <p role="alert" className={styles.err}>
-          凭据配置加载失败：{state.message}
-          <button type="button" className={styles.retry} onClick={onReload}>
-            重试
-          </button>
-        </p>
-      </section>
-    )
-  }
-
-  const credentials = state.data
 
   const anthropicFields: FieldSpec[] = [
     {
@@ -402,7 +391,7 @@ function Field({ spec, value, onChange, onReset }: FieldProps) {
   // 密钥框默认打码，眼睛图标切「明文 / 掩码」。
   // 只有密钥类字段才有这个按钮——模型名与端点本来就是明文。
   const isSecret = spec.type === 'password'
-  const [revealed, setRevealed] = React.useState(false)
+  const [revealed, setRevealed] = useState(false)
   return (
     <div className={styles.field}>
       <Label htmlFor={inputId} className={styles.label}>
@@ -433,7 +422,6 @@ function Field({ spec, value, onChange, onReset }: FieldProps) {
             onClick={() => setRevealed((prev) => !prev)}
             aria-label={revealed ? '隐藏内容' : '显示内容'}
             aria-pressed={revealed}
-            title={revealed ? '隐藏内容' : '显示内容'}
           >
             <IconSpan name={revealed ? 'visibility_off' : 'visibility'} size={18} />
           </button>

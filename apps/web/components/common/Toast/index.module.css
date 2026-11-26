@@ -95,3 +95,8 @@
     animation: none;
   }
 }
+
+/* <output> 默认是行内元素，保持与原先 div 一致的块级布局。 */
+.region {
+  display: block;
+}

@@ -1,6 +1,6 @@
 'use client'
 
-import * as React from 'react'
+import { useEffect, useState } from 'react'
 
 import { fetchCredentials, type CredentialsV } from '@/lib/api/settings'
 
@@ -36,23 +36,25 @@ export interface CredentialsLoad {
  * 继续对外报 `ready`（见 `CredentialsState` 的注释）。
  */
 export function useCredentials(): CredentialsLoad {
-  const [requestId, setRequestId] = React.useState(1)
-  const [result, setResult] = React.useState<
-    { kind: 'error'; message: string; requestId: number } | { kind: 'ready'; requestId: number }
-  >({ kind: 'ready', requestId: 1 })
+  const [requestId, setRequestId] = useState(1)
+  const [result, setResult] = useState<LoadResult>({ kind: 'ready', requestId: 1 })
   // 最近一次成功的数据。与 `result` 分开存——重拉时 result 作废，
   // 但这份数据要留着给面板显示。
-  const [data, setData] = React.useState<CredentialsV | null>(null)
+  const [data, setData] = useState<CredentialsV | null>(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
+    // ignore：这一轮已被下一轮取代，结果一律不写（React 官方的竞态写法）。
+    // abort 只负责停掉网络请求。
+    let ignore = false
     const controller = new AbortController()
     void (async () => {
       try {
         const loaded = await fetchCredentials(controller.signal)
+        if (ignore) return
         setResult({ kind: 'ready', requestId })
         setData(loaded)
       } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') return
+        if (ignore) return
         setResult({
           kind: 'error',
           message: err instanceof Error ? err.message : '加载失败',
@@ -60,28 +62,40 @@ export function useCredentials(): CredentialsLoad {
         })
       }
     })()
-    return () => controller.abort()
+    return () => {
+      ignore = true
+      controller.abort()
+    }
   }, [requestId])
 
-  const reload = React.useCallback(() => {
+  const reload = () => {
     setRequestId((prev) => prev + 1)
-  }, [])
+  }
 
-  const state = React.useMemo<CredentialsState>(() => {
-    // **最新的请求失败了 → 先报错误。**
-    //
-    // ⚠️ 顺序要紧：若把「有过数据就用它」放在前面，一旦首屏加载成功，
-    // 之后的**每一次重拉失败**都被永久吞掉——面板停在旧值、无任何提示，
-    // 而页面上还挂着「配置已保存」的绿色提示。用户在骗自己。
-    //
-    // 旧的请求的失败不算数（已被新一轮取代）。
-    if (result.kind === 'error' && result.requestId === requestId) {
-      return { kind: 'error', message: result.message }
-    }
-    // 有过数据就一直用它——**重拉期间**不闪回加载态。
-    if (data) return { kind: 'ready', data }
-    return { kind: 'loading' }
-  }, [data, result, requestId])
+  return { state: toState(result, requestId, data), reload }
+}
 
-  return { state, reload }
+/** 最近一次请求的结果（数据单独存，见 `useCredentials`）。 */
+type LoadResult =
+  { kind: 'error'; message: string; requestId: number } | { kind: 'ready'; requestId: number }
+
+/** 由「最近一次结果 + 最近一份数据」得出面板状态。 */
+function toState(
+  result: LoadResult,
+  requestId: number,
+  data: CredentialsV | null,
+): CredentialsState {
+  // **最新的请求失败了 → 先报错误。**
+  //
+  // ⚠️ 顺序要紧：若把「有过数据就用它」放在前面，一旦首屏加载成功，
+  // 之后的**每一次重拉失败**都被永久吞掉——面板停在旧值、无任何提示，
+  // 而页面上还挂着「配置已保存」的绿色提示。用户在骗自己。
+  //
+  // 旧的请求的失败不算数（已被新一轮取代）。
+  if (result.kind === 'error' && result.requestId === requestId) {
+    return { kind: 'error', message: result.message }
+  }
+  // 有过数据就一直用它——**重拉期间**不闪回加载态。
+  if (data) return { kind: 'ready', data }
+  return { kind: 'loading' }
 }
