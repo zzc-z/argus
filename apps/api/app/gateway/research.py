@@ -45,10 +45,10 @@ from app.gateway.deps import CurrentUser
 from app.schemas.research import AskRequest
 from app.services.agent import run_agent
 from app.services.credentials import resolve_credentials
-from app.services.errors import classify_unknown_error
+from app.services.errors import classify_run_stalled, classify_unknown_error
 from app.services.llm import LLMNotConfiguredError, get_anthropic_client
 from app.services.runs import Run, get_run_registry, subscribe_run
-from app.services.stream import ErrorEvent, RunEvent, encode_frame
+from app.services.stream import AgentEvent, DoneEvent, ErrorEvent, RunEvent, encode_frame
 from app.services.tasks import spawn
 from app.services.vectorstore import get_vector_engine
 
@@ -77,6 +77,14 @@ VecEngineDep = Annotated[AsyncEngine, Depends(get_vector_engine)]
 # 闸门拦的是「同时开多少个**研究**」，与谁在读流无关：生成已经移到后台
 # 任务，但一个研究仍然占一条 DB 连接（30-60 秒）并烧上游额度。
 MAX_CONCURRENT_STREAMS = 4
+
+# 报告交付（done）之前，连续这么久没有任何新事件就判定卡住，报超时收尾。
+#
+# 单次模型调用在 SDK 层最长要等 120s × 3 次（含重试），再叠上断流整轮重发，
+# 中转站挂住时用户会干等十几分钟——页面一直「运行中」却不报错。
+# 取 180s：正常的一轮（含思考、联网搜索）远短于此，又比单次 120s 超时长，
+# 能让上游自己的超时错误先报出来。
+RUN_IDLE_TIMEOUT_SECONDS = 180.0
 
 logger = logging.getLogger(__name__)
 
@@ -378,18 +386,33 @@ async def _drive_run(
     try:
         async with session_maker() as bg_db:
             try:
-                async for event in run_agent(
-                    question,
-                    user_id=user_id,
-                    db=bg_db,
-                    vec_engine=vec_engine,
-                    # 公开来源要另开短事务落库——主事务的 SQLite 写锁
-                    # 不能持有整轮研究（30-60 秒），期间会阻塞并发研究与
-                    # 用户的资料上传。
-                    session_maker=session_maker,
-                    on_llm_done=slot.release,
-                ):
-                    await run.publish(event)
+                try:
+                    await _pump_events(
+                        run,
+                        run_agent(
+                            question,
+                            user_id=user_id,
+                            db=bg_db,
+                            vec_engine=vec_engine,
+                            # 公开来源要另开短事务落库——主事务的 SQLite 写锁
+                            # 不能持有整轮研究（30-60 秒），期间会阻塞并发研究与
+                            # 用户的资料上传。
+                            session_maker=session_maker,
+                            on_llm_done=slot.release,
+                        ),
+                    )
+                except _IdleTimeoutError:
+                    logger.warning(
+                        "研究连续 %.0f 秒没有新事件，判定卡住并中止", RUN_IDLE_TIMEOUT_SECONDS
+                    )
+                    classified = classify_run_stalled(RUN_IDLE_TIMEOUT_SECONDS)
+                    await run.publish(
+                        ErrorEvent(
+                            code=classified.code,
+                            message=classified.message,
+                            retryable=classified.retryable,
+                        )
+                    )
             except Exception as exc:
                 # 兜底的兜底：agent 内部已经把能归类的异常转成 ErrorEvent 了，
                 # 能走到这里说明是意料之外的 bug。照旧转成事件，绝不让订阅者
@@ -410,6 +433,37 @@ async def _drive_run(
         # 槽位**不在这里还**——见端点里 ``task.add_done_callback`` 的
         # 说明：任务在开始执行前就被取消时，这段 finally 根本不执行。
         await run.close()
+
+
+class _IdleTimeoutError(Exception):
+    """报告交付前连续 ``RUN_IDLE_TIMEOUT_SECONDS`` 没有新事件。"""
+
+
+async def _pump_events(run: Run, events: AsyncIterator[AgentEvent]) -> None:
+    """把 agent 的事件逐个推进 run；报告交付前空闲太久就中止。
+
+    每来一个事件就把截止时间往后推；收到 done 之后不再计时——那之后只剩
+    引用校验，报告已经交给用户了。
+
+    超时由 ``asyncio.timeout`` 取消 agent，agent 的取消分支照常落盘、
+    发 done，然后这里转成 :class:`_IdleTimeoutError`，与 agent 自己抛的
+    ``TimeoutError`` 区分开。
+    """
+    loop = asyncio.get_running_loop()
+    try:
+        async with asyncio.timeout(RUN_IDLE_TIMEOUT_SECONDS) as deadline:
+            async for event in events:
+                await run.publish(event)
+                if deadline.expired():
+                    continue
+                if isinstance(event, DoneEvent):
+                    deadline.reschedule(None)
+                else:
+                    deadline.reschedule(loop.time() + RUN_IDLE_TIMEOUT_SECONDS)
+    except TimeoutError as exc:
+        if not deadline.expired():
+            raise
+        raise _IdleTimeoutError from exc
 
 
 async def _forward(run: Run, *, first: RunEvent | None = None) -> AsyncIterator[bytes]:

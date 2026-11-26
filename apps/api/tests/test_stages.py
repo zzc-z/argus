@@ -351,3 +351,41 @@ async def test_fallback_chain_exhausted_returns_none() -> None:
         assert len(client.messages.calls) == 2
     finally:
         settings.anthropic_fallback_models = original
+
+
+# ── 不可恢复的错误不降级 ───────────────────────────────────────
+
+
+def _unrecoverable_errors() -> list[Exception]:
+    import anthropic
+    import httpx
+
+    request = httpx.Request("POST", "https://relay.example.com/v1/messages")
+    # 真实的「连不上」：SDK 把 httpx 的 ConnectError 挂在 __cause__ 上。
+    # 没有这个根因的 APIConnectionError 是「连接中途断开」，可重试，不在此列。
+    connect_failed = anthropic.APIConnectionError(request=request)
+    connect_failed.__cause__ = httpx.ConnectError("connection refused")
+    return [
+        connect_failed,
+        anthropic.APITimeoutError(request=request),
+        anthropic.AuthenticationError(
+            "invalid key", response=httpx.Response(401, request=request), body=None
+        ),
+        anthropic.PermissionDeniedError(
+            "Trial quota (40 requests) used up",
+            response=httpx.Response(403, request=request),
+            body=None,
+        ),
+    ]
+
+
+@pytest.mark.parametrize("error", _unrecoverable_errors(), ids=lambda e: type(e).__name__)
+async def test_plan_raises_on_unrecoverable_error(error: Exception) -> None:
+    """连不上、超时、鉴权失败、额度用完：后面每次调用都会一样失败，
+    降级只会让用户白等，必须抛出去让流程报错。"""
+    client = _FakeClient([error, '{"subtasks": ["不该走到备胎"]}'])
+
+    with pytest.raises(type(error)):
+        await stages.plan_subtasks(client, "q", has_local=True, credentials=_CREDS)
+
+    assert len(client.messages.calls) == 1, "不可恢复的错误不该再试备胎模型"

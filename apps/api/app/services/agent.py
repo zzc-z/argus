@@ -279,6 +279,19 @@ async def run_agent(
             yield event
         yield ledger.done()
         raise
+    except Exception as exc:
+        # 连不上、超时、鉴权、额度用完——后面的检索一定同样失败，直接报错，
+        # 不让用户再等一轮。一般失败在 plan_subtasks 内部已降级，不会到这里。
+        logger.warning("拆解阶段模型调用失败，流程中止", exc_info=exc)
+        for event in _fail(tracker, "模型服务不可用"):
+            yield event
+        classified = classify_llm_error(exc)
+        yield ErrorEvent(
+            code=classified.code,
+            message=classified.message,
+            retryable=classified.retryable,
+        )
+        return
     ledger = ledger.record_stage_usage(plan.input_tokens, plan.output_tokens)
     if plan.subtasks:
         tracker.set_note(Stage.SUPERVISOR, f"拆解出 {len(plan.subtasks)} 个子任务")

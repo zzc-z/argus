@@ -896,6 +896,21 @@ def classify_unknown_error(exc: BaseException, where: str) -> Classified:
     )
 
 
+def classify_run_stalled(idle_seconds: float) -> Classified:
+    """研究连续 ``idle_seconds`` 秒没有任何新事件，被判定卡住。
+
+    不复用 :func:`classify_llm_error` 的超时文案：那条叫用户「缩小问题
+    范围」，针对的是生成太慢；这里多半是模型服务（中转站）或网络挂住，
+    缩小问题毫无用处。错误码仍是 ``llm_timeout``，前端不用新增分支。
+    """
+    return Classified(
+        LLM_TIMEOUT,
+        f"连续 {idle_seconds:.0f} 秒没有收到模型输出，已停止。"
+        "请检查模型服务（中转站）是否可用、网络是否正常后重试",
+        preview="长时间无模型输出",
+    )
+
+
 # ── 事件包装 ─────────────────────────────────────────────────
 
 
@@ -985,6 +1000,7 @@ __all__ = [
     "cause_chain",
     "classify_embedding_error",
     "classify_llm_error",
+    "classify_run_stalled",
     "classify_tool_error",
     "classify_unknown_error",
     "error_event_for",

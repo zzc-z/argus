@@ -34,7 +34,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, inspect
+from sqlalchemy import create_engine, inspect, text
 
 from app.models import Base
 
@@ -189,3 +189,125 @@ def test_every_migration_file_has_valid_revision_chain() -> None:
 
     orphans = downs - revisions
     assert not orphans, f"有迁移指向不存在的 down_revision: {orphans}"
+
+
+def test_upgrade_preserves_existing_rows_and_plaintext_keys(tmp_path: Path) -> None:
+    """升级**不能丢存量行**，也不能让存量明文 key 报废。
+
+    复现真实场景：这次迁移给凭据表加了 ``scope`` 列并改了 key 的存储
+    方式（明文 → Fernet 密文）。升级前已经写进去的行必须还在。
+
+    ⚠️ 存量 key 仍是**明文**——迁移不重写它（主密钥在环境变量里，
+    迁移脚本未必能拿到）。但**解析时必须还能读出来**：``decrypt_secret``
+    对「没带 ``enc:v1:`` 前缀的值」原样返回。
+    """
+    db_path = tmp_path / "existing.db"
+    # 先升到有 provider_credentials 表、但还没有 scope 列的版本
+    _run_alembic(db_path, "upgrade", "f7c2b9e4a183")
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO users (email, display_name, created_at, updated_at) "
+                    "VALUES ('legacy@example.com', 'Legacy', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                )
+            )
+            user_id = conn.execute(
+                text("SELECT id FROM users WHERE email = 'legacy@example.com'")
+            ).scalar_one()
+            conn.execute(
+                text(
+                    "INSERT INTO provider_credentials "
+                    "(user_id, anthropic_api_key, tavily_api_key, created_at, updated_at) "
+                    "VALUES (:uid, 'sk-ant-legacy-plain', 'tvly-legacy-plain', "
+                    "CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ),
+                {"uid": user_id},
+            )
+    finally:
+        engine.dispose()
+
+    _run_alembic(db_path, "upgrade", "head")
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(
+                text(
+                    "SELECT scope, anthropic_api_key, tavily_api_key "
+                    "FROM provider_credentials"
+                )
+            ).one()
+        # 行还在
+        assert row is not None
+        # scope 补上了，且是 'user'
+        assert row[0] == "user", f"存量行的 scope 应补成 'user'，实际 {row[0]!r}"
+        # 明文 key 没被改写（迁移不重写存量数据）
+        assert row[1] == "sk-ant-legacy-plain"
+        assert row[2] == "tvly-legacy-plain"
+    finally:
+        engine.dispose()
+
+
+def test_downgrade_succeeds_when_default_row_exists(tmp_path: Path) -> None:
+    """回滚**不能炸**——有共享默认行时也要能回。
+
+    共享默认行的 user_id 是 NULL，而回滚要把 user_id 改回非空。
+    SQLite 的 batch 模式重建表，NOT NULL 约束会在重建时校验到 NULL 行
+    就报错——实测报 `NOT NULL constraint failed: _alembic_tmp_provider_credentials.user_id`。
+
+    修法是回滚时先删掉共享默认行（它是本次迁移引入的概念，回滚时
+    丢弃它在语义上正确），**用户自己的行一个都不动**。
+    """
+    db_path = tmp_path / "downgrade.db"
+    _run_alembic(db_path, "upgrade", "head")
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "INSERT INTO users (email, display_name, created_at, updated_at) "
+                    "VALUES ('u@example.com', 'U', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                )
+            )
+            user_id = conn.execute(
+                text("SELECT id FROM users WHERE email = 'u@example.com'")
+            ).scalar_one()
+            # 一个用户行
+            conn.execute(
+                text(
+                    "INSERT INTO provider_credentials "
+                    "(user_id, scope, tavily_api_key, created_at, updated_at) "
+                    "VALUES (:uid, 'user', 'tvly-user-row', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                ),
+                {"uid": user_id},
+            )
+            # 一个共享默认行（user_id 为 NULL）
+            conn.execute(
+                text(
+                    "INSERT INTO provider_credentials "
+                    "(user_id, scope, tavily_api_key, created_at, updated_at) "
+                    "VALUES (NULL, 'default', 'tvly-default-row', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+                )
+            )
+    finally:
+        engine.dispose()
+
+    # 这一步以前会 IntegrityError 让 downgrade 直接卡住
+    _run_alembic(db_path, "downgrade", "f7c2b9e4a183")
+
+    engine = create_engine(f"sqlite:///{db_path}")
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT user_id, tavily_api_key FROM provider_credentials")
+            ).all()
+        # 用户行保留、默认行消失
+        assert len(rows) == 1, f"回滚后应只剩用户行，实际 {rows}"
+        assert rows[0][1] == "tvly-user-row"
+        assert rows[0][0] is not None, "用户行的 user_id 不该是 NULL"
+    finally:
+        engine.dispose()

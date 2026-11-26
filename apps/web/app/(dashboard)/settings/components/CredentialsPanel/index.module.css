@@ -108,74 +108,48 @@
   line-height: 16px;
 }
 
-.fieldFoot {
+/* 输入框 + 眼睛按钮的容器。 */
+.inputWrap {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  flex-wrap: wrap;
 }
 
-/* 状态标签 + 清除按钮的容器。 */
-.fieldTags {
+/* 密钥框要留出右侧眼睛按钮的位置，否则文字会跑到按钮底下。 */
+.secretInput {
+  padding-right: 2.25rem;
+}
+
+/* 显示 / 隐藏密钥的按钮。绝对定位贴在输入框右缘。 */
+.reveal {
+  position: absolute;
+  right: 0.25rem;
   display: inline-flex;
   align-items: center;
-  gap: 0.375rem;
-  flex-shrink: 0;
-}
-
-/* 「清除」按钮。刻意做得很轻——它是次要动作，不该跟主按钮抢注意力。 */
-.clear {
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
   border: none;
-  background: transparent;
-  padding: 0.0625rem 0.25rem;
   border-radius: 0.25rem;
-  cursor: pointer;
-  font-size: 11px;
-  line-height: 16px;
+  background: transparent;
   color: var(--token-secondary, #575e70);
-  text-decoration: underline;
+  cursor: pointer;
 }
 
-.clear:hover:not(:disabled) {
+.reveal:hover {
   background-color: var(--token-surface-container-high, #e7e8e9);
   color: var(--token-on-surface, #191c1d);
 }
 
-.clear:disabled {
-  cursor: default;
-  opacity: 0.5;
-  text-decoration: none;
+.reveal:focus-visible {
+  outline: 2px solid var(--token-primary-container, #7039f9);
+  outline-offset: 1px;
 }
 
 .hint {
   font-size: 11px;
   line-height: 16px;
-}
-
-/* 状态标签。三种状态的**文字**不同——不能只靠颜色区分（a11y）。 */
-.tagState {
-  flex-shrink: 0;
-  padding: 0.0625rem 0.375rem;
-  border-radius: 0.25rem;
-  font-size: 11px;
-  line-height: 16px;
-  font-weight: 500;
-}
-
-.tagUser {
-  background-color: var(--token-primary-container, #eaddff);
-  color: var(--token-on-primary-container, #21005d);
-}
-
-.tagEnv {
-  background-color: var(--token-surface-container-high, #e7e8e9);
-  color: var(--token-secondary, #575e70);
-}
-
-.tagNone {
-  background-color: var(--token-tertiary-container, #f4eff4);
-  color: var(--token-on-tertiary-container, #49454f);
 }
 
 .actions {
@@ -185,12 +159,24 @@
   flex-wrap: wrap;
 }
 
-.ok {
-  font-size: 12px;
-  color: var(--token-primary, #5704e1);
-}
-
+/* 加载失败的错误行。角色是 role="alert"——它要打断读屏当前的播报。 */
 .err {
   font-size: 12px;
-  color: var(--token-error, #b3261e);
+  color: var(--token-error, #ba1a1a);
+}
+
+/* 错误行旁边的「重试」按钮。 */
+.retry {
+  margin-left: 0.5rem;
+  border: 1px solid var(--token-outline, #7a7488);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0.0625rem 0.5rem;
+}
+
+.retry:hover {
+  background: var(--token-surface-container-low, #f3f4f5);
 }

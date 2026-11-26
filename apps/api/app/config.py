@@ -56,6 +56,25 @@ class Settings(BaseSettings):
     jwt_secret_key: SecretStr | None = Field(default=None)
     jwt_algorithm: str = Field(default="HS256")
     jwt_expire_seconds: int = Field(default=7 * 24 * 60 * 60)  # 7 天
+
+    # ── 凭据加密 ───────────────────────────────────────────────
+    # 凭据表里的 API key 用 Fernet 加密后存（见 services/secret_store.py）。
+    #
+    # **这是可选的**——不配也能跑：主密钥会自动生成并写到
+    # ``apps/api/.credentials.key``（与 argus.db 同目录）。
+    #
+    # 什么时候才需要显式配：多实例 / 容器编排——各实例必须共享同一把
+    # key，否则一台写的密文另一台解不开。语义与 n8n 的
+    # ``N8N_ENCRYPTION_KEY`` 一致（n8n 也是「不配就自动生成到
+    # ``~/.n8n/config``，配了就用你的」）。
+    #
+    # **不复用 JWT_SECRET_KEY**：那个密钥会为了踢掉旧会话而轮换，
+    # 轮换后所有存量密文都解不开——等于整库凭据报废。两个用途的
+    # 密钥必须独立。
+    #
+    # 生成：python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    credentials_encryption_key: SecretStr | None = Field(default=None)
+
     # 默认 **True**：OWASP Session Management 要求会话 cookie 必须带 Secure。
     #
     # 2026-10-14 改。原先是 False，理由写着「生产部署改 true，显式配置而非按
