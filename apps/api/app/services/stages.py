@@ -49,6 +49,14 @@ import jiter
 from app.services.agent_nodes import NodeTracker, Stage, _close
 from app.services.citation import Reference
 from app.services.credentials import ResolvedCredentials
+from app.services.errors import (
+    LLM_AUTH_FAILED,
+    LLM_CONNECTION_FAILED,
+    LLM_PERMISSION_DENIED,
+    LLM_QUOTA_EXHAUSTED,
+    LLM_TIMEOUT,
+    classify_llm_error,
+)
 from app.services.llm import fallback_models
 from app.services.stream import NodeEvent
 
@@ -151,8 +159,8 @@ async def plan_subtasks(
     ``has_local`` 影响提示里的措辞：能查私有资料时明说它可用，
     否则模型会规划出依赖私有库的子任务，而那部分检索拿不到结果。
 
-    **失败时返回空的 Plan**（不抛）。见模块 docstring 的「为什么两次调用
-    都要能降级」。
+    **一般失败返回空的 Plan**（不抛），见模块 docstring 的「为什么两次调用
+    都要能降级」；连不上、超时、鉴权、额度这几类直接抛出（见 ``_call_structured``）。
     """
     prompt = f"用户的研究问题：\n{question}\n"
     if not has_local:
@@ -403,6 +411,13 @@ class _Call:
     output_tokens: int
 
 
+# 这几类错误换模型、再调一次都一样失败（同一把 key、同一个端点），
+# 降级只会让用户多等一轮超时，所以直接抛给调用方报错。
+_UNRECOVERABLE_CODES = frozenset(
+    {LLM_AUTH_FAILED, LLM_PERMISSION_DENIED, LLM_QUOTA_EXHAUSTED, LLM_CONNECTION_FAILED, LLM_TIMEOUT}
+)
+
+
 async def _call_structured(
     client: AsyncAnthropic,
     *,
@@ -413,8 +428,9 @@ async def _call_structured(
 ) -> _Call | None:
     """调一次模型，拿到原始文本输出与用量。
 
-    返回 None 表示这次调用没成（已记日志）。**不抛异常**——调用方都是
-    增益路径，抛出去会让整轮研究崩掉。
+    返回 None 表示这次调用没成（已记日志）。调用方都是增益路径，一般失败
+    降级不抛；**例外**是连不上、超时、鉴权失败、额度用完——见
+    ``_UNRECOVERABLE_CODES``，这几类直接抛出。
 
     ## 为什么降级用 warning 而不是 info
 
@@ -444,6 +460,8 @@ async def _call_structured(
         try:
             final = await client.messages.create(**cast("Any", request))
         except Exception as exc:
+            if classify_llm_error(exc).code in _UNRECOVERABLE_CODES:
+                raise
             last_exc = exc
             logger.warning("%s 节点的模型调用失败，本次降级", candidate, exc_info=True)
             continue

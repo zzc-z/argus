@@ -1084,3 +1084,29 @@ async def test_stage_token_usage_is_recorded(monkeypatch: pytest.MonkeyPatch) ->
 
 async def _collect() -> list[Any]:
     return [event async for event in run_agent("测试问题", user_id=1)]
+
+
+async def test_supervisor_unrecoverable_error_stops_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """拆解阶段连不上模型：直接报错收尾，不再进入检索阶段让用户继续等。"""
+    import anthropic
+    import httpx
+
+    from app.services.stream import ErrorEvent
+
+    _stub_turns(monkeypatch, [_turn(text="不该走到这里")])
+
+    async def _failing_plan(*_args: Any, **_kw: Any) -> stages.Plan:
+        error = anthropic.APIConnectionError(request=httpx.Request("POST", "https://x"))
+        raise error from httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(agent_module, "plan_subtasks", _failing_plan)
+
+    events = [e async for e in agent_module.run_agent("问题", user_id=1)]
+
+    assert isinstance(events[-1], ErrorEvent), events
+    assert events[-1].code == "llm_connection_failed"
+    node_frames = [e for e in events if isinstance(e, NodeEvent)]
+    assert not any(e.node_id == "researcher" for e in node_frames), node_frames
+    assert node_frames[-1].lifecycle == "failed", node_frames
