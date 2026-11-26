@@ -33,6 +33,18 @@ htmlcov/
 .env
 .env.local
 
+# 凭据加密主密钥（自动生成，见 app/services/secret_store.py）。
+# **绝不提交**——提交了就等于把库里所有凭据的解密钥匙公开。
+# 备份数据库时必须把它一起带上，否则凭据全部不可恢复。
+#
+# ⚠️ 临时文件名用 mkstemp 生成（并发安全），形如
+# `.credentials.key.d3txqdx3.tmp`——**必须一起忽略**：
+# 写盘中途崩溃（SIGKILL / 断电）不会执行清理分支，临时文件会残留，
+# 而 `git add -A` 会把它连同主密钥一起提交。
+.credentials.key
+.credentials.key.tmp
+.credentials.key.*.tmp
+
 # Local SQLite (W1 Day 2 dev 用；W1 Day 9 切 Postgres 后此条自然失效)
 *.db
 *.db-journal

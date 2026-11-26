@@ -3,6 +3,7 @@
 import * as React from 'react'
 
 import { PageLayout } from '@/components/common/PageLayout'
+import { Toast, type ToastTone } from '@/components/common/Toast'
 import { SettingsSidebar } from './components/SettingsSidebar'
 import { ProfileBanner } from './components/ProfileBanner'
 import { ProviderStatusSection } from './components/ProviderStatusSection'
@@ -41,6 +42,9 @@ export default function SettingsPage() {
   const [activeNav, setActiveNav] = React.useState<SettingsNavId>('profile')
   const { requestId, result, reload } = useSettingsStatus()
   const credentialsState = useCredentials()
+  // 保存结果的提示。挂在页面层而不是面板里——面板会随左侧导航切换
+  // 而卸载，提示跟着消失就说不出「保存成了」。
+  const [toast, setToast] = React.useState<{ message: string; tone: ToastTone } | null>(null)
 
   /* ── 后端数据 → 组件消费的形状。旧请求的结果一律不认 ── */
   const isCurrent = result.requestId === requestId
@@ -74,9 +78,31 @@ export default function SettingsPage() {
    */
   const reloadCredentials = credentialsState.reload
   const handleCredentialsSaved = React.useCallback(() => {
+    setToast({ message: '配置已保存', tone: 'success' })
     reloadCredentials()
     reload()
   }, [reloadCredentials, reload])
+
+  /** 只重新拉取，**不弹「配置已保存」**。
+   *
+   * ⚠️ 这两条必须分开：面板的「重试」按钮（加载失败时出现）接的是
+   * ``onReload``。若它绑到保存成功的回调，用户点「重试」会看到
+   * 绿色的「配置已保存」——**什么都没保存**，界面在骗人。
+   */
+  const handleCredentialsReload = React.useCallback(() => {
+    reloadCredentials()
+    reload()
+  }, [reloadCredentials, reload])
+
+  /** 没有任何改动——也提示一句，别让用户以为按钮坏了。 */
+  const handleNothingChanged = React.useCallback(() => {
+    setToast({ message: '没有需要保存的改动', tone: 'info' })
+  }, [])
+
+  /** 保存失败——错误走 toast 的 error 语气（role="alert"，打断播报）。 */
+  const handleSaveFailed = React.useCallback((message: string) => {
+    setToast({ message: `保存失败：${message}`, tone: 'error' })
+  }, [])
 
   /* ── 操作按钮：后端还没有对应接口，如实说明而不是假装能改 ── */
   const handleManageProfile = React.useCallback(() => {
@@ -129,35 +155,23 @@ export default function SettingsPage() {
           <ProviderStatusSection providers={providers} onConfigure={handleConfigureProviders} />
 
           {/* 凭据配置：只有选中「模型与 API 密钥」时才展开。
-              面板自己管加载态——它与供应商状态是两份独立的数据源。 */}
+              面板自己管加载 / 出错 / 有数据三态——它与供应商状态是两份
+              独立的数据源。 */}
           {activeNav === 'api-keys' && (
-            <>
-              {credentialsState.result.kind === 'error' &&
-                credentialsState.result.requestId === credentialsState.requestId && (
-                  <p role="alert" className={styles.stateError}>
-                    凭据配置加载失败：{credentialsState.result.message}
-                    <button
-                      type="button"
-                      className={styles.retry}
-                      onClick={credentialsState.reload}
-                    >
-                      重试
-                    </button>
-                  </p>
-                )}
-              <CredentialsPanel
-                credentials={
-                  credentialsState.result.kind === 'ready' &&
-                  credentialsState.result.requestId === credentialsState.requestId
-                    ? credentialsState.result.data
-                    : null
-                }
-                onReload={handleCredentialsSaved}
-              />
-            </>
+            <CredentialsPanel
+              state={credentialsState.state}
+              onReload={handleCredentialsReload}
+              onSaved={handleCredentialsSaved}
+              onNothingChanged={handleNothingChanged}
+              onSaveFailed={handleSaveFailed}
+            />
           )}
         </div>
       </div>
+
+      {/* 保存成功的提示挂在页面层，不挂在面板里——
+          面板会随左侧导航切换而卸载，提示跟着消失就说不出「保存成了」。 */}
+      <Toast message={toast?.message ?? null} tone={toast?.tone} onDismiss={() => setToast(null)} />
     </PageLayout>
   )
 }

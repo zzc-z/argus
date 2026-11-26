@@ -11,7 +11,11 @@
 
 ## 两条铁律
 
-1. **响应永不回显密钥内容。** 只报「配了没有」与「来自哪一层」。
+1. **响应只回显「用户自己配的」密钥。** 别人的（共享默认行、部署环境
+   里的）只给等长占位串（只露末 4 位）——那是**运维的密钥**，
+   明文回显等于发给每一个登录用户（argus 没有管理员角色，注册即得）。
+   另附 ``masked_key_fields`` 明示哪些值是占位串——前端据此不把它们
+   当真值提交。
 2. **只改自己的。** 每个请求按 cookie 里的 session 取 user_id，
    凭据按 user_id 存——没有「传 user_id 改别人的」这种入口。
 """
@@ -23,7 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.gateway.deps import CurrentUser
-from app.models.credentials import ProviderCredentials
+from app.models.credentials import SCOPE_USER, ProviderCredentials
 from app.schemas.credentials import (
     CredentialItem,
     CredentialsResponse,
@@ -34,6 +38,7 @@ from app.services.credentials import (
     resolve_credentials,
     validate_base_url,
 )
+from app.services.secret_store import encrypt_secret
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
@@ -62,6 +67,57 @@ _WRITABLE_FIELDS = (
 # 看不出是斜杠的问题，排查一次要花半小时。
 _BASE_URL_FIELDS = frozenset({"anthropic_base_url", "embedding_base_url"})
 
+# 存进库时要**加密**的字段——它们是 API key。
+#
+# 其余字段（base_url、模型名）明文存：地址与模型名不是秘密，页面要
+# 直接回显它们，加密只会让「读出来给页面」这件事多一道解密。
+_SECRET_FIELDS = frozenset(
+    {"anthropic_api_key", "tavily_api_key", "embedding_api_key"}
+)
+
+
+def _echo(own: str | None, effective: str | None) -> str | None:
+    """回显一个 key：**自己的明文，别人的占位串**。
+
+    - ``own`` —— 用户自己配的那把（用户层的解密结果）
+    - ``effective`` —— 最终生效的那把（可能是共享默认 / 部署环境的）
+
+    两者一致 → 用户配的就是生效的 → 回显明文。
+    不一致或 ``own`` 为空 → 生效的那把不是用户的 → **只给占位串**。
+
+    ## 为什么占位串而不是空
+
+    空 = 「没配」，占位串 = 「有，但不是你的」。页面据此能区分
+    「我还没配」与「有人在用共享默认」——前者要填，后者不用填。
+    """
+    if own and effective and own == effective:
+        return own
+    return _mask(effective)
+
+
+def _mask(secret: str | None) -> str | None:
+    """把「不是用户自己的」密钥变成一个**不可还原的占位串**。
+
+    ## 为什么需要它
+
+    生效的 key 可能来自共享默认行或部署环境——那是**运维的密钥**。
+    回显它等于把运维密钥发给每一个登录用户（argus 没有管理员角色，
+    注册即得）。
+
+    但完全不回显也不行：页面要能看出「这一格有值」。
+
+    ## 占位串长什么样
+
+    与原 key **等长**的 ``•``，只露**末 4 位**；不超过 4 位时全部打码。
+    末 4 位足够让人认出「这是我那把 key」（key 的前缀本来就都一样）。
+
+    等长是产品要求（页面上 key 的长度不能变），代价是暴露了长度。
+    """
+    if not secret:
+        return None
+    tail = secret[-4:] if len(secret) > 4 else ""
+    return "•" * (len(secret) - len(tail)) + tail
+
 
 @router.get(
     "/credentials",
@@ -69,7 +125,11 @@ _BASE_URL_FIELDS = frozenset({"anthropic_base_url", "embedding_base_url"})
     summary="当前用户的凭据配置状态",
 )
 async def read_credentials(user: CurrentUser, db: DbSession) -> CredentialsResponse:
-    """返回这个用户的凭据状态。**不含密钥内容。**
+    """返回这个用户的凭据状态。
+
+    **含用户自己配的密钥明文**；别人配的（共享默认行 / 部署环境）只给
+    占位串——见模块 docstring 的「两条铁律」。
+
 
     报的是**最终生效**的值——用户配了就看用户的，没配就看部署默认。
     这样前端不需要自己判断「该显示我的还是显示默认的」。
@@ -96,8 +156,37 @@ async def read_credentials(user: CurrentUser, db: DbSession) -> CredentialsRespo
             configured=bool(resolved.embedding_base_url),
             source=resolved.embedding_base_url_source,
         ),
-        anthropic_base_url_value=resolved.anthropic_base_url,
-        embedding_base_url_value=resolved.embedding_base_url,
+        # **用户自己配的 key → 明文；别人配的 → 占位串。**
+        #
+        # 生效值可能来自共享默认行或部署环境——那是**运维的密钥**，
+        # 明文回显等于发给每个登录用户（argus 没有管理员角色）。
+        # 见 ``_mask`` 的注释。
+        anthropic_api_key_value=_echo(resolved.user_anthropic_api_key, resolved.anthropic_api_key),
+        tavily_api_key_value=_echo(resolved.user_tavily_api_key, resolved.tavily_api_key),
+        embedding_api_key_value=_echo(
+            resolved.user_embedding_api_key, resolved.embedding_api_key
+        ),
+        # 哪些值是**占位串**——前端据此不把它们当真值提交。
+        masked_key_fields=[
+            name
+            for name, own, effective in (
+                ("anthropic_api_key", resolved.user_anthropic_api_key, resolved.anthropic_api_key),
+                ("tavily_api_key", resolved.user_tavily_api_key, resolved.tavily_api_key),
+                (
+                    "embedding_api_key",
+                    resolved.user_embedding_api_key,
+                    resolved.embedding_api_key,
+                ),
+            )
+            if own is None and effective is not None
+        ],
+        # 用户层的 key 解不开时生效地址是 None，仍要回显用户保存过的地址，
+        # 否则看起来像没保存上。
+        anthropic_base_url_value=resolved.anthropic_base_url or resolved.user_anthropic_base_url,
+        embedding_base_url_value=resolved.embedding_base_url or resolved.user_embedding_base_url,
+        # **用户自己配的** base_url——前端做 key/url 配对回填时只用它。
+        user_anthropic_base_url=resolved.user_anthropic_base_url,
+        user_embedding_base_url=resolved.user_embedding_base_url,
         anthropic_complex_model=resolved.anthropic_complex_model,
         anthropic_default_model=resolved.anthropic_default_model,
         anthropic_critic_model=resolved.critic_model,
@@ -143,10 +232,13 @@ async def update_credentials(
 
     row = await ProviderCredentials.find_by_user(db, user.id)
     if row is None:
-        row = ProviderCredentials(user_id=user.id)
+        row = ProviderCredentials(user_id=user.id, scope=SCOPE_USER)
         db.add(row)
 
     for field, value in updates.items():
+        # **key 字段存密文**，base_url 与模型名明文存（它们不是秘密）。
+        if field in _SECRET_FIELDS:
+            value = encrypt_secret(value)
         setattr(row, field, value)
 
     await db.commit()

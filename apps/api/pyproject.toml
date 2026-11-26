@@ -43,6 +43,12 @@ dependencies = [
     "itsdangerous>=2.2.0",
     "tavily-python>=0.8",
     "python-multipart>=0.0.20",   # FastAPI 收 multipart 上传必需，缺了启动即报错
+    # 凭据加密（app/services/secret_store.py 的 Fernet）。**显式声明**：
+    # 之前 cryptography 只是 openai / anthropic 的传递依赖，代码里没有
+    # 直接 import 它——但现在有了。靠传递依赖等于赌上游不换依赖树，
+    # 一次升级就可能让整个 API import 失败。与上面 httpx2 同一个理由。
+    # Apache-2.0 / BSD-3-Clause 双许可。
+    "cryptography>=42.0",
     # 中文分词：SQLite FTS5 自带分词器对中文全不可用（实测见 app/services/bm25.py）
     "jieba>=0.42",
     # ── RAG 管线（W2 Day 9/10）──

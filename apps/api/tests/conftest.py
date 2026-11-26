@@ -7,6 +7,7 @@
 """
 
 from collections.abc import AsyncGenerator, AsyncIterator, Iterator
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -163,6 +164,56 @@ def _reset_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "app.services.tools.get_tavily_client",
         _tavily_unavailable,
     )
+
+
+@pytest.fixture(autouse=True)
+def _encryption_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    """给测试环境一把**固定的**凭据加密主密钥，且**不碰真实的 key 文件**。
+
+    生产的解析顺序是「环境变量 → key 文件 → 自动生成」（见
+    ``app/services/secret_store.py``）。测试里要用第一档——固定值，
+    每次跑都一样。
+
+    ## 为什么不走「自动生成」那条路
+
+    自动生成会往 ``apps/api/.credentials.key`` 写文件——那是**开发环境
+    真实的主密钥**。测试跑一次就把开发环境的主密钥换掉了，开发库里
+    已存的密文从此全部解不开。
+
+    所以这里用环境变量把 key 固定住，**永远走不到生成那一档**。
+
+    ## 为什么要固定值而不是每次随机
+
+    有些用例要断言「解密后等于原文」，随机密钥也能过；但**跨用例复用
+    同一把**才能让「这个库文件在另一个进程里也解得开」这条性质被
+    验证到。
+
+    ## 为什么用 setenv 而不是改 settings 对象
+
+    ``_reset_env`` 会调 ``get_settings.cache_clear()``——下一次
+    ``get_settings()`` 会**重建** Settings 对象，我改在旧对象上的属性
+    就没了。所以这里必须在 ``_reset_env`` **之后**设环境变量并再清一次
+    缓存，让新对象读到它。
+
+    这与 conftest 顶部「pydantic-settings 的配置来自文件，环境变量对
+    它无效」那条**不矛盾**：那条讲的是 `monkeypatch.delenv` 删不掉
+    文件里已有的值；这里是**新增**一个文件里没有的值，环境变量照样
+    生效（pydantic-settings 的优先级是环境变量 > .env 文件）。
+    """
+    # 这是一把**测试专用**的密钥，不是真密钥——不要拿去加密真凭据。
+    monkeypatch.setenv(
+        "CREDENTIALS_ENCRYPTION_KEY",
+        "7zOcF7qhaYYcDAlSgZllSFihuhG2WTbbMv1eFbIvDZE=",
+    )
+    get_settings.cache_clear()
+
+    # 兜底：万一哪条路径走到了「自动生成」，也不许写到开发目录——
+    # 把 key 文件路径重定向到 tmp_path。
+    monkeypatch.setattr(
+        "app.services.secret_store._key_file_path",
+        lambda: tmp_path / ".credentials.key",
+    )
+    yield
 
 
 @pytest.fixture(autouse=True)
