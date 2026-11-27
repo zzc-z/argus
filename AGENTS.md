@@ -49,13 +49,8 @@ argus/
 |---|---|
 | `STRUCTURE.md` | 项目结构（按磁盘现状） |
 | `CONVENTIONS.md` | 代码规范（命名 / 嵌套 / 状态 / a11y / token） |
-| `CODE-QUALITY.md` | 前后端工具链 + 自动化拦截链路 |
 | `LOCAL-DEV.md` | 本地环境。**新会话接手先读这份** |
-| `DEV-FLOW-ANALYSIS.md` | 开发流程为什么慢：实测数据 + 优化建议 |
 | `TODO-frontend-a11y-platform-ui.md` | 前端待办：a11y 缺口 + 平台 UI 原语 + 主题机制 |
-| `SPEC-*.md`（3 份） | 已落地的规格：content-filtered 修复 / 研究会话 / 流式打字机 |
-| `WORKLOG-*.md`（3 份） | 已落地轮次的进展记录（最新章节在最上面） |
-| `HANDOFF-explore-session.md` | 交接：explore 页会话化（2026-11-01 ~ 11-04） |
 
 ## 6. 项目硬配置（Hard Gate）
 
@@ -186,8 +181,6 @@ CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类
 「这个修复引入了什么新的前提」。连续三轮在同一片代码上打转时就该停——
 边际产出已经变成「写看起来很有道理的注释」。
 
-完整复盘见 [docs/DEV-FLOW-ANALYSIS.md](docs/DEV-FLOW-ANALYSIS.md)。
-
 ### 7.5.4 变异测试（验证测试真的有效）
 
 **改动依赖外部行为时（框架版本、数据库语义、第三方 API），写实测脚本验一遍，
@@ -297,10 +290,10 @@ CR 用独立上下文重读 diff，能发现「删一行会不会报错」这类
 1. **新增 / 删除 / 重命名文件或目录** → 更新 `docs/STRUCTURE.md` + `AGENTS.md §2 项目结构` + `apps/{web,api}/CONTRIBUTING.md §目录结构`
 2. **新增 / 修改 / 删除依赖包** → 更新 `package.json` / `apps/api/pyproject.toml` + `AGENTS.md §1 项目快速画像`
 3. **新增 / 修改 / 删除 shadcn/ui 组件** → 更新 `AGENTS.md §10` + `apps/web/CONTRIBUTING.md § shadcn/ui 用法`
-4. **新增 / 修改 / 删除后端配置**（ruff / mypy / pre-commit）→ 更新 `apps/api/CONTRIBUTING.md` + `docs/CODE-QUALITY.md §3 后端`
-5. **修改 git hooks / husky 配置** → 更新 `docs/CODE-QUALITY.md §2 前端` + `AGENTS.md §6 硬配置`
+4. **新增 / 修改 / 删除后端配置**（ruff / mypy / pre-commit）→ 更新 `apps/api/CONTRIBUTING.md`
+5. **修改 git hooks / husky 配置** → 更新 `AGENTS.md §6 硬配置`
 6. **修改设计 token（Tailwind config）** → 更新 `apps/web/CONTRIBUTING.md § 设计 token` + `AGENTS.md §8`
-7. **修改 commit message 规范** → 更新 `docs/CODE-QUALITY.md §4 commit` + `AGENTS.md §6 Conventional Commits`
+7. **修改 commit message 规范** → 更新 `AGENTS.md §6 Conventional Commits`
 8. **新增 `docs/` 下的文档** → 更新 `docs/STRUCTURE.md § docs/ 文档清单` + `AGENTS.md §2 docs/ 文档清单`
 9. **新增 / 移除 agent 侧工具（Claude Code 插件、skill、MCP server）** → 更新
    `AGENTS.md §10 协作约定`（写清**在本项目里能用哪几块、不能用哪几块**）+ `CLAUDE.md`（若涉及审查规则）
@@ -538,8 +531,6 @@ Compiler 会自动做记忆化，届时 `useCallback` / `useMemo` 大部分不�
 - [apps/web/CONTRIBUTING.md](./apps/web/CONTRIBUTING.md)
 - [apps/api/CONTRIBUTING.md](./apps/api/CONTRIBUTING.md)
 - [docs/CONVENTIONS.md](./docs/CONVENTIONS.md)
-- [docs/CODE-QUALITY.md](./docs/CODE-QUALITY.md)
 - [docs/LOCAL-DEV.md](./docs/LOCAL-DEV.md)
-- [docs/DEV-FLOW-ANALYSIS.md](./docs/DEV-FLOW-ANALYSIS.md)
 - [docs/TODO-frontend-a11y-platform-ui.md](./docs/TODO-frontend-a11y-platform-ui.md)
 - [prd/PRD 总览](./prd/README.md)

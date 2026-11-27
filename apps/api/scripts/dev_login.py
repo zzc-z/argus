@@ -7,8 +7,7 @@
     curl -H "Cookie: argus_session=$(cat /tmp/jwt.txt)" ...
 
 必须在 apps/api 下运行：Settings 用 env_file=".env"（相对路径），
-换个 cwd 就找不到配置了。在浏览器里测需要手动注入 HttpOnly cookie，
-见 WORKLOG.md。
+换个 cwd 就找不到配置了。在浏览器里测需要手动注入 HttpOnly cookie。
 """
 
 import asyncio

@@ -1,6 +1,6 @@
 """用户与外部身份绑定。
 
-两层模型（Auth.js 事实标准，见 docs/CODE-QUALITY.md 引用）：
+两层模型（Auth.js 事实标准）：
 
 - ``users``      argus 眼里的「这个人是谁」，与登录方式无关
 - ``accounts``   「这个人通过哪个 provider 的哪个 ID 登录过」

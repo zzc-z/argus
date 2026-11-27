@@ -74,7 +74,6 @@ apps/api/
 ├── .pre-commit-config.yaml           # pre-commit hooks
 ├── py.typed                          # PEP 561 标记
 ├── .gitignore
-├── WORKLOG.md                        # 后端开发日志（⚠️ 顶部待办多处已过期）
 └── README.md
 ```
 
@@ -203,7 +202,6 @@ SQLite 的两个坑：
 - [AGENTS.md（仓库根）](../../AGENTS.md)
 - [apps/web/CONTRIBUTING.md](../../apps/web/CONTRIBUTING.md)
 - [docs/CONVENTIONS.md](../../docs/CONVENTIONS.md)
-- [docs/CODE-QUALITY.md](../../docs/CODE-QUALITY.md)
 - [docs/LOCAL-DEV.md](../../docs/LOCAL-DEV.md)
 - [prd/architecture.md](../../prd/architecture.md)
 - [prd/tech-stack.md](../../prd/tech-stack.md)

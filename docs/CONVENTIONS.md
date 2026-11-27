@@ -177,7 +177,7 @@ button / card / input / label / badge / sheet / dialog / select / switch / tabs 
 - 本文档范围之外 → `~/.claude/rules/{core,coding,tools}.md`
 - 前端开发流程 → `apps/web/CONTRIBUTING.md`
 - 后端开发流程 → `apps/api/CONTRIBUTING.md`
-- 前端 / 后端工具链 → `docs/CODE-QUALITY.md`
+- 前端 / 后端工具链 → `apps/{web,api}/CONTRIBUTING.md`；通用 lint 规则走全局质量门禁
 - 前端已实测的 a11y / 主题 / 浮层缺口 → `docs/TODO-frontend-a11y-platform-ui.md`
 - 现代 Web 指导插件的可用范围 → `AGENTS.md §10.1`
 - PRD 设计文档 → `prd/`（只读）

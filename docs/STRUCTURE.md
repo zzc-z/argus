@@ -31,17 +31,8 @@ argus/
 |---|---|
 | `STRUCTURE.md` | 本文件。项目结构 |
 | `CONVENTIONS.md` | 代码规范（命名 / 嵌套 / 状态 / a11y / token） |
-| `CODE-QUALITY.md` | 前后端工具链 + 自动化拦截链路 |
 | `LOCAL-DEV.md` | 本地环境。**新会话接手先读这份**——几件「做错不报错、只表现为数据是旧的」的事写在这里 |
-| `DEV-FLOW-ANALYSIS.md` | 开发流程为什么慢：实测数据 + 优化建议 |
 | `TODO-frontend-a11y-platform-ui.md` | 前端待办：a11y 缺口 + 平台 UI 原语 + 主题机制三处问题 |
-| `SPEC-content-filtered-fix.md` | 规格：`llm_content_filtered` 误报 + 检索相关性下限 |
-| `SPEC-run-session.md` | 规格：研究会话（run）与可重连的流 |
-| `SPEC-streaming-typewriter.md` | 规格：explore 页正文真正打字机式流出 |
-| `WORKLOG-frontend-de-mock.md` | 前端去 mock 的进展（**最新章节在最上面**） |
-| `WORKLOG-run-session.md` | 研究会话（run）一轮的进展 |
-| `WORKLOG-streaming-typewriter.md` | 流式打字机 + 滚动跟随 + 错误分类修正的进展 |
-| `HANDOFF-explore-session.md` | 交接：explore 页会话化（2026-11-01 ~ 11-04） |
 
 > `prd/` 是只读的设计文档，**不随实现改动**。
 
@@ -79,7 +70,6 @@ argus/
 | `scripts/dev_login.py` | 本地造 session（绕过 GitHub OAuth） |
 | `uploads/` | 摄取的原文件落地目录 |
 | `argus.db` | SQLite 数据库文件 |
-| `WORKLOG.md` | **后端开发日志**——⚠️ 正文是 2026-10-19 ~ 11-09 的历史记录，顶部「待办」多处已过期；要当前状态看 `docs/LOCAL-DEV.md` 与代码本身 |
 
 ## apps/web/ — Next.js 16 前端
 
