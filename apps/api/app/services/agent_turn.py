@@ -9,9 +9,12 @@
 
 1. **正文边收边发**。攒完再发 = 用户看到「憋十几秒然后整段蹦出来」。
 2. **thinking block 原样回传**。模型的扩展思考带 signature，改动或丢失
-   会导致下一轮请求被拒。它是内部推理过程，前端要的是研究结论不是思维链。
+   会导致下一轮请求被拒。思考摘要另走 ``kind="thinking"`` 片段展示给用户
+   （「AI 正在想什么」），但**不进正文**——回传用的是 ``result.content``，
+   展示用的是片段，两条路互不影响。
 3. **流被掐断时整轮重发**。已发出的正文撤不回来，只能整轮重来——
    重发前必须先发 ``reset`` 让前端清零（少了它用户会看到同一段正文两遍）。
+   思考同理，发 ``thinking_reset``。
 """
 
 from __future__ import annotations
@@ -31,10 +34,18 @@ from app.services.llm import (
     fallback_models,
     is_stream_interrupt,
 )
-from app.services.stream import Typewriter
+from app.services.stream import TextSlicer, Typewriter
 from app.services.tools import ToolSpec, tool_schemas
 
 logger = logging.getLogger(__name__)
+
+# 思考摘要每帧的字数上限。
+#
+# 比正文的 8 字大得多：思考不需要打字机节奏，只要「在动」；而帧数直接
+# 占 run 的事件缓冲（``runs.MAX_BUFFERED_EVENTS``，满了从最老的丢，
+# 第一帧 run 也会被挤掉）。上游逐字吐时按 8 字切，一轮 2048 token 的
+# 思考就是几百帧；40 字一帧约几十帧。
+THINKING_CHUNK_SIZE = 40
 
 # 单轮输出总预算。thinking 有自己的上限（THINKING_BUDGET_TOKENS）。
 MAX_OUTPUT_TOKENS = 4096
@@ -110,10 +121,15 @@ class TurnChunk:
     ``kind="text"`` 是正文增量（已经过展示切片，可以直接发给前端）；
     ``kind="result"`` 是这一轮的收尾——usage / stop_reason / tool_calls；
     ``kind="reset"`` 表示「已发出的正文作废，从头再来」——只在流被掐断
-    后整轮重发时出现。
+    后整轮重发时出现；
+    ``kind="thinking"`` 是思考摘要增量（只给用户看，不进正文）；
+    ``kind="thinking_reset"`` 是思考版的 reset，同样只在断流重发时出现。
+
+    消费方**必须按 kind 显式分支**，不能用 ``else`` 兜 result——
+    新增的 kind 会掉进 else 把 result 覆盖成 None。
     """
 
-    kind: str  # "text" | "result" | "reset"
+    kind: str  # "text" | "result" | "reset" | "thinking" | "thinking_reset"
     text: str = ""
     result: TurnResult | None = None
 
@@ -165,6 +181,8 @@ async def _run_turn(
     # 这一轮是否已经往用户那里发过正文。断流重发时要靠它决定
     # 要不要发 reset 标记。
     sent_any = False
+    # 同理，是否发过思考摘要——决定要不要发 thinking_reset。
+    sent_thinking = False
 
     # 备胎模型链：主模型断流时换下一个模型重发。
     #
@@ -181,6 +199,8 @@ async def _run_turn(
             async for chunk in _stream_turn_once(client, request):
                 if chunk.kind == "text":
                     sent_any = True
+                elif chunk.kind == "thinking":
+                    sent_thinking = True
                 yield chunk
             return
         except Exception as exc:
@@ -198,6 +218,8 @@ async def _run_turn(
             # 前端正文区是空的，清它没有意义。
             if sent_any:
                 yield TurnChunk(kind="reset")
+            if sent_thinking:
+                yield TurnChunk(kind="thinking_reset")
             if attempt < STREAM_INTERRUPT_RETRIES:
                 # 指数退避：第 n 次重发等 ``基数 * 2**(n-1)`` 秒（1s → 2s）。
                 #
@@ -220,7 +242,8 @@ async def _stream_turn_once(
 ) -> AsyncIterator[TurnChunk]:
     """跑一次流式请求，把上游事件翻译成 ``TurnChunk``。
 
-    产出顺序：正文增量（``kind="text"``，可以有多段）→ 整轮结果
+    产出顺序：思考摘要（``kind="thinking"``，可以有多段，每个块结束时
+    flush 尾巴）→ 正文增量（``kind="text"``，可以有多段）→ 整轮结果
     （``kind="result"``）。``result`` 一定在最后——它是这一轮的收尾
     （usage / stop_reason / tool_calls），调用方靠它记账。
 
@@ -257,9 +280,12 @@ async def _stream_turn_once(
     tool_calls」这个等价的判据。
     """
     typewriter = Typewriter()
+    thinking_slicer = TextSlicer(chunk_size=THINKING_CHUNK_SIZE)
 
     async with client.messages.stream(**cast("Any", request)) as stream:
         async for event in stream:
+            for piece in _thinking_pieces(event, thinking_slicer):
+                yield TurnChunk(kind="thinking", text=piece)
             event_type = getattr(event, "type", "")
             if event_type != "content_block_delta":
                 continue
@@ -275,12 +301,32 @@ async def _stream_turn_once(
                 yield TurnChunk(kind="text", text=piece)
 
         # 流结束：把尾巴切出来，与前面的片段同一粒度。
+        for piece in thinking_slicer.flush():
+            yield TurnChunk(kind="thinking", text=piece)
         async for piece in typewriter.flush():
             yield TurnChunk(kind="text", text=piece)
 
         final = await stream.get_final_message()
 
     yield TurnChunk(kind="result", result=_to_turn_result(final))
+
+
+def _thinking_pieces(event: Any, slicer: TextSlicer) -> list[str]:
+    """从一个上游事件里取出可发送的思考摘要片段；与思考无关的事件给空列表。
+
+    - ``thinking_delta``：喂进切片器，攒够一帧才吐。``display="omitted"``
+      时上游给的是空串，``feed("")`` 不产出片段——前端只是看不到思考，不报错。
+    - ``content_block_stop``：一个块结束，把不足一帧的尾巴发掉。否则思考的
+      最后半句会压到正文之后才出现（要等整条流结束时的 flush）。
+      对 text / tool_use 块的 stop 也会调用，那时缓冲是空的，flush 给空列表。
+    """
+    event_type = getattr(event, "type", "")
+    if event_type == "content_block_stop":
+        return slicer.flush()
+    delta = getattr(event, "delta", None)
+    if event_type == "content_block_delta" and getattr(delta, "type", "") == "thinking_delta":
+        return slicer.feed(getattr(delta, "thinking", "") or "")
+    return []
 
 
 def _build_turn_request(
@@ -320,13 +366,30 @@ def _build_turn_request(
     注意 ``stop_reason="max_tokens"`` 在设了 thinking 预算之后**仍然常见**
     （实测每次都是）：它表示「总输出触顶」，在 thinking 有独立预算后**不再
     等于失败**。判据是「有没有正文」，不是 stop_reason。
+
+    ## 为什么显式写 ``display="summarized"``
+
+    按官方 claude-api 文档（Thinking display 一节），Sonnet 5 上 thinking 默认
+    ``display="omitted"``：thinking block 照常产生、照常计费，但流里的
+    ``thinking_delta`` 是空串——前端「AI 正在想什么」就没有内容可显示。
+    显式要 ``summarized`` 拿到的是思考摘要（Sonnet 5 不返回原始思维链）。
+    只影响可见性，不影响思考深度与计费。
+
+    注意本机 SDK 1.9.0 的 ``ThinkingConfigEnabledParam.display`` docstring 写的是
+    「Defaults to summarized」，与官方文档对 Sonnet 5 的说法相反——不管哪个对，
+    显式传值都不依赖默认值。中转站是否实现这个字段 [未核实]：不实现时
+    thinking 是空串，前端只是不显示，不报错。
     """
     request: dict[str, Any] = {
         "model": credentials.anthropic_complex_model,
         "max_tokens": MAX_OUTPUT_TOKENS,
         "system": SYSTEM_PROMPT,
         "messages": messages,
-        "thinking": {"type": "enabled", "budget_tokens": THINKING_BUDGET_TOKENS},
+        "thinking": {
+            "type": "enabled",
+            "budget_tokens": THINKING_BUDGET_TOKENS,
+            "display": "summarized",
+        },
     }
     if tools:
         request["tools"] = tool_schemas(tools)
