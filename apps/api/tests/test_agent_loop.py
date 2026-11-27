@@ -91,6 +91,11 @@ def _stub_turns(
         if not remaining:
             raise AssertionError("agent 调用轮数超出脚本预期")
         result = remaining.pop(0)
+        # 真实的 _run_turn 会把 thinking block 的内容作为 thinking 片段先吐出来。
+        # 桩也要吐，否则「思考不混进正文」这类断言在任何实现下都过。
+        for block in result.content:
+            if block.get("type") == "thinking":
+                yield TurnChunk(kind="thinking", text=block["thinking"])
         if result.text:
             yield TurnChunk(kind="text", text=result.text)
         yield TurnChunk(kind="result", result=result)
@@ -251,7 +256,10 @@ async def test_thinking_block_echoed_back_with_signature(
 
 
 async def test_thinking_never_emitted_as_event(monkeypatch: pytest.MonkeyPatch) -> None:
-    """思考过程是内部推理，不能发给用户——只给研究结论。"""
+    """thinking block 的内容不能混进正文（DeltaEvent）。
+
+    思考摘要另走 ThinkingEvent 展示，见 ``test_thinking_stream.py``。
+    """
     _stub_turns(
         monkeypatch,
         [_turn(tool_calls=[_tool_call()], thinking="内部思考不该外泄"), _turn(text="答案")],

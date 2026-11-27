@@ -87,6 +87,30 @@ class DeltaEvent:
 
 
 @dataclass(frozen=True, slots=True)
+class ThinkingEvent:
+    """模型的思考摘要增量。前端按 ``turn`` 分组累积：``thinking[turn] += text``。
+
+    来源是上游的 ``thinking_delta``。请求里显式要了 ``display="summarized"``
+    （原因与依据见 ``agent_turn._build_turn_request``）。拿到的是**摘要**，
+    不是原始思维链。前端尚未接入（``explore/page.tsx`` 走 default 忽略）。
+
+    单独一个事件类型而不是复用 ``DeltaEvent``：思考不是正文，不进
+    ``report_body``，也不参与 ``reset_keep_chars`` 的已落盘长度计算——
+    混进 delta 通道，前端的正文与落盘报告就对不上了。
+
+    带 ``turn`` 是因为一次研究有多轮模型请求、每轮各有一段思考；前端要能
+    显示「第 2 轮在想什么」，而不是把几轮思考拼成一段。
+
+    ``reset=True`` 只在流被掐断后整轮重发时出现：该轮已收到的思考作废，
+    前端清掉 ``thinking[turn]`` 再重收（与 ``DeltaEvent.reset`` 同理）。
+    """
+
+    turn: int
+    text: str
+    reset: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class ToolCallEvent:
     """一次工具调用的开始 / 结束两段。
 
@@ -207,6 +231,7 @@ AgentEvent = (
     RunEvent
     | NodeEvent
     | DeltaEvent
+    | ThinkingEvent
     | ToolCallEvent
     | ReferenceEvent
     | FaithfulnessEvent
@@ -231,6 +256,7 @@ def _type_name(event: AgentEvent) -> str:
         RunEvent: "run",
         NodeEvent: "node",
         DeltaEvent: "delta",
+        ThinkingEvent: "thinking",
         ToolCallEvent: "tool_call",
         ReferenceEvent: "reference",
         DoneEvent: "done",

@@ -27,9 +27,9 @@
 
 协议上的两个硬约束：
 
-- **thinking block 不转发给用户，但必须原样回传给下一轮。** 模型的
-  扩展思考带 signature，改动或丢失会导致第二轮请求被拒。它是内部
-  推理过程，前端要的是研究结论不是思维链。
+- **thinking block 必须原样回传给下一轮。** 模型的扩展思考带 signature，
+  改动或丢失会导致第二轮请求被拒。思考**摘要**以 ``ThinkingEvent`` 单独
+  发给前端（「AI 正在想什么」），但不进正文、不进落盘报告。
 - **任一时刻只有一个节点 active。** 前端 AgentDAG 用 findIndex 定位
   高亮轨道，两个 active 会让它算错位置。由 ``NodeTracker`` 断言保证。
 """
@@ -94,6 +94,7 @@ from app.services.stream import (
     DeltaEvent,
     ErrorEvent,
     FaithfulnessEvent,
+    ThinkingEvent,
 )
 from app.services.tools import ToolSpec, available_tools
 
@@ -348,7 +349,10 @@ async def run_agent(
             writer_active = False
             current_turn_text = []
             async for chunk in _run_turn(client, messages, tools, credentials):
-                if chunk.kind == "text":
+                if chunk.kind in _THINKING_KINDS:
+                    # 思考摘要只展示，不进 current_turn_text / report_body。
+                    yield _thinking_event(chunk, turn)
+                elif chunk.kind == "text":
                     if not writer_active:
                         writer_active = True
                         for event in tracker.switch(Stage.WRITER):
@@ -370,8 +374,10 @@ async def run_agent(
                         reset=True,
                         reset_keep_chars=keep,
                     )
-                else:
+                elif chunk.kind == "result":
                     result = chunk.result
+                else:
+                    raise RuntimeError(f"未处理的 TurnChunk kind：{chunk.kind}")
 
             # 流中断重发全部失败时 _run_turn 会抛异常，不会走到这里。
             # result 为 None 说明一轮都没产出任何 chunk——不可能
@@ -493,7 +499,13 @@ async def run_agent(
                 ledger = ledger.begin_turn()
                 out = _FinalizeOut(ledger=ledger)
                 async for finalize_event in _finalize(
-                    client, ledger, messages, tracker, out, credentials
+                    client,
+                    ledger,
+                    messages,
+                    tracker,
+                    out,
+                    credentials,
+                    keep_chars=sum(len(t) for t in report_body),
                 ):
                     yield finalize_event
                 ledger = out.ledger
@@ -623,8 +635,14 @@ async def _finalize(
     tracker: NodeTracker,
     out: _FinalizeOut,
     credentials: ResolvedCredentials,
+    *,
+    keep_chars: int,
 ) -> AsyncIterator[AgentEvent]:
     """轮数用尽后的强制收尾：关掉工具，再基于已有信息作答。
+
+    ``keep_chars`` 是前几轮已落盘正文的长度。断流重发时 reset 要带上它，
+    前端只清掉这一次收尾的正文——不带（默认 0）会把前几轮也清空，
+    屏幕上报告整段消失，落盘报告却完整，两边对不上。与主循环 reset 同语义。
 
     产出正文增量（DeltaEvent）。**正文整段与新账本通过 ``out`` 回传**：
     DeltaEvent 的 text 是展示切片，而 ``report_body`` 最后是
@@ -644,21 +662,42 @@ async def _finalize(
     final: TurnResult | None = None
     writer_active = False
     async for chunk in _run_turn(client, messages, no_tools, credentials):
-        if chunk.kind == "text":
+        if chunk.kind in _THINKING_KINDS:
+            # 强制收尾是主循环 0..MAX_TURNS-1 之后多出来的一次请求，轮号顺延。
+            yield _thinking_event(chunk, MAX_TURNS)
+        elif chunk.kind == "text":
             if not writer_active:
                 writer_active = True
                 for event in tracker.switch(Stage.WRITER):
                     yield event
             yield DeltaEvent(node_id=Stage.WRITER.value, text=chunk.text)
         elif chunk.kind == "reset":
-            yield DeltaEvent(node_id=Stage.WRITER.value, text="", reset=True)
-        else:
+            yield DeltaEvent(
+                node_id=Stage.WRITER.value,
+                text="",
+                reset=True,
+                reset_keep_chars=keep_chars,
+            )
+        elif chunk.kind == "result":
             final = chunk.result
+        else:
+            raise RuntimeError(f"未处理的 TurnChunk kind：{chunk.kind}")
 
     if final is None:
         raise RuntimeError("强制收尾没有返回结果")
     out.ledger = ledger.record(final)
     out.text = final.text
+
+
+# ``_run_turn`` 产出的思考类片段。
+_THINKING_KINDS = frozenset({"thinking", "thinking_reset"})
+
+
+def _thinking_event(chunk: TurnChunk, turn: int) -> ThinkingEvent:
+    """把思考类片段翻译成发给前端的 ``ThinkingEvent``。"""
+    if chunk.kind == "thinking_reset":
+        return ThinkingEvent(turn=turn, text="", reset=True)
+    return ThinkingEvent(turn=turn, text=chunk.text)
 
 
 async def _settle(
