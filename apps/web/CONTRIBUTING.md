@@ -203,7 +203,6 @@ CLI 自动做的事：
 - [AGENTS.md（仓库根）](../../AGENTS.md)
 - [apps/api/CONTRIBUTING.md](../../apps/api/CONTRIBUTING.md)
 - [docs/CONVENTIONS.md](../../docs/CONVENTIONS.md)
-- [docs/CODE-QUALITY.md](../../docs/CODE-QUALITY.md)
 - [docs/TODO-frontend-a11y-platform-ui.md](../../docs/TODO-frontend-a11y-platform-ui.md)
 - [prd/tech-stack.md](../../prd/tech-stack.md)
 - [shadcn/ui 文档](https://ui.shadcn.com)

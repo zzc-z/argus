@@ -303,7 +303,6 @@ uv run python -m tests.mutation M1 M3   # 只跑指定几条
   后端 `stream.py` 的 `Typewriter` 因此做了两件事：切片（粒度，8 字/片）+
   控速（节奏，令牌桶按 **80 字/秒** 限速）。上游缓冲时靠控速拆开；
   上游真流式时跟随上游速度，不拖慢它。
-  详见 `docs/SPEC-streaming-typewriter.md`。
 - **explore 页的滚动宿主是 `.center`，不是 `window`**。`page.module.css` 里
   `.shell` 是 `overflow: hidden` + 固定高度，整页不滚；只有 `.center`
   （`overflow-y: auto`）滚。要做「跟随底部」之类的效果，ref 要挂在
@@ -321,7 +320,6 @@ uv run python -m tests.mutation M1 M3   # 只跑指定几条
   里，事件先进 `app/services/runs.py` 的进程内注册表，HTTP 连接只是
   订阅者。所以**刷新 / 切页不会终止生成**——用户切回来靠
   `GET /api/v1/research/runs/{run_id}/stream` 接回那一轮。
-  详见 `docs/SPEC-run-session.md`。
   - run 存在**内存**里：后端进程重启后未完成的 run 会丢；多 worker 部署
     时不同进程看不见彼此的 run（本项目现在是单进程，不构成问题）。
   - run 保留 **30 分钟**（`RUN_TTL_SECONDS`）。**不能按「已收尾」删**——
@@ -454,9 +452,3 @@ uv run python -m tests.mutation M1 M3   # 只跑指定几条
 - [AGENTS.md（仓库根）](../AGENTS.md) — 硬配置、收尾流程
 - [apps/api/CONTRIBUTING.md](../apps/api/CONTRIBUTING.md) — 后端贡献指南
 - [docs/CONVENTIONS.md](CONVENTIONS.md) — 编码与设计约定
-- [docs/CODE-QUALITY.md](CODE-QUALITY.md) — 代码质量约定
-- [docs/SPEC-streaming-typewriter.md](SPEC-streaming-typewriter.md) — 流式打字机与滚动跟随的规格
-- [docs/WORKLOG-streaming-typewriter.md](WORKLOG-streaming-typewriter.md) — 那一轮的进展记录与未完成项
-- [docs/HANDOFF-explore-session.md](HANDOFF-explore-session.md) — **explore 会话化的交接记录（新会话先读）**
-- [docs/SPEC-run-session.md](SPEC-run-session.md) — 研究会话（run）与可重连的流的规格
-- [docs/WORKLOG-run-session.md](WORKLOG-run-session.md) — 那一轮的进展记录与踩过的坑（含「新建会话」与重连修复）
